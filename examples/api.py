@@ -6,7 +6,7 @@ Run (after installing fastapi and uvicorn):
   uvicorn examples.api:app --reload
 """
 
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 import os
 import time
 from fastapi import FastAPI, Header, HTTPException, Depends
@@ -102,16 +102,66 @@ class RecallBatchRequest(BaseModel):
     type: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
 
+# --- Response models ---
+class OkResponse(BaseModel):
+    ok: bool
 
-@app.post("/store", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store"))])
-def store(req: StoreRequest):
+class MatchesResponse(BaseModel):
+    matches: List[Dict[str, Any]]
+
+class BatchesResponse(BaseModel):
+    batches: List[List[Dict[str, Any]]]
+
+class ScoreItem(BaseModel):
+    payload: Dict[str, Any]
+    score: Optional[float] = None
+
+class ScoresResponse(BaseModel):
+    results: List[ScoreItem]
+
+class ResultsResponse(BaseModel):
+    results: List[Dict[str, Any]]
+
+class NeighborsResponse(BaseModel):
+    # Preserve shape: [[coord:list[float], edge_data:dict], ...]
+    neighbors: List[List[Any]]
+
+class PathResponse(BaseModel):
+    path: List[List[float]]
+
+class ExportMemoriesResponse(BaseModel):
+    exported: int
+
+class ImportMemoriesResponse(BaseModel):
+    imported: int
+
+class DeleteManyResponse(BaseModel):
+    deleted: int
+
+class StoreBulkResponse(BaseModel):
+    stored: int
+
+class StatsResponse(BaseModel):
+    total_memories: int
+    episodic: int
+    semantic: int
+
+class HealthResponse(BaseModel):
+    kv_store: bool
+    vector_store: bool
+    graph_store: bool
+    prediction_provider: bool
+
+
+@app.post("/store", response_model=OkResponse, tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store"))])
+def store(req: StoreRequest) -> OkResponse:
     mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
     mem.store_memory(parse_coord(req.coord), req.payload, memory_type=mtype)
-    return {"ok": True}
+    return OkResponse(ok=True)
 
 
-@app.post("/recall", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall"))])
-def recall(req: RecallRequest):
+@app.post("/recall", response_model=MatchesResponse, tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall"))])
+def recall(req: RecallRequest) -> MatchesResponse:
     mtype = None
     if req.type:
         mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
@@ -120,94 +170,94 @@ def recall(req: RecallRequest):
         res = mem.find_hybrid_by_type(req.query, top_k=req.top_k, memory_type=mtype, filters=req.filters)
     else:
         res = mem.recall(req.query, top_k=req.top_k, memory_type=mtype)
-    return {"matches": res}
+    return MatchesResponse(matches=res)
 
-@app.post("/recall_batch", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_batch"))])
-def recall_batch(req: RecallBatchRequest):
+@app.post("/recall_batch", response_model=BatchesResponse, tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_batch"))])
+def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
     mtype = None
     if req.type:
         mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
     res = mem.recall_batch(req.queries, top_k=req.top_k, memory_type=mtype, filters=req.filters)
-    return {"batches": res}
+    return BatchesResponse(batches=res)
 
 
-@app.get("/stats", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/stats"))])
-def stats():
-    return mem.memory_stats()
+@app.get("/stats", response_model=StatsResponse, tags=["system"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/stats"))])
+def stats() -> StatsResponse:
+    return StatsResponse(**mem.memory_stats())
 
 
-@app.get("/health")
-def health():
-    return mem.health_check()
+@app.get("/health", response_model=HealthResponse, tags=["system"])
+def health() -> HealthResponse:
+    return HealthResponse(**mem.health_check())
 
 
-@app.get("/neighbors", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/neighbors"))])
-def neighbors(coord: str, link_type: str | None = None, limit: int | None = None):
+@app.get("/neighbors", response_model=NeighborsResponse, tags=["graph"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/neighbors"))])
+def neighbors(coord: str, link_type: str | None = None, limit: int | None = None) -> NeighborsResponse:
     c = parse_coord(coord)
     nbrs = mem.graph_store.get_neighbors(c, link_type=link_type, limit=limit)
     # Convert coords to lists for JSON
-    return {"neighbors": [[list(co), data] for co, data in nbrs]}
+    return NeighborsResponse(neighbors=[[list(co), data] for co, data in nbrs])
 
 
-@app.post("/export_memories", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/export_memories"))])
-def export_memories(req: ExportMemoriesRequest):
+@app.post("/export_memories", response_model=ExportMemoriesResponse, tags=["admin"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/export_memories"))])
+def export_memories(req: ExportMemoriesRequest) -> ExportMemoriesResponse:
     n = mem.export_memories(req.path)
-    return {"exported": n}
+    return ExportMemoriesResponse(exported=n)
 
 
-@app.post("/import_memories", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/import_memories"))])
-def import_memories(req: ImportMemoriesRequest):
+@app.post("/import_memories", response_model=ImportMemoriesResponse, tags=["admin"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/import_memories"))])
+def import_memories(req: ImportMemoriesRequest) -> ImportMemoriesResponse:
     n = mem.import_memories(req.path, replace=req.replace)
-    return {"imported": n}
+    return ImportMemoriesResponse(imported=n)
 
 
-@app.post("/delete_many", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/delete_many"))])
-def delete_many(req: DeleteManyRequest):
+@app.post("/delete_many", response_model=DeleteManyResponse, tags=["admin"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/delete_many"))])
+def delete_many(req: DeleteManyRequest) -> DeleteManyResponse:
     coords = [parse_coord(s) for s in req.coords]
     n = mem.delete_many(coords)
-    return {"deleted": n}
+    return DeleteManyResponse(deleted=n)
 
 
-@app.post("/link", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/link"))])
-def link(req: LinkRequest):
+@app.post("/link", response_model=OkResponse, tags=["graph"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/link"))])
+def link(req: LinkRequest) -> OkResponse:
     mem.link_memories(parse_coord(req.from_coord), parse_coord(req.to_coord), link_type=req.type, weight=req.weight)
-    return {"ok": True}
+    return OkResponse(ok=True)
 
 
-@app.get("/shortest_path", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/shortest_path"))])
-def shortest_path(frm: str, to: str, link_type: str | None = None):
+@app.get("/shortest_path", response_model=PathResponse, tags=["graph"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/shortest_path"))])
+def shortest_path(frm: str, to: str, link_type: str | None = None) -> PathResponse:
     path = mem.find_shortest_path(parse_coord(frm), parse_coord(to), link_type=link_type)
-    return {"path": [list(c) for c in path]}
+    return PathResponse(path=[list(c) for c in path])
 
 
-@app.post("/store_bulk", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store_bulk"))])
-def store_bulk(req: StoreBulkRequest):
+@app.post("/store_bulk", response_model=StoreBulkResponse, tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store_bulk"))])
+def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
     from somafractalmemory.core import MemoryType
     items = []
     for it in req.items:
         mtype = MemoryType.SEMANTIC if it.type == "semantic" else MemoryType.EPISODIC
         items.append((parse_coord(it.coord), it.payload, mtype))
     mem.store_memories_bulk(items)
-    return {"stored": len(items)}
+    return StoreBulkResponse(stored=len(items))
 
 
-@app.post("/recall_with_scores", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_scores"))])
-def recall_with_scores(query: str, top_k: int = 5, type: str | None = None):
+@app.post("/recall_with_scores", response_model=ScoresResponse, tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_scores"))])
+def recall_with_scores(query: str, top_k: int = 5, type: str | None = None) -> ScoresResponse:
     from somafractalmemory.core import MemoryType
     mtype = MemoryType.SEMANTIC if type == "semantic" else (MemoryType.EPISODIC if type == "episodic" else None)
     res = mem.recall_with_scores(query, top_k=top_k, memory_type=mtype)
-    return {"results": res}
+    return ScoresResponse(results=res)
 
 
-@app.post("/recall_with_context", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_context"))])
-def recall_with_context(query: str, context: dict, top_k: int = 5, type: str | None = None):
+@app.post("/recall_with_context", response_model=ResultsResponse, tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_context"))])
+def recall_with_context(query: str, context: dict, top_k: int = 5, type: str | None = None) -> ResultsResponse:
     from somafractalmemory.core import MemoryType
     mtype = MemoryType.SEMANTIC if type == "semantic" else (MemoryType.EPISODIC if type == "episodic" else None)
     res = mem.find_hybrid_with_context(query, context, top_k=top_k, memory_type=mtype)
-    return {"results": res}
+    return ResultsResponse(results=res)
 
 
-@app.get("/range", dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/range"))])
+@app.get("/range", response_model=Dict[str, List[List[float]]], tags=["memories"], dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/range"))])
 def range_search(min: str, max: str, type: str | None = None):
     from somafractalmemory.core import MemoryType
     mtype = MemoryType.SEMANTIC if type == "semantic" else (MemoryType.EPISODIC if type == "episodic" else None)
