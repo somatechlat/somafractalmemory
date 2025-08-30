@@ -27,7 +27,8 @@ config = {
     },
 }
 
-mem = create_memory_system(MemoryMode.LOCAL_AGENT, "demo_ns", config=config)
+# Use in-memory vectors for ON_DEMAND (default), or Qdrant with LOCAL_AGENT
+mem = create_memory_system(MemoryMode.ON_DEMAND, "demo_ns", config={"redis": {"testing": True}})
 
 # Store an episodic memory
 coord = (1.0, 2.0, 3.0)
@@ -67,6 +68,19 @@ soma --mode local_agent --namespace demo_ns link --from 1,2,3 --to 4,5,6 --type 
 
 # Stats
 soma --mode local_agent --namespace demo_ns stats
+
+### Vector backend toggle
+
+- ON_DEMAND now defaults to an in-memory vector store for fast prototyping. To force Qdrant:
+
+```python
+create_memory_system(MemoryMode.ON_DEMAND, "demo_ns", config={
+  "redis": {"testing": True},
+  "vector": {"backend": "qdrant"}
+})
+```
+
+- LOCAL_AGENT/ENTERPRISE default to Qdrant; to use in-memory vectors, set `config={"vector": {"backend": "inmemory"}}`.
 ```
 
 ## Observability
@@ -91,6 +105,11 @@ import logging
 logging.basicConfig(level=logging.INFO)
 ```
 
+### Audit log
+
+- The core writes structured JSONL audit events to `audit_log.jsonl` for store/recall/forget via default hooks.
+- Format: one JSON object per line, including action, timestamp, and optional extra fields.
+
 ## Configuration
 
 - The core also reads settings from Dynaconf (`config.yaml`) and environment (prefix `SOMA_`).
@@ -98,11 +117,21 @@ logging.basicConfig(level=logging.INFO)
 
 See also: `CONFIGURATION.md` for full key and environment variable mappings.
 
+## API Schema (OpenAPI)
+
+- A static OpenAPI 3.0 schema is included at `openapi.json` matching the FastAPI example in `examples/api.py`.
+- The example app also serves a live schema at `/openapi.json` when running.
+
+## Development
+
 ## Development
 
 - Create venv and install dev deps: `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
 - Install package editable for CLI: `pip install -e .`
 - Run tests: `pytest -q`
+  - If using the repo’s venv: `.venv/bin/pytest -q`
+- Clean workspace (ignored artifacts):
+  - `make clean` or manually remove: `.pytest_cache`, `__pycache__`, `somafractalmemory.egg-info`, `qdrant.db`, `*.index`, `*_qdrant`, `audit_log.jsonl`.
 - Explore examples:
   - `examples/quickstart.py`: basic store/recall/link usage
   - `examples/metrics_server.py`: expose Prometheus metrics on port 8000

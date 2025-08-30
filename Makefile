@@ -20,3 +20,7 @@ cli:
 
 bench:
 	. .venv/bin/activate && python examples/benchmark.py --n 2000 --dim 256
+
+.PHONY: clean
+clean:
+	rm -rf .pytest_cache __pycache__ somafractalmemory.egg-info qdrant.db *_qdrant *.index audit_log.jsonl .ipynb_checkpoints

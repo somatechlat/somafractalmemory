@@ -2,7 +2,7 @@ import pytest
 from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.prediction import NoPredictionProvider, OllamaPredictionProvider, ExternalPredictionProvider
-from somafractalmemory.implementations.storage import RedisKeyValueStore, QdrantVectorStore
+from somafractalmemory.implementations.storage import RedisKeyValueStore, QdrantVectorStore, InMemoryVectorStore
 from unittest.mock import patch, MagicMock
 
 def test_create_on_demand_mode():
@@ -11,8 +11,8 @@ def test_create_on_demand_mode():
     assert isinstance(memory.prediction_provider, NoPredictionProvider)
     assert isinstance(memory.kv_store, RedisKeyValueStore)
     assert memory.kv_store.client.__class__.__name__ == 'FakeRedis'
-    assert isinstance(memory.vector_store, QdrantVectorStore)
-    assert memory.vector_store.is_on_disk is False
+    # Default now uses in-memory vector store; can be forced to Qdrant via config
+    assert isinstance(memory.vector_store, InMemoryVectorStore)
 
 def test_create_local_agent_mode(tmp_path):
     config = {
@@ -59,4 +59,3 @@ def test_create_enterprise_mode_real_connections(mock_qdrant, mock_redis):
     
     # Assert that the Qdrant client was called with the correct URL
     mock_qdrant.assert_called_with(url="http://remote-qdrant:6333")
-

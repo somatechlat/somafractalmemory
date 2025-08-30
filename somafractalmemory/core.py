@@ -260,6 +260,39 @@ class SomaFractalMemoryEnterprise:
 		
 		self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
 		self._sync_graph_from_memories()
+		# Setup default audit hooks if not provided
+		try:
+			if not hasattr(self, '_hooks'):
+				self._hooks = {}
+			if 'after_store' not in self._hooks:
+				def _after_store(data, coordinate, memory_type):
+					self.audit_log('store', coordinate, extra={'memory_type': getattr(memory_type, 'value', None)})
+				self._hooks['after_store'] = _after_store
+			if 'after_forget' not in self._hooks:
+				def _after_forget(coordinate):
+					self.audit_log('forget', coordinate)
+				self._hooks['after_forget'] = _after_forget
+			if 'after_recall' not in self._hooks:
+				def _after_recall(query, context, top_k, memory_type, results):
+					coords = []
+					try:
+						for r in results or []:
+							if isinstance(r, dict):
+								c = r.get('coordinate')
+								if c is not None:
+									coords.append(c)
+					except Exception:
+						pass
+					self.audit_log('recall', None, extra={
+						'query': query,
+						'top_k': top_k,
+						'memory_type': getattr(memory_type, 'value', None) if memory_type else None,
+						'result_count': len(results or []),
+						'coords': coords,
+					})
+				self._hooks['after_recall'] = _after_recall
+		except Exception:
+			pass
 		
 		# Decay supervisor
 		self._decay_enabled = bool(decay_enabled)
@@ -520,12 +553,15 @@ class SomaFractalMemoryEnterprise:
 			logger.info(f"Decayed {decayed_count} memories.")
 
 	def save_version(self, coordinate: Tuple[float, ...]):
-		"""Save a version of a memory for rollback/history."""
+		"""Save a version of a memory for rollback/history.
+
+		Uses millisecond timestamp and a short UUID suffix to avoid key collisions.
+		"""
 		data_key, _ = _coord_to_key(self.namespace, coordinate)
 		data = self.kv_store.get(data_key)
 		if not data:
 			raise SomaFractalMemoryError(f"No memory at {coordinate}")
-		version_key = f"{data_key}:version:{int(time.time())}"
+		version_key = f"{data_key}:version:{int(time.time()*1000)}:{uuid.uuid4().hex[:8]}"
 		self.kv_store.set(version_key, data)
 
 	def get_versions(self, coordinate: Tuple[float, ...]) -> List[Dict[str, Any]]:
@@ -539,15 +575,27 @@ class SomaFractalMemoryEnterprise:
 				versions.append(pickle.loads(vdata))
 		return versions
 
-	def audit_log(self, action: str, coordinate: Tuple[float, ...], user: str = "system"):
-		"""Log all memory access and mutation for audit."""
-		log_entry = {
+	def audit_log(self, action: str, coordinate: Optional[Tuple[float, ...]], user: str = "system", extra: Optional[Dict[str, Any]] = None) -> None:
+		"""Append a structured audit event to audit_log.jsonl.
+
+		Args:
+			action: Event action string (e.g., 'store', 'recall', 'forget').
+			coordinate: Optional coordinate for point events.
+			user: Actor, default 'system'.
+			extra: Optional additional fields to include.
+		"""
+		log_entry: Dict[str, Any] = {
 			"action": action,
 			"coordinate": coordinate,
 			"user": user,
-			"timestamp": time.time()
+			"timestamp": time.time(),
 		}
-		with open("audit_log.jsonl", "a") as f:
+		if extra:
+			try:
+				log_entry.update(dict(extra))
+			except Exception:
+				pass
+		with open("audit_log.jsonl", "a", encoding="utf-8") as f:
 			f.write(json.dumps(log_entry) + "\n")
 
 	def summarize_memories(self, n: int = 10, memory_type: Optional[MemoryType] = None) -> List[str]:
