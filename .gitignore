@@ -1,9 +1,56 @@
+# --- Virtual environments ---
 .venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+*.env
+.python-version
+
+# --- Python bytecode and caches ---
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
+.mypy_cache/
+.pyright/
+.hypothesis/
+.cache/
+
+# --- Coverage reports ---
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Build & packaging ---
+build/
+dist/
+*.egg-info/
 somafractalmemory.egg-info/
-qdrant.db/
-*.index
+pip-wheel-metadata/
+wheels/
+
+# --- Logs ---
+*.log
+logs/
 audit_log.jsonl
+
+# --- OS cruft ---
 .DS_Store
+Thumbs.db
+
+# --- IDE/editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Local DBs / vector indices ---
+qdrant.db/
+*_qdrant/
+*.index
+
+# --- Notebooks ---
+.ipynb_checkpoints/
