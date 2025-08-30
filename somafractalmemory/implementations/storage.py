@@ -52,8 +52,10 @@ class InMemoryKeyValueStore(IKeyValueStore):
 
 class RedisKeyValueStore(IKeyValueStore):
     """Redis implementation of the key-value store interface."""
-    def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0, testing: bool = False):
+    def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0, testing: bool = False, locks_mode: str = "redis", redlock_endpoints: Optional[List[str]] = None):
         self._testing = testing
+        self._locks_mode = (locks_mode or "redis").lower()
+        self._redlock_endpoints = redlock_endpoints or []
         # Always prepare an in-proc lock map for tests and fakeredis
         self._inproc_locks: Dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
         if testing:
@@ -86,9 +88,18 @@ class RedisKeyValueStore(IKeyValueStore):
         self.client.hset(key, mapping=dict(mapping))
 
     def lock(self, name: str, timeout: int = 10) -> ContextManager:
-        """Return a lock. In testing/fakeredis mode, use an in-process RLock to avoid EVALSHA issues."""
+        """Return a lock. Testing/fakeredis: in-process RLock. Redlock mode returns a simple in-proc emulation.
+
+        Note: For true Redlock, configure multiple Redis endpoints and provide a Redlock implementation.
+        This stub provides API compatibility and works in tests.
+        """
+        # In tests/fakeredis, always return in-proc lock
         if self._testing or isinstance(self.client, fakeredis.FakeRedis):
             return self._inproc_locks[name]
+        # Redlock stub: fall back to single-node lock for now
+        if self._locks_mode == "redlock" and self._redlock_endpoints:
+            # TODO: integrate real Redlock client; for now use single-node lock
+            return self.client.lock(name, timeout=timeout)
         return self.client.lock(name, timeout=timeout)
 
     def health_check(self) -> bool:

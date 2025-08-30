@@ -191,7 +191,12 @@ class SomaFractalMemoryEnterprise:
 		max_memory_size: int = 100000,
 		pruning_interval_seconds: int = 600,
 		decay_thresholds_seconds: Optional[List[int]] = None,
-		decayable_keys_by_level: Optional[List[List[str]]] = None
+		decayable_keys_by_level: Optional[List[List[str]]] = None,
+		predictions_enabled: bool = False,
+		predictions_error_policy: str = "exact",
+		predictions_threshold: float = 0.0,
+		decay_enabled: bool = True,
+		reconcile_enabled: bool = True,
 	):
 		self.namespace = os.getenv("SOMA_NAMESPACE", namespace)
 		self.kv_store = kv_store
@@ -239,13 +244,31 @@ class SomaFractalMemoryEnterprise:
 		)
 		
 		self.coordinates = {}
+		# Prediction config
+		self.predictions_enabled = predictions_enabled
+		self.predictions_error_policy = predictions_error_policy
+		self.predictions_threshold = predictions_threshold
 		self.embedding_history = []
 		self._snapshot_store = {}
+		# Reconsolidation & salience (defaults)
+		self.reconsolidation_enabled = False
+		self.salience_threshold = 0.0
+		self.salience_weights = {}
 		
 		self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
 		self._sync_graph_from_memories()
 		
-		threading.Thread(target=self._decay_memories, daemon=True).start()
+		# Decay supervisor
+		self._decay_enabled = bool(decay_enabled)
+		self._decay_stop = threading.Event()
+		if self._decay_enabled:
+			threading.Thread(target=self._decay_memories, daemon=True).start()
+
+		# WAL reconciler supervisor
+		self._reconcile_enabled = bool(reconcile_enabled)
+		self._reconcile_stop = threading.Event()
+		if self._reconcile_enabled:
+			threading.Thread(target=self._reconcile_loop, daemon=True).start()
 		logger.info(f"SomaFractalMemoryEnterprise initialized: namespace={self.namespace}")
 
 	def store(self, coordinate: Tuple[float, ...], value: dict):
@@ -262,6 +285,13 @@ class SomaFractalMemoryEnterprise:
 		except Exception as e:
 			logger.warning(f"Failed to set metadata for {meta_key}: {e}")
 
+		# WAL: record pending upsert for vector+graph idempotent replay
+		wal_id = self._wal_write({
+			"op": "upsert",
+			"coordinate": list(coordinate),
+			"point_id": _point_id(self.namespace, coordinate),
+			"payload": value,
+		})
 		try:
 			vector = self.embed_text(json.dumps(value))
 			self.vector_store.upsert(
@@ -271,8 +301,12 @@ class SomaFractalMemoryEnterprise:
 					"payload": value
 				}]
 			)
+			# Graph add
+			self.graph_store.add_memory(coordinate, value)
+			self._wal_commit(wal_id)
 		except Exception as e:
-			logger.error(f"Vector store upsert failed: {e}")
+			logger.error(f"Vector/Graph apply failed: {e}")
+			self._wal_fail(wal_id, error=str(e))
 		finally:
 			try:
 				store_count.labels(namespace=self.namespace).inc()
@@ -286,9 +320,29 @@ class SomaFractalMemoryEnterprise:
 		Periodically scan memories and remove fields based on their age and decay config.
 		"""
 		logger.info("Starting memory decay background process...")
-		while True:
+		stop_event = getattr(self, "_decay_stop", None)
+		while not (stop_event.is_set() if stop_event else False):
 			self.run_decay_once()
-			time.sleep(self.pruning_interval_seconds)
+			# Sleep in small slices to respond to stop quickly
+			remaining = int(max(1, self.pruning_interval_seconds))
+			for _ in range(remaining):
+				if stop_event and stop_event.is_set():
+					break
+				time.sleep(1)
+
+	def start_decay(self):
+		"""Start the decay background worker if not running."""
+		if getattr(self, "_decay_enabled", False) and getattr(self, "_decay_stop", threading.Event()) and not self._decay_stop.is_set():
+			return
+		self._decay_enabled = True
+		self._decay_stop = threading.Event()
+		threading.Thread(target=self._decay_memories, daemon=True).start()
+
+	def stop_decay(self):
+		"""Stop the decay background worker if running."""
+		self._decay_enabled = False
+		if getattr(self, "_decay_stop", None):
+			self._decay_stop.set()
 
 	def run_decay_once(self):
 		"""Run a single pass of field-level decay (deterministic for tests)."""
@@ -654,6 +708,16 @@ class SomaFractalMemoryEnterprise:
 		# Ensure coordinate is a tuple for hashable use in graph keys
 		coordinate = tuple(coordinate)
 		value = dict(value)
+		# Optional prediction enrichment (use original pre-encryption content)
+		if self.predictions_enabled and self.prediction_provider:
+			try:
+				pred_outcome, pred_conf = self.prediction_provider.predict(value)
+				value["predicted_outcome"] = pred_outcome
+				value["predicted_confidence"] = float(pred_conf)
+				value["prediction_provider"] = type(self.prediction_provider).__name__
+				value["prediction_timestamp"] = time.time()
+			except Exception as e:
+				logger.warning(f"Prediction enrichment failed: {e}")
 		# Optionally encrypt sensitive fields before persistence and vectorization
 		if self.cipher:
 			for k in ("task", "code"):
@@ -667,6 +731,11 @@ class SomaFractalMemoryEnterprise:
 			value["timestamp"] = value.get("timestamp", time.time())
 		# Include coordinate in stored value for downstream consumers
 		value["coordinate"] = list(coordinate)
+		# Annotate salience (no gating by default)
+		try:
+			value["salience"] = float(self._compute_salience(value))
+		except Exception:
+			pass
 		
 		result = self.store(coordinate, value)
 		self.graph_store.add_memory(coordinate, value)
@@ -676,6 +745,58 @@ class SomaFractalMemoryEnterprise:
 		except Exception as e:
 			logger.warning(f"Memory limit enforcement failed: {e}")
 		return result
+
+	def report_outcome(self, coordinate: Tuple[float, ...], outcome: Any) -> Dict[str, Any]:
+		"""Report observed outcome for a memory, detect prediction error, and adapt importance/correct it."""
+		coordinate = tuple(coordinate)
+		mem = self.retrieve(coordinate)
+		if not mem:
+			raise SomaFractalMemoryError(f"No memory at {coordinate}")
+		mem["observed_outcome"] = outcome
+		# Persist observed outcome
+		data_key, _ = _coord_to_key(self.namespace, coordinate)
+		self.kv_store.set(data_key, pickle.dumps(mem, protocol=pickle.HIGHEST_PROTOCOL))
+		# Detect error and adapt
+		error = self._detect_prediction_error(mem)
+		adapt = {"error": error}
+		if error:
+			# Lower importance minimally
+			try:
+				cur_imp = int(mem.get("importance", 0))
+				self.set_importance(coordinate, max(0, cur_imp - 1))
+			except Exception:
+				pass
+			# Create corrective semantic memory
+			fact = f"Prediction mismatch at {coordinate}: expected '{mem.get('predicted_outcome')}', got '{outcome}'"
+			corr = {
+				"fact": fact,
+				"source_coord": list(coordinate),
+				"memory_type": MemoryType.SEMANTIC.value,
+				"timestamp": time.time(),
+				"corrective_for": list(coordinate),
+			}
+			self.store_memory(coordinate, corr, memory_type=MemoryType.SEMANTIC)
+			self.link_memories(coordinate, coordinate, link_type="corrective", weight=1.0)
+			adapt["corrective_created"] = True
+		return adapt
+
+	def _detect_prediction_error(self, mem: Dict[str, Any]) -> bool:
+		"""Return True if predicted vs observed outcome indicates an error based on policy."""
+		pred = mem.get("predicted_outcome")
+		obs = mem.get("observed_outcome")
+		if pred is None or obs is None:
+			return False
+		policy = (self.predictions_error_policy or "exact").lower()
+		if policy == "threshold":
+			try:
+				p = float(pred)
+				o = float(obs)
+				return abs(p - o) > float(self.predictions_threshold or 0.0)
+			except Exception:
+				# Fallback to exact if not numeric
+				policy = "exact"
+		# exact policy: string compare
+		return str(pred) != str(obs)
 
 	def _enforce_memory_limit(self):
 		"""Ensure total memories do not exceed max_memory_size by pruning lowest-importance, oldest episodic memories."""
@@ -891,6 +1012,12 @@ class SomaFractalMemoryEnterprise:
 		Deletes a memory and its associated metadata.
 		"""
 		data_key, meta_key = _coord_to_key(self.namespace, coordinate)
+		# WAL: record pending delete for vector+graph replay
+		wal_id = self._wal_write({
+			"op": "delete",
+			"coordinate": list(coordinate),
+			"point_id": _point_id(self.namespace, coordinate),
+		})
 		self.kv_store.delete(data_key)
 		self.kv_store.delete(meta_key)
 		self.graph_store.remove_memory(coordinate)
@@ -900,8 +1027,10 @@ class SomaFractalMemoryEnterprise:
 				str(coordinate),
 				_point_id(self.namespace, coordinate)
 			])
-		except Exception:
-			pass
+		except Exception as e:
+			logger.warning(f"Vector delete failed during delete({coordinate}): {e}")
+		# Commit WAL
+		self._wal_commit(wal_id)
 
 	def delete_many(self, coordinates: List[Tuple[float, ...]]) -> int:
 		"""Delete multiple memories. Returns count deleted."""
@@ -936,6 +1065,90 @@ class SomaFractalMemoryEnterprise:
 		# If models aren't loaded, use fallback immediately
 		if self.tokenizer is None or self.model is None:
 			return _fallback_hash()
+
+	# ---------------- WAL helpers ----------------
+	def _wal_key(self, wid: str) -> str:
+		return f"{self.namespace}:wal:{wid}"
+
+	def _wal_write(self, entry: Dict[str, Any]) -> str:
+		wid = str(uuid.uuid4())
+		payload = dict(entry)
+		payload.update({"id": wid, "status": "pending", "ts": time.time()})
+		self.kv_store.set(self._wal_key(wid), pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
+		return wid
+
+	def _wal_commit(self, wid: str):
+		try:
+			raw = self.kv_store.get(self._wal_key(wid))
+			if not raw:
+				return
+			entry = pickle.loads(raw)
+			entry["status"] = "committed"
+			self.kv_store.set(self._wal_key(wid), pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL))
+		except Exception:
+			pass
+
+	def _wal_fail(self, wid: str, error: str = ""):
+		try:
+			raw = self.kv_store.get(self._wal_key(wid))
+			if not raw:
+				return
+			entry = pickle.loads(raw)
+			entry["status"] = "failed"
+			if error:
+				entry["error"] = error
+			self.kv_store.set(self._wal_key(wid), pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL))
+		except Exception:
+			pass
+
+	def _apply_wal_entry(self, entry: Dict[str, Any]) -> bool:
+		op = entry.get("op")
+		coord_val = entry.get("coordinate")
+		if coord_val is None:
+			return False
+		coord = tuple(coord_val)
+		pid = entry.get("point_id")
+		try:
+			if op == "upsert":
+				payload = entry.get("payload", {})
+				vec = self.embed_text(json.dumps(payload)).flatten().tolist()
+				self.vector_store.upsert(points=[{"id": pid, "vector": vec, "payload": payload}])
+				self.graph_store.add_memory(coord, payload)
+				return True
+			elif op == "delete":
+				self.graph_store.remove_memory(coord)
+				self.vector_store.delete([str(coord), pid])
+				return True
+			return False
+		except Exception as e:
+			logger.warning(f"WAL apply failed for {entry.get('id')}: {e}")
+			return False
+
+	def _reconcile_once(self):
+		for wal_key in self.kv_store.scan_iter(f"{self.namespace}:wal:*"):
+			try:
+				raw = self.kv_store.get(wal_key)
+				if not raw:
+					continue
+				entry = pickle.loads(raw)
+				if entry.get("status") in {"pending", "failed"}:
+					ok = self._apply_wal_entry(entry)
+					if ok:
+						entry["status"] = "committed"
+						self.kv_store.set(wal_key, pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL))
+			except Exception as e:
+				logger.warning(f"Error during WAL reconcile for {wal_key}: {e}")
+
+	def _reconcile_loop(self):
+		logger.info("Starting WAL reconcile background process...")
+		stop_event = getattr(self, "_reconcile_stop", None)
+		while not (stop_event.is_set() if stop_event else False):
+			self._reconcile_once()
+			# basic interval
+			for _ in range(5):
+				if stop_event and stop_event.is_set():
+					break
+				time.sleep(1)
 		# Try normal path but be resilient to runtime errors (e.g., numpy/torch linkage)
 		try:
 			with self.model_lock:

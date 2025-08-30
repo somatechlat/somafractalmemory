@@ -12,6 +12,10 @@ from somafractalmemory.implementations.prediction import (
     ExternalPredictionProvider,
 )
 from somafractalmemory.implementations.graph import NetworkXGraphStore
+try:
+    from somafractalmemory.implementations.graph_neo4j import Neo4jGraphStore  # type: ignore
+except Exception:
+    Neo4jGraphStore = None  # type: ignore
 
 
 class MemoryMode(Enum):
@@ -37,7 +41,12 @@ def create_memory_system(
         kv_store = RedisKeyValueStore(testing=True)
         qdrant_config = {"location": ":memory:"}
         vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_store = NetworkXGraphStore()
+        graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
+        if graph_backend == "neo4j" and Neo4jGraphStore:
+            neo = (config.get("graph", {}) or {}).get("neo4j", {})
+            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
+        else:
+            graph_store = NetworkXGraphStore()
         prediction_provider = NoPredictionProvider()
 
     elif mode == MemoryMode.LOCAL_AGENT:
@@ -45,7 +54,12 @@ def create_memory_system(
         qdrant_config = config.get("qdrant", {"path": f"./{namespace}_qdrant"})
         kv_store = RedisKeyValueStore(**redis_config)
         vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_store = NetworkXGraphStore()
+        graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
+        if graph_backend == "neo4j" and Neo4jGraphStore:
+            neo = (config.get("graph", {}) or {}).get("neo4j", {})
+            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
+        else:
+            graph_store = NetworkXGraphStore()
         prediction_provider = OllamaPredictionProvider()
 
     elif mode == MemoryMode.ENTERPRISE:
@@ -59,7 +73,12 @@ def create_memory_system(
 
         kv_store = RedisKeyValueStore(**redis_config)
         vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_store = NetworkXGraphStore()  # Swap for a remote graph DB in prod
+        graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
+        if graph_backend == "neo4j" and Neo4jGraphStore:
+            neo = (config.get("graph", {}) or {}).get("neo4j", {})
+            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
+        else:
+            graph_store = NetworkXGraphStore()
 
         ext_pred_cfg = config.get("external_prediction")
         if isinstance(ext_pred_cfg, dict) and ext_pred_cfg.get("api_key") and ext_pred_cfg.get("endpoint"):
@@ -86,4 +105,11 @@ def create_memory_system(
         decay_thresholds_seconds=mem_cfg.get("decay_thresholds_seconds"),
         decayable_keys_by_level=mem_cfg.get("decayable_keys_by_level"),
         max_memory_size=mem_cfg.get("max_memory_size", 100000),
+        predictions_enabled=mem_cfg.get("predictions", {}).get("enabled", False),
+        predictions_error_policy=mem_cfg.get("predictions", {}).get("error_policy", "exact"),
+        predictions_threshold=float(mem_cfg.get("predictions", {}).get("threshold", 0.0)),
+        decay_enabled=mem_cfg.get("decay", {}).get("enabled", True),
+        reconsolidation_enabled=mem_cfg.get("reconsolidation", {}).get("enabled", False),
+        salience_threshold=float((mem_cfg.get("salience", {}) or {}).get("threshold", 0.0)),
+        salience_weights=(mem_cfg.get("salience", {}) or {}).get("weights", {}),
     )
