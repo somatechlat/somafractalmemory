@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+somafractalmemory/__init__.py
+somafractalmemory/core.py
+somafractalmemory.egg-info/PKG-INFO
+somafractalmemory.egg-info/SOURCES.txt
+somafractalmemory.egg-info/dependency_links.txt
+somafractalmemory.egg-info/top_level.txt
+tests/test_core.py

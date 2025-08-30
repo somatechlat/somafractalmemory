@@ -1,0 +1,13 @@
+pytest
+numpy
+redis
+qdrant-client
+faiss-cpu
+transformers
+langfuse
+scikit-learn
+cryptography
+prometheus-client
+tenacity
+structlog
+dynaconf
