@@ -5,6 +5,7 @@ from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.storage import (
     RedisKeyValueStore,
     QdrantVectorStore,
+    InMemoryVectorStore,
 )
 from somafractalmemory.implementations.prediction import (
     NoPredictionProvider,
@@ -36,11 +37,20 @@ def create_memory_system(
     graph_store = None
     prediction_provider = None
 
+    # Helper to choose vector backend
+    vec_cfg = (config.get("vector") or {}) if isinstance(config, dict) else {}
+    vec_backend = (vec_cfg.get("backend") or "").lower()
+
     if mode == MemoryMode.ON_DEMAND:
         # Pure in-memory setup for quick tests and demos
         kv_store = RedisKeyValueStore(testing=True)
-        qdrant_config = {"location": ":memory:"}
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
+        # Default to in-memory vectors for ON_DEMAND unless explicitly set otherwise
+        backend = vec_backend or "inmemory"
+        if backend == "inmemory":
+            vector_store = InMemoryVectorStore()
+        else:
+            qdrant_config = {"location": ":memory:"}
+            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
         graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
         if graph_backend == "neo4j" and Neo4jGraphStore:
             neo = (config.get("graph", {}) or {}).get("neo4j", {})
@@ -53,7 +63,10 @@ def create_memory_system(
         redis_config = config.get("redis", {})
         qdrant_config = config.get("qdrant", {"path": f"./{namespace}_qdrant"})
         kv_store = RedisKeyValueStore(**redis_config)
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
+        if vec_backend == "inmemory":
+            vector_store = InMemoryVectorStore()
+        else:
+            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
         graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
         if graph_backend == "neo4j" and Neo4jGraphStore:
             neo = (config.get("graph", {}) or {}).get("neo4j", {})
@@ -72,7 +85,10 @@ def create_memory_system(
             qdrant_config.pop("path", None)
 
         kv_store = RedisKeyValueStore(**redis_config)
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
+        if vec_backend == "inmemory":
+            vector_store = InMemoryVectorStore()
+        else:
+            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
         graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
         if graph_backend == "neo4j" and Neo4jGraphStore:
             neo = (config.get("graph", {}) or {}).get("neo4j", {})
