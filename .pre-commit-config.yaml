@@ -14,3 +14,5 @@ repos:
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ["--maxkb=50000"]  # prevent >50MB files from being committed
