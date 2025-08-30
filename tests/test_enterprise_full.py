@@ -1,69 +1,91 @@
 import pytest
-import numpy as np
 import time
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType, SomaFractalMemoryError
+import numpy as np
+from redis.exceptions import ConnectionError
+from somafractalmemory.factory import create_memory_system, MemoryMode
+from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
 
-def test_basic_store_and_retrieve(tmp_path):
-    mem = SomaFractalMemoryEnterprise(
-        namespace="test_ns",
-        redis_nodes=[{"host": "localhost", "port": 6379}],
-        qdrant_path=str(tmp_path / "qdrant.db"),
-        config_file="config.yaml",
-        decay_thresholds_seconds=[1],
-        decayable_keys_by_level=[["test_field"]],
-        pruning_interval_seconds=1
-    )
-    coord = (1.0, 2.0)
-    data = {"test_field": "value", "other": 123}
-    mem.store_memory(coord, data, memory_type=MemoryType.EPISODIC)
-    out = mem.retrieve(coord)
-    assert out["test_field"] == "value"
-    assert out["other"] == 123
 
-def test_distributed_lock(tmp_path):
-    mem = SomaFractalMemoryEnterprise(namespace="locktest", redis_nodes=[{"host": "localhost", "port": 6379}], qdrant_path=str(tmp_path / "qdrant.db"))
-    def critical_section(x):
-        return x + 1
-    result = mem.with_lock("test", critical_section, 41)
-    assert result == 42
+@pytest.fixture
+def mem(tmp_path) -> SomaFractalMemoryEnterprise:
+    config = {
+        "qdrant": {"path": str(tmp_path / "qdrant.db")},
+        "redis": {"testing": True}
+    }
+    return create_memory_system(MemoryMode.LOCAL_AGENT, "test_ns", config=config)
 
-def test_store_vector_only(tmp_path):
-    mem = SomaFractalMemoryEnterprise(namespace="vectest", redis_nodes=[{"host": "localhost", "port": 6379}], qdrant_path=str(tmp_path / "qdrant.db"))
-    coord = (3.0, 4.0)
-    vec = np.random.rand(mem.vector_dim).astype(np.float32)
-    mem.store_vector_only(coord, vec)
-    # Should not raise
 
-def test_backend_failover(tmp_path, monkeypatch):
-    mem = SomaFractalMemoryEnterprise(namespace="failover", redis_nodes=[{"host": "localhost", "port": 6379}], qdrant_path=str(tmp_path / "qdrant.db"))
-    # Simulate Redis down
-    monkeypatch.setattr(mem.redis, "ping", lambda: (_ for _ in ()).throw(Exception("fail")))
-    try:
-        mem.check_dependencies()
-    except SomaFractalMemoryError:
+def test_basic_store_and_retrieve(mem: SomaFractalMemoryEnterprise):
+    coordinate = (1.0, 2.0, 3.0)
+    data = {"test": "data"}
+    mem.store_memory(coordinate, data)
+    retrieved = mem.retrieve(coordinate)
+    assert retrieved is not None
+    assert retrieved["test"] == "data"
+    assert "memory_type" in retrieved
+    assert retrieved["memory_type"] == MemoryType.EPISODIC.value
+
+
+def test_distributed_lock(mem: SomaFractalMemoryEnterprise):
+    lock_name = "my_distributed_lock"
+    lock = mem.acquire_lock(lock_name, timeout=1)
+    assert lock is not None
+    with lock:
+        # The lock is acquired
         pass
-    # Simulate Qdrant down
-    monkeypatch.setattr(mem.qdrant, "get_collections", lambda: (_ for _ in ()).throw(Exception("fail")))
-    with pytest.raises(SomaFractalMemoryError):
-        mem.check_dependencies()
+    # The lock is released after the 'with' block
+
+
+def test_store_vector_only(mem: SomaFractalMemoryEnterprise):
+    vector = np.random.rand(mem.vector_dim).astype("float32")
+    mem.store_vector_only((0,0,0), vector, payload={"meta": "data"})
+    # Verification would require a search, but we're just testing the call
+    results = mem.recall("a query", top_k=1)
+    assert len(results) > 0
+
+
+def test_backend_failover(mem: SomaFractalMemoryEnterprise, monkeypatch):
+    # Simulate Redis connection error
+    def mock_ping_fail():
+        raise ConnectionError
+    
+    monkeypatch.setattr(mem.kv_store, "health_check", mock_ping_fail)
+    
+    health = mem.health_check()
+    assert not health["kv_store"]
+    
+    # Simulate Qdrant failure
+    def mock_qdrant_fail():
+        raise Exception("Qdrant down")
+        
+    monkeypatch.setattr(mem.vector_store, "health_check", mock_qdrant_fail)
+    
+    health = mem.health_check()
+    assert not health["vector_store"]
+
 
 def test_memory_decay(tmp_path):
-    mem = SomaFractalMemoryEnterprise(
-        namespace="decaytest",
-        redis_nodes=[{"host": "localhost", "port": 6379}],
-        qdrant_path=str(tmp_path / "qdrant.db"),
-        decay_thresholds_seconds=[1],
-        decayable_keys_by_level=[["test_field"]],
-        pruning_interval_seconds=1
-    )
-    coord = (5.0, 6.0)
-    data = {"test_field": "decayme", "other": 456}
-    mem.store_memory(coord, data, memory_type=MemoryType.EPISODIC)
-    time.sleep(2)
-    # Wait for decay thread
-    for _ in range(5):
-        out = mem.retrieve(coord)
-        if "test_field" not in out:
-            break
-        time.sleep(1)
-    assert "test_field" not in mem.retrieve(coord)
+    config = {
+        "qdrant": {"path": str(tmp_path / "qdrant.db")},
+        "redis": {"testing": True},
+        "memory_enterprise": {
+            "decay_thresholds_seconds": [1],
+            "decayable_keys_by_level": [["test_field"]],
+            "pruning_interval_seconds": 1
+        }
+    }
+    mem = create_memory_system(MemoryMode.LOCAL_AGENT, "decaytest", config=config)
+    
+    coordinate = (1,1,1)
+    data = {"test_field": "value", "permanent_field": "value2"}
+    mem.store_memory(coordinate, data)
+    
+    # Backdate creation timestamp to trigger decay without sleeping
+    meta_key = f"{mem.namespace}:{repr(coordinate)}:meta"
+    mem.kv_store.hset(meta_key, mapping={b"creation_timestamp": str(time.time() - 2).encode("utf-8")})
+    # Run a deterministic single decay pass
+    mem.run_decay_once()
+    retrieved = mem.retrieve(coordinate)
+    assert retrieved is not None
+    assert "test_field" not in retrieved
+    assert "permanent_field" in retrieved

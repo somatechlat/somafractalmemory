@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "somafractalmemory"
-version = "0.1.0"
+version = "0.2.0"
 description = "A world-class Python package for advanced fractal memory algorithms."
 authors = [
-  { name="Your Name", email="your.email@example.com" }
+  { name="SomaTech", email="ai@somatech.lat" }
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
@@ -19,5 +19,8 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/somafractalmemory"
-"Bug Tracker" = "https://github.com/yourusername/somafractalmemory/issues"
+"Homepage" = "https://github.com/somatechlat/somafractalmemory"
+"Bug Tracker" = "https://github.com/somatechlat/somafractalmemory/issues"
+
+[project.scripts]
+soma = "somafractalmemory.cli:main"

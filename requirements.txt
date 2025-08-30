@@ -1,8 +1,7 @@
 pytest
 numpy
-redis
+redis>=4.0.0
 qdrant-client
-faiss-cpu
 transformers
 langfuse
 scikit-learn
@@ -11,3 +10,8 @@ prometheus-client
 tenacity
 structlog
 dynaconf
+Pillow
+torchaudio
+fakeredis>=2.0.0
+networkx
+
