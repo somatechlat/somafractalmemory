@@ -19,6 +19,18 @@ jobs:
           pip install -e .
       - name: Run tests
         run: pytest -q
+      - name: Lint (ruff)
+        run: |
+          pip install ruff
+          ruff check .
+      - name: Format check (black)
+        run: |
+          pip install black
+          black --check .
+      - name: Security scan (bandit)
+        run: |
+          pip install bandit
+          bandit -q -r somafractalmemory
       - name: Type check
         run: |
           pip install mypy
