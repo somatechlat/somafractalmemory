@@ -197,6 +197,9 @@ class SomaFractalMemoryEnterprise:
 		predictions_threshold: float = 0.0,
 		decay_enabled: bool = True,
 		reconcile_enabled: bool = True,
+		reconsolidation_enabled: bool = False,
+		salience_threshold: float = 0.0,
+		salience_weights: Optional[Dict[str, float]] = None,
 	):
 		self.namespace = os.getenv("SOMA_NAMESPACE", namespace)
 		self.kv_store = kv_store
@@ -250,10 +253,10 @@ class SomaFractalMemoryEnterprise:
 		self.predictions_threshold = predictions_threshold
 		self.embedding_history = []
 		self._snapshot_store = {}
-		# Reconsolidation & salience (defaults)
-		self.reconsolidation_enabled = False
-		self.salience_threshold = 0.0
-		self.salience_weights = {}
+		# Reconsolidation & salience
+		self.reconsolidation_enabled = bool(reconsolidation_enabled)
+		self.salience_threshold = float(salience_threshold)
+		self.salience_weights = dict(salience_weights or {})
 		
 		self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
 		self._sync_graph_from_memories()
