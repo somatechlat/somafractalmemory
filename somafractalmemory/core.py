@@ -421,7 +421,7 @@ class SomaFractalMemoryEnterprise:
 		pass
 
 	def health_check(self) -> Dict[str, bool]:
-		"""Return health status of dependencies (resilient to exceptions)."""
+		"""Return health status of injected dependencies (resilient to exceptions)."""
 		def safe(check: Callable[[], Any]) -> bool:
 			try:
 				return bool(check())
@@ -435,7 +435,7 @@ class SomaFractalMemoryEnterprise:
 		}
 
 	def set_importance(self, coordinate: Tuple[float, ...], importance: int = 1):
-		"""Set or update the importance of a memory."""
+		"""Set or update the importance of a memory and sync payload to vector store."""
 		# Canonicalize coordinate
 		coordinate = tuple(coordinate)
 		data_key, _ = _coord_to_key(self.namespace, coordinate)
@@ -457,7 +457,7 @@ class SomaFractalMemoryEnterprise:
 			logger.warning(f"Failed to sync importance to vector store for {coordinate}: {e}")
 
 	def retrieve(self, coordinate: Tuple[float, ...]) -> Optional[Dict[str, Any]]:
-		"""Retrieve a value from a specific spatial coordinate and increment access count."""
+		"""Retrieve and return a memory payload by coordinate, incrementing access count."""
 		lock = self.acquire_lock(f"lock:{coordinate}")
 		if lock:
 			with lock:
@@ -593,8 +593,20 @@ class SomaFractalMemoryEnterprise:
 			if filter_fn is None or filter_fn(mem):
 				other_agent.store_memory(mem.get("coordinate"), mem, memory_type=MemoryType(mem.get("memory_type", "episodic")))
 
-	def remember(self, data: Dict[str, Any], coordinate: Optional[Tuple[float, ...]] = None, memory_type: MemoryType = MemoryType.EPISODIC):
-		"""Agent-friendly API to store a memory. If no coordinate, auto-generate one."""
+	def remember(self, data: Dict[str, Any], coordinate: Optional[Tuple[float, ...]] = None, memory_type: MemoryType = MemoryType.EPISODIC) -> bool:
+		"""Store a memory using the agent-friendly API.
+
+		- If `coordinate` is not provided, a random 2D coordinate is generated.
+		- Invokes before/after hooks.
+
+		Args:
+			data: Arbitrary payload to store.
+			coordinate: Optional spatial coordinate key.
+			memory_type: MemoryType of the memory (episodic/semantic).
+
+		Returns:
+			True on success.
+		"""
 		if coordinate is None:
 			coordinate = tuple(np.random.uniform(0, 100, size=2))
 		self._call_hook('before_store', data, coordinate, memory_type)
@@ -602,8 +614,18 @@ class SomaFractalMemoryEnterprise:
 		self._call_hook('after_store', data, coordinate, memory_type)
 		return result
 
-	def recall(self, query: str, context: Optional[Dict[str, Any]] = None, top_k: int = 5, memory_type: Optional[MemoryType] = None):
-		"""Agent-friendly API to recall memories, optionally with context and type."""
+	def recall(self, query: str, context: Optional[Dict[str, Any]] = None, top_k: int = 5, memory_type: Optional[MemoryType] = None) -> List[Dict[str, Any]]:
+		"""Recall memories using a hybrid search.
+
+		Args:
+			query: Natural language query.
+			context: Optional context object to bias search.
+			top_k: Max results to return.
+			memory_type: Optional type filter.
+
+		Returns:
+			A list of matching payloads.
+		"""
 		self._call_hook('before_recall', query, context, top_k, memory_type)
 		if context:
 			results = self.find_hybrid_with_context(query, context, top_k=top_k, memory_type=memory_type)
@@ -612,22 +634,36 @@ class SomaFractalMemoryEnterprise:
 		self._call_hook('after_recall', query, context, top_k, memory_type, results)
 		return results
 
-	def forget(self, coordinate: Tuple[float, ...]):
-		"""Agent-friendly API to delete a memory."""
+	def forget(self, coordinate: Tuple[float, ...]) -> None:
+		"""Delete a memory using the agent-friendly API.
+
+		Args:
+			coordinate: Spatial coordinate of the memory to delete.
+		"""
 		self._call_hook('before_forget', coordinate)
 		self.delete(coordinate)
 		self._call_hook('after_forget', coordinate)
 
-	def reflect(self, n: int = 5, memory_type: MemoryType = MemoryType.EPISODIC):
-		"""Agent-friendly API to replay (sample) past memories for learning."""
+	def reflect(self, n: int = 5, memory_type: MemoryType = MemoryType.EPISODIC) -> List[Dict[str, Any]]:
+		"""Replay a random sample of prior memories for reflection/training.
+
+		Args:
+			n: Number of memories to sample.
+			memory_type: Type of memories to sample from.
+
+		Returns:
+			A list of sampled memory payloads.
+		"""
 		self._call_hook('before_reflect', n, memory_type)
 		memories = self.replay_memories(n=n, memory_type=memory_type)
 		self._call_hook('after_reflect', n, memory_type, memories)
 		return memories
 
-	def consolidate_memories(self, window_seconds: int = 3600):
-		"""
-		Move recent episodic memories to long-term (semantic) storage.
+	def consolidate_memories(self, window_seconds: int = 3600) -> None:
+		"""Consolidate recent episodic memories into summarized semantic entries.
+
+		Args:
+			window_seconds: Consider episodic memories created within this time window.
 		"""
 		now = time.time()
 		episodic = self.retrieve_memories(MemoryType.EPISODIC)
@@ -654,9 +690,11 @@ class SomaFractalMemoryEnterprise:
 		return random.sample(mems, min(n, len(mems)))
 
 	def find_hybrid_with_context(self, query: str, context: Dict[str, Any], top_k: int = 5, memory_type: Optional[MemoryType] = None, **kwargs) -> List[Dict[str, Any]]:
+		"""Hybrid search with context-aware attention.
+
+		Records Prometheus recall metrics.
 		"""
-		Hybrid search with context-aware attention.
-		"""
+		start = time.perf_counter()
 		context_str = json.dumps(context, sort_keys=True)
 		full_query = f"{query} [CTX] {context_str}"
 		results = self.find_hybrid_by_type(full_query, top_k=top_k, memory_type=memory_type, **kwargs)
@@ -667,11 +705,22 @@ class SomaFractalMemoryEnterprise:
 			if "access_count" in mem:
 				score += 0.1 * mem["access_count"]
 			return score
-		return sorted(results, key=score, reverse=True)
+		out = sorted(results, key=score, reverse=True)
+		try:
+			recall_count.labels(namespace=self.namespace).inc()
+			recall_latency.labels(namespace=self.namespace).observe(max(0.0, time.perf_counter() - start))
+		except Exception:
+			pass
+		return out
 
-	def link_memories(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_type: str = "related", weight: float = 1.0):
-		"""
-		Link one memory to another.
+	def link_memories(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_type: str = "related", weight: float = 1.0) -> None:
+		"""Create a directed link from one memory to another.
+
+		Args:
+			from_coord: Source coordinate.
+			to_coord: Target coordinate.
+			link_type: Semantic relation label.
+			weight: Optional edge weight for pathfinding.
 		"""
 		lock = self.acquire_lock(f"lock:{from_coord}")
 		if lock:
@@ -689,8 +738,16 @@ class SomaFractalMemoryEnterprise:
 				self.graph_store.add_link(from_coord, to_coord, link_data)
 
 	def get_linked_memories(self, coord: Tuple[float, ...], link_type: Optional[str] = None, depth: int = 1, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-		"""
-		Traverse linked memories from a starting coordinate.
+		"""Traverse and return memories linked from a starting coordinate.
+
+		Args:
+			coord: Starting coordinate.
+			link_type: Optional filter on edge type.
+			depth: Reserved for future multi-hop traversals (currently 1).
+			limit: Optional limit on neighbor count.
+
+		Returns:
+			List of retrieved neighbor memory payloads.
 		"""
 		path = self.graph_store.get_neighbors(coord, link_type=link_type, limit=limit)
 		memories = []
@@ -701,9 +758,16 @@ class SomaFractalMemoryEnterprise:
 					memories.append(mem)
 		return memories
 
-	def store_memory(self, coordinate: Tuple[float, ...], value: Dict[str, Any], memory_type: MemoryType = MemoryType.EPISODIC):
-		"""
-		Store a memory with explicit type.
+	def store_memory(self, coordinate: Tuple[float, ...], value: Dict[str, Any], memory_type: MemoryType = MemoryType.EPISODIC) -> bool:
+		"""Store a memory with explicit type and graph sync.
+
+		Args:
+			coordinate: Spatial coordinate key.
+			value: Arbitrary payload to persist.
+			memory_type: MemoryType of this memory.
+
+		Returns:
+			True on success.
 		"""
 		# Ensure coordinate is a tuple for hashable use in graph keys
 		coordinate = tuple(coordinate)
@@ -798,7 +862,7 @@ class SomaFractalMemoryEnterprise:
 		# exact policy: string compare
 		return str(pred) != str(obs)
 
-	def _enforce_memory_limit(self):
+	def _enforce_memory_limit(self) -> None:
 		"""Ensure total memories do not exceed max_memory_size by pruning lowest-importance, oldest episodic memories."""
 		all_mems = self.get_all_memories()
 		total = len(all_mems)
@@ -833,9 +897,11 @@ class SomaFractalMemoryEnterprise:
 		return all_mems
 
 	def find_hybrid_by_type(self, query: str, top_k: int = 5, memory_type: Optional[MemoryType] = None, filters: Optional[Dict[str, Any]] = None, **kwargs) -> List[Dict[str, Any]]:
+		"""Hybrid search with optional type and exact-attribute filters.
+
+		Records Prometheus recall metrics.
 		"""
-		Hybrid search, optionally filtered by memory type and attribute filters (exact match).
-		"""
+		start = time.perf_counter()
 		query_vector = self.embed_text(query)
 		results = self.vector_store.search(query_vector.flatten().tolist(), top_k=top_k)
 		
@@ -849,10 +915,19 @@ class SomaFractalMemoryEnterprise:
 						return False
 				return True
 			payloads = [p for p in payloads if ok(p)]
+		try:
+			recall_count.labels(namespace=self.namespace).inc()
+			recall_latency.labels(namespace=self.namespace).observe(max(0.0, time.perf_counter() - start))
+		except Exception:
+			pass
 		return payloads
 
 	def find_hybrid_with_scores(self, query: str, top_k: int = 5, memory_type: Optional[MemoryType] = None) -> List[Dict[str, Any]]:
-		"""Hybrid search returning payloads with similarity scores."""
+		"""Hybrid search returning payloads with similarity scores.
+
+		Records Prometheus recall metrics.
+		"""
+		start = time.perf_counter()
 		query_vector = self.embed_text(query)
 		results = self.vector_store.search(query_vector.flatten().tolist(), top_k=top_k)
 		items: List[Dict[str, Any]] = []
@@ -867,6 +942,11 @@ class SomaFractalMemoryEnterprise:
 			if memory_type and payload.get("memory_type") != memory_type.value:
 				continue
 			items.append({"payload": payload, "score": score})
+		try:
+			recall_count.labels(namespace=self.namespace).inc()
+			recall_latency.labels(namespace=self.namespace).observe(max(0.0, time.perf_counter() - start))
+		except Exception:
+			pass
 		return items
 
 	def recall_with_scores(self, query: str, top_k: int = 5, memory_type: Optional[MemoryType] = None):
@@ -895,8 +975,15 @@ class SomaFractalMemoryEnterprise:
 				self.graph_store.add_memory(coord, mem)
 
 	def find_shortest_path(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_type: Optional[str] = None):
-		"""
-		Find the shortest path between two memories in the semantic graph.
+		"""Find the shortest path between two memories in the semantic graph.
+
+		Args:
+			from_coord: Start coordinate.
+			to_coord: End coordinate.
+			link_type: Optional filter to constrain edges by type.
+
+		Returns:
+			A list of coordinates representing the path; empty if none.
 		"""
 		return self.graph_store.find_shortest_path(from_coord, to_coord, link_type)
 
@@ -925,19 +1012,19 @@ class SomaFractalMemoryEnterprise:
 		return result
 
 	def export_graph(self, path: str = "semantic_graph.graphml"):
-		"""
-		Export the semantic graph.
-		"""
+		"""Export the semantic graph to GraphML at the given path."""
 		self.graph_store.export_graph(path)
 
 	def import_graph(self, path: str = "semantic_graph.graphml"):
-		"""
-		Import a semantic graph from GraphML.
-		"""
+		"""Import a semantic graph from GraphML at the given path."""
 		self.graph_store.import_graph(path)
 
 	def export_memories(self, path: str = "memories.jsonl") -> int:
-		"""Export all memories as JSONL. Returns the count exported."""
+		"""Export all memories as JSONL.
+
+		Returns:
+			Number of memories exported.
+		"""
 		count = 0
 		with open(path, "w", encoding="utf-8") as f:
 			for mem in self.get_all_memories():
@@ -946,7 +1033,13 @@ class SomaFractalMemoryEnterprise:
 		return count
 
 	def import_memories(self, path: str, replace: bool = False) -> int:
-		"""Import memories from JSONL. If replace=True, delete existing before import. Returns count imported."""
+		"""Import memories from JSONL.
+
+		If `replace=True`, existing memories are deleted prior to import.
+
+		Returns:
+			Number of memories imported.
+		"""
 		if replace:
 			# Best effort clear: remove via vector scroll payloads
 			for mem in self.get_all_memories():
@@ -1033,7 +1126,11 @@ class SomaFractalMemoryEnterprise:
 		self._wal_commit(wal_id)
 
 	def delete_many(self, coordinates: List[Tuple[float, ...]]) -> int:
-		"""Delete multiple memories. Returns count deleted."""
+		"""Delete multiple memories.
+
+		Returns:
+			Number of memories deleted.
+		"""
 		count = 0
 		vec_ids: List[str] = []
 		for coordinate in coordinates:
@@ -1149,13 +1246,3 @@ class SomaFractalMemoryEnterprise:
 				if stop_event and stop_event.is_set():
 					break
 				time.sleep(1)
-		# Try normal path but be resilient to runtime errors (e.g., numpy/torch linkage)
-		try:
-			with self.model_lock:
-				inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-				outputs = self.model(**inputs)
-				emb = outputs.last_hidden_state.mean(dim=1).detach().cpu().numpy().astype("float32")
-			return emb
-		except Exception as e:
-			logger.warning(f"Embedding failed with model pipeline, using fallback. Error: {e}")
-			return _fallback_hash()
