@@ -9,18 +9,42 @@ class Neo4jGraphStore(IGraphStore):
     Requires the neo4j Python driver. If unavailable, importing this module will raise an ImportError.
     """
 
-    def __init__(self, uri: str, user: str, password: str):
+    def __init__(self, uri: str, user: str, password: str) -> None:
         try:
-            from neo4j import GraphDatabase  # type: ignore
+            from neo4j import GraphDatabase
         except Exception as e:
             raise ImportError("neo4j driver is required for Neo4jGraphStore") from e
         self._driver = GraphDatabase.driver(uri, auth=(user, password))
 
-    def _run(self, query: str, **params):
-        with self._driver.session() as session:
-            return session.run(query, **params)
+    def _run(self, query: str, **params: Any) -> Any:
+        """Execute a query with proper error handling and transaction management."""
+        try:
+            with self._driver.session() as session:
+                return session.run(query, **params)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Neo4j query failed: {query[:100]}... Error: {e}")
+            raise
 
-    def add_memory(self, coordinate: Tuple[float, ...], memory_data: Dict[str, Any]):
+    def _run_in_transaction(self, queries_with_params: List[Tuple[str, Dict[str, Any]]]) -> List[Any]:
+        """Execute multiple queries in a single transaction for atomicity."""
+        try:
+            with self._driver.session() as session:
+                with session.begin_transaction() as tx:
+                    results = []
+                    for query, params in queries_with_params:
+                        result = tx.run(query, **params)
+                        results.append(result)
+                    tx.commit()
+                    return results
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Neo4j transaction failed: {e}")
+            raise
+
+    def add_memory(self, coordinate: Tuple[float, ...], memory_data: Dict[str, Any]) -> None:
         self._run(
             """
             MERGE (n:Memory {coordinate: $coord})
@@ -29,15 +53,15 @@ class Neo4jGraphStore(IGraphStore):
             coord=list(coordinate), props=memory_data,
         )
 
-    def add_link(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]):
+    def add_link(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]) -> None:
         self._run(
             """
-            MERGE (a:Memory {coordinate: $from})
-            MERGE (b:Memory {coordinate: $to})
-            MERGE (a)-[r:LINK {type: $type}]->(b)
+            MERGE (a:Memory {coordinate: $from_coord})
+            MERGE (b:Memory {coordinate: $to_coord})
+            MERGE (a)-[r:LINK {type: $link_type}]->(b)
             SET r += $props
             """,
-            from=list(from_coord), to=list(to_coord), type=link_data.get("type"), props=link_data,
+            from_coord=list(from_coord), to_coord=list(to_coord), link_type=link_data.get("type"), props=link_data,
         )
 
     def get_neighbors(self, coordinate: Tuple[float, ...], link_type: Optional[str] = None, limit: Optional[int] = None) -> List[Tuple[Any, Dict[str, Any]]]:
@@ -75,17 +99,17 @@ class Neo4jGraphStore(IGraphStore):
             return []
         return [tuple(c) for c in rec["path"]]
 
-    def remove_memory(self, coordinate: Tuple[float, ...]):
+    def remove_memory(self, coordinate: Tuple[float, ...]) -> None:
         self._run("MATCH (n:Memory {coordinate:$coord}) DETACH DELETE n", coord=list(coordinate))
 
-    def clear(self):
+    def clear(self) -> None:
         self._run("MATCH (n:Memory) DETACH DELETE n")
 
-    def export_graph(self, path: str):
+    def export_graph(self, path: str) -> None:
         # For Neo4j, exporting to GraphML is typically done via APOC; skip here
         pass
 
-    def import_graph(self, path: str):
+    def import_graph(self, path: str) -> None:
         # For Neo4j, importing GraphML is typically done via APOC; skip here
         pass
 

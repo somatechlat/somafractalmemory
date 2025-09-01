@@ -1,4 +1,6 @@
 import argparse
+import logging
+import os
 import json
 from typing import Tuple, Optional, Dict, Any
 
@@ -28,6 +30,9 @@ def get_mode(mode_str: str) -> MemoryMode:
 
 
 def main() -> None:
+    # Ensure logs don't pollute JSON outputs
+    logging.basicConfig(level=logging.WARNING)
+    os.environ.setdefault("SOMA_SUPPRESS_STDOUT_LOGS", "1")
     parser = argparse.ArgumentParser(prog='soma', description='SomaFractalMemory CLI')
     parser.add_argument('--mode', default='local_agent', choices=['on_demand', 'local_agent', 'enterprise'])
     parser.add_argument('--namespace', default='cli_ns')
@@ -87,6 +92,8 @@ def main() -> None:
     p_range.add_argument('--max', dest='max_coord', required=True, help='Comma-separated max coord, e.g., 2,2,2')
     p_range.add_argument('--type', dest='mem_type', default=None, choices=['episodic', 'semantic'])
 
+    p_analyze = sub.add_parser('analyze', help='Run analysis on the memory system')
+
     args = parser.parse_args()
     config = load_config_json(args.config_json)
     mem = create_memory_system(get_mode(args.mode), args.namespace, config=config)
@@ -116,8 +123,8 @@ def main() -> None:
     elif args.cmd == 'neighbors':
         c = parse_coord(args.coord)
         pairs = mem.graph_store.get_neighbors(c, link_type=args.link_type, limit=args.limit)
-        coords = [list(co) for co, _ in pairs]
-        print(json.dumps(coords))
+        coords_out = [list(co) for co, _ in pairs]
+        print(json.dumps(coords_out))
     elif args.cmd == 'stats':
         print(json.dumps(mem.memory_stats(), indent=2))
     elif args.cmd == 'export-graph':
@@ -133,7 +140,7 @@ def main() -> None:
         n = mem.import_memories(args.path, replace=args.replace)
         print(json.dumps({"imported": n}))
     elif args.cmd == 'delete-many':
-        coords = []
+        coords: list[tuple[float, ...]] = []
         for part in args.coords.split(';'):
             part = part.strip()
             if not part:
@@ -161,8 +168,13 @@ def main() -> None:
         if args.mem_type:
             mtype = MemoryType.SEMANTIC if args.mem_type == 'semantic' else MemoryType.EPISODIC
         res = mem.find_by_coordinate_range(mi, ma, memory_type=mtype)
-        coords = [m.get('coordinate') for m in res if m.get('coordinate')]
-        print(json.dumps(coords))
+        coords_out2 = [m.get('coordinate') for m in res if m.get('coordinate')]
+        print(json.dumps(coords_out2))
+    elif args.cmd == 'analyze':
+        dimension = mem.calculate_fractal_dimension()
+        print(json.dumps({
+            "fractal_dimension": dimension
+        }, indent=2))
 
 
 if __name__ == '__main__':

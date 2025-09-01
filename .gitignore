@@ -35,7 +35,11 @@ wheels/
 # --- Logs ---
 *.log
 logs/
-audit_log.jsonl
+
+# --- Benchmark artifacts ---
+bench_*.json
+bench_*.csv
+benchmark_*_ns_qdrant/
 
 # --- OS cruft ---
 .DS_Store
@@ -54,3 +58,6 @@ qdrant.db/
 
 # --- Notebooks ---
 .ipynb_checkpoints/
+
+# --- Local recovery (not tracked) ---
+recovery/

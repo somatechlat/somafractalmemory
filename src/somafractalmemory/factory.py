@@ -8,6 +8,10 @@ from somafractalmemory.implementations.storage import (
     InMemoryVectorStore,
     InMemoryKeyValueStore,
 )
+try:
+    from somafractalmemory.implementations.fractal_inmemory import FractalInMemoryVectorStore  # type: ignore
+except Exception:
+    FractalInMemoryVectorStore = None  # type: ignore
 from somafractalmemory.implementations.prediction import (
     NoPredictionProvider,
     OllamaPredictionProvider,
@@ -111,8 +115,26 @@ def create_memory_system(
         profile = aperture_config.get("profile", "fast")
         # Pass the entire config dict to allow for GPU and parameter overrides
         vector_store = FaissApertureStore(vector_dim=vector_dim, profile=profile, config=aperture_config)
-    elif vector_backend == "inmemory":
-        vector_store = InMemoryVectorStore()
+    elif vector_backend in {"inmemory", "fractal", "fractal_inmemory"}:
+        # Feature flag: env SFM_FRACTAL_BACKEND=1 or config vector.fractal_enabled
+        import os as _os
+        fractal_enabled = False
+        if vector_backend in {"fractal", "fractal_inmemory"}:
+            fractal_enabled = True
+        else:
+            fractal_enabled = bool(vec_cfg.get("fractal_enabled", False) or _os.environ.get("SFM_FRACTAL_BACKEND") == "1")
+        if fractal_enabled and FractalInMemoryVectorStore is not None:
+            fcfg = vec_cfg.get("fractal", {}) if isinstance(vec_cfg.get("fractal"), dict) else {}
+            vector_store = FractalInMemoryVectorStore(
+                centroids=fcfg.get("centroids"),
+                beam_width=int(fcfg.get("beam_width", 4)),
+                max_candidates=int(fcfg.get("max_candidates", 1024)),
+                rebuild_enabled=bool(fcfg.get("rebuild_enabled", True)),
+                rebuild_size_delta=float(fcfg.get("rebuild_size_delta", 0.1)),
+                rebuild_interval_seconds=int(fcfg.get("rebuild_interval_seconds", 600)),
+            )
+        else:
+            vector_store = InMemoryVectorStore()
     else:
         raise ValueError(f"Unsupported vector backend: {vector_backend}")
 

@@ -1,0 +1,25 @@
+# prediction_manager.py - Handles prediction and LLM integration
+
+from typing import Dict, Any, Tuple, Optional
+import logging
+
+from .interfaces.prediction import IPredictionProvider
+
+logger = logging.getLogger(__name__)
+
+class PredictionManager:
+    def __init__(self, prediction_provider: Optional[IPredictionProvider]):
+        self.prediction_provider = prediction_provider
+
+    def predict(self, value: Dict[str, Any]) -> Tuple[Any, float]:
+        if not self.prediction_provider:
+            raise ValueError("Prediction provider not available")
+        return self.prediction_provider.predict(value)
+
+    def health_check(self) -> bool:
+        if self.prediction_provider:
+            try:
+                return self.prediction_provider.health_check()
+            except Exception:
+                return False
+        return True

@@ -1,29 +1,61 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "somafractalmemory"
 version = "0.2.0"
-description = "A world-class Python package for advanced fractal memory algorithms."
+description = "Small, elegant, in-memory fractal memory for agents (FAISS + exact rerank)."
 authors = [
   { name="SomaTech", email="ai@somatech.lat" }
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Keep core minimal; everything else as extras
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+faiss = ["faiss-cpu>=1.7.4"]
+qdrant = ["qdrant-client>=1.8.2"]
+redis = ["redis>=4", "fakeredis>=2"]
+observability = ["prometheus-client>=0.19", "structlog>=24.1", "langfuse>=2.0.0"]
+ml = ["scikit-learn>=1.2", "scipy>=1.10", "transformers>=4.40"]
+dev = [
+  "pytest>=8",
+  "mypy>=1.8",
+  "ruff>=0.5",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/somatechlat/somafractalmemory"
-"Bug Tracker" = "https://github.com/somatechlat/somafractalmemory/issues"
+Homepage = "https://github.com/somatechlat/somafractalmemory"
+Issues = "https://github.com/somatechlat/somafractalmemory/issues"
 
 [project.scripts]
 soma = "somafractalmemory.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["somafractalmemory*"]
+exclude = ["tests*", "examples*", "benchmark_*_ns_qdrant*"]
+
+[tool.setuptools.exclude-package-data]
+somafractalmemory = ["*.pyc", "__pycache__"]
 
 [tool.black]
 line-length = 100
@@ -33,6 +65,7 @@ target-version = ["py310"]
 line-length = 100
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]
+src = ["src"]
 
 [tool.ruff.isort]
 known-first-party = ["somafractalmemory"]
@@ -45,7 +78,7 @@ warn_redundant_casts = true
 warn_unreachable = true
 warn_unused_ignores = true
 
-[tool.mypy.somafractalmemory.*]
+[tool.mypy."somafractalmemory.*"]
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]

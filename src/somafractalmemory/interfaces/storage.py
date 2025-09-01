@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Tuple, Iterator, Mapping, Optional, ContextM
 
 class IKeyValueStore(ABC):
     @abstractmethod
-    def set(self, key: str, value: bytes):
+    def set(self, key: str, value: bytes) -> None:
         pass
 
     @abstractmethod
@@ -11,7 +11,7 @@ class IKeyValueStore(ABC):
         pass
 
     @abstractmethod
-    def delete(self, key: str):
+    def delete(self, key: str) -> None:
         pass
 
     @abstractmethod
@@ -23,11 +23,11 @@ class IKeyValueStore(ABC):
         pass
 
     @abstractmethod
-    def hset(self, key: str, mapping: Mapping[bytes, bytes]):
+    def hset(self, key: str, mapping: Mapping[bytes, bytes]) -> None:
         pass
 
     @abstractmethod
-    def lock(self, name: str, timeout: int) -> ContextManager:
+    def lock(self, name: str, timeout: int = 10) -> ContextManager:
         pass
     
     @abstractmethod
@@ -36,11 +36,11 @@ class IKeyValueStore(ABC):
 
 class IVectorStore(ABC):
     @abstractmethod
-    def setup(self, vector_dim: int, namespace: str):
+    def setup(self, vector_dim: int, namespace: str) -> None:
         pass
 
     @abstractmethod
-    def upsert(self, points: List[Dict[str, Any]]):
+    def upsert(self, points: List[Dict[str, Any]]) -> None:
         pass
 
     @abstractmethod
@@ -48,7 +48,7 @@ class IVectorStore(ABC):
         pass
 
     @abstractmethod
-    def delete(self, ids: List[str]):
+    def delete(self, ids: List[str]) -> None:
         pass
 
     @abstractmethod

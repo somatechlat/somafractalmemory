@@ -6,6 +6,8 @@ A powerful and flexible Python library for managing advanced fractal memory syst
 
 SomaFractalMemory is a cutting-edge Python package that provides a robust framework for building and interacting with fractal memory algorithms. It supports episodic and semantic memory types, hybrid search capabilities, and semantic graph traversal, making it ideal for applications requiring sophisticated memory management, such as AI agents, knowledge graphs, and data-intensive systems. The library integrates seamlessly with Redis for caching, Qdrant for vector storage, and Prometheus for observability, offering both in-memory and persistent storage options.
 
+For your local state/plan, use the `recovery/` folder (git-ignored): recovery/STATUS.md and recovery/ROADMAP.md.
+
 ## Key Features
 
 - **Flexible Memory Modes**: Choose between `ON_DEMAND` (in-memory vectors for prototyping), `LOCAL_AGENT` (Qdrant-based persistence), or `ENTERPRISE` (tunable for high-performance use cases).
@@ -17,6 +19,8 @@ SomaFractalMemory is a cutting-edge Python package that provides a robust framew
 - **Audit Logging**: Structured JSONL logs for tracking store, recall, and delete operations.
 
 ## Installation
+
+**Note on Python Version:** This project is tested and maintained on Python 3.10 and 3.11. Some dependencies, particularly `faiss-cpu`, may not have pre-compiled wheels available for newer Python versions (like 3.12+). It is recommended to use a compatible Python version for a smooth installation.
 
 Install the package via pip:
 
@@ -43,12 +47,15 @@ from somafractalmemory.core import MemoryType
 # Configure a lightweight memory system
 config = {
     "redis": {"testing": True},  # Use FakeRedis for testing
-    "qdrant": {"path": "./qdrant.db"},  # Local Qdrant storage
+    "vector": {
+        "backend": "faiss_aperture",
+        "profile": "fast" # Choose from "fast", "balanced", or "high_recall"
+    },
     "memory_enterprise": {
         "vector_dim": 768,  # Vector dimension for embeddings
-        "pruning_interval_seconds": 60,  # Prune stale memories
-        "decay_thresholds_seconds": [30, 300],  # Memory decay intervals
-        "decayable_keys_by_level": [["scratch"], ["low_importance"]],  # Decay rules
+        "decay": {
+            "enabled": True
+        }
     },
 }
 
@@ -68,7 +75,11 @@ coord2 = (4.0, 5.0, 6.0)
 mem.store_memory(coord2, {"fact": "docs published"}, memory_type=MemoryType.SEMANTIC)
 mem.link_memories(coord, coord2, link_type="related")
 path = mem.find_shortest_path(coord, coord2)
-print(path)  # Display the traversal path
+print(f"Shortest path: {path}")
+
+# Note: For large memory systems, the in-memory graph should be synced explicitly
+# after initialization or after large-scale imports.
+# mem.sync_graph_from_memories()
 ```
 
 ## Command-Line Interface (CLI)
@@ -113,6 +124,87 @@ mem = create_memory_system(MemoryMode.ON_DEMAND, "demo_ns", config={
     "vector": {"backend": "qdrant"}
 })
 ```
+
+### Optional: Fractal In-Memory backend (NumPy-only)
+
+Hierarchical NumPy-only ANN with exact rerank, designed for strong recall without heavy deps.
+
+Enable it in two ways:
+
+- Set env `SFM_FRACTAL_BACKEND=1` when using `backend: "inmemory"`, or
+- Select the dedicated `backend: "fractal"` and configure options explicitly.
+
+Examples:
+
+```python
+# A) Feature-flag the fractal path while keeping backend=inmemory
+config = {
+    "redis": {"testing": True},
+    "vector": {
+        "backend": "inmemory",
+        "fractal_enabled": True,               # or env SFM_FRACTAL_BACKEND=1
+        "fractal": {
+            "centroids": 64,                    # auto if omitted (~sqrt(N))
+            "beam_width": 4,                    # explore top centroids
+            "max_candidates": 1024,             # cap before exact rerank
+            "rebuild_enabled": True,            # periodic/background rebuilds
+            "rebuild_size_delta": 0.1,          # rebuild when size grows 10%
+            "rebuild_interval_seconds": 600     # or every 10 minutes
+        }
+    }
+}
+
+# B) Use the dedicated fractal backend
+config = {
+    "redis": {"testing": True},
+    "vector": {
+        "backend": "fractal",
+        "fractal": {"centroids": 64, "beam_width": 4}
+    }
+}
+```
+
+Notes:
+- Exact rerank uses cosine across a capped candidate set; centroids/lists rebuild automatically.
+- When disabled, it falls back to the simple in-memory store.
+
+### Novelty-based write gate (optional)
+
+Reduce write amplification by skipping highly redundant writes (off by default).
+
+Enable and tune via `memory_enterprise.salience`:
+
+```python
+config = {
+    "memory_enterprise": {
+        "salience": {
+            "novelty_gate": True,         # enable write gate
+            "novelty_threshold": 0.4      # 0..1; higher means stricter gating
+            # optional weights used internally (defaults are sensible)
+            # "weights": {"novelty": 1.0, "error": 0.0}
+        }
+    }
+}
+```
+
+How it works (high level):
+- Computes a quick top-1 similarity against existing items; novelty = 1 - similarity.
+- Combines novelty with an error term (if available) and compares against the threshold.
+- If below threshold, the write is skipped; otherwise it proceeds.
+
+## Try it: quick benchmark
+
+You can run a small performance benchmark to sanity-check throughput and latency locally.
+
+- Fractal backend (NumPy-only): run the benchmark at small scale to keep it fast.
+
+```bash
+python run_performance_benchmark.py --scale small --backend fractal --profile balanced
+```
+
+Notes:
+- The script attempts optional baselines (Redis, FAISS). If Redis isn’t running, it will print an error for that baseline but continue.
+- Metrics use psutil when available; otherwise, the script falls back to limited metrics.
 
 ## Observability
 

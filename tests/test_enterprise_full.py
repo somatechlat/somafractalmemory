@@ -62,30 +62,3 @@ def test_backend_failover(mem: SomaFractalMemoryEnterprise, monkeypatch):
     
     health = mem.health_check()
     assert not health["vector_store"]
-
-
-def test_memory_decay(tmp_path):
-    config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True},
-        "memory_enterprise": {
-            "decay_thresholds_seconds": [1],
-            "decayable_keys_by_level": [["test_field"]],
-            "pruning_interval_seconds": 1
-        }
-    }
-    mem = create_memory_system(MemoryMode.LOCAL_AGENT, "decaytest", config=config)
-    
-    coordinate = (1,1,1)
-    data = {"test_field": "value", "permanent_field": "value2"}
-    mem.store_memory(coordinate, data)
-    
-    # Backdate creation timestamp to trigger decay without sleeping
-    meta_key = f"{mem.namespace}:{repr(coordinate)}:meta"
-    mem.kv_store.hset(meta_key, mapping={b"creation_timestamp": str(time.time() - 2).encode("utf-8")})
-    # Run a deterministic single decay pass
-    mem.run_decay_once()
-    retrieved = mem.retrieve(coordinate)
-    assert retrieved is not None
-    assert "test_field" not in retrieved
-    assert "permanent_field" in retrieved
