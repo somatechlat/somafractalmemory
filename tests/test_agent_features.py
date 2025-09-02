@@ -1,7 +1,7 @@
-import time
 import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
+
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def test_consolidate_memories_creates_semantic(mem: SomaFractalMemoryEnterprise)
     mem.store_memory(c, {"task": "event"}, memory_type=MemoryType.EPISODIC)
     mem.consolidate_memories(window_seconds=3600)
     semantics = mem.retrieve_memories(MemoryType.SEMANTIC)
-    assert any(m.get("consolidated_from") == list(c) for m in semantics)
+    assert any(m.get("consolidated_from") == c for m in semantics)
 
 
 def test_share_memory_with(tmp_path):
@@ -51,4 +51,3 @@ def test_find_hybrid_with_context(mem: SomaFractalMemoryEnterprise):
     res = mem.find_hybrid_with_context("email", {"channel": "gmail"}, top_k=3)
     assert isinstance(res, list)
     assert any(isinstance(r, dict) for r in res)
-

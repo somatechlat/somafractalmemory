@@ -1,25 +1,34 @@
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
-from somafractalmemory.implementations.storage import (
-    RedisKeyValueStore,
-    QdrantVectorStore,
-    InMemoryVectorStore,
-)
+from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.prediction import (
+    ExternalPredictionProvider,
     NoPredictionProvider,
     OllamaPredictionProvider,
-    ExternalPredictionProvider,
 )
-from somafractalmemory.implementations.graph import NetworkXGraphStore
-try:
-    from somafractalmemory.implementations.graph_neo4j import Neo4jGraphStore  # type: ignore
-except Exception:
-    Neo4jGraphStore = None  # type: ignore
+from somafractalmemory.implementations.storage import (
+    InMemoryVectorStore,
+    QdrantVectorStore,
+    RedisKeyValueStore,
+)
 
 
 class MemoryMode(Enum):
+    """
+    Enum for supported memory system modes.
+
+    Attributes
+    ----------
+    ON_DEMAND : str
+        In-memory mode for quick tests and demos.
+    LOCAL_AGENT : str
+        Local agent mode with Redis and Qdrant backends.
+    ENTERPRISE : str
+        Enterprise mode for remote/distributed backends.
+    """
+
     ON_DEMAND = "on_demand"
     LOCAL_AGENT = "local_agent"
     ENTERPRISE = "enterprise"
@@ -29,7 +38,21 @@ def create_memory_system(
     mode: MemoryMode, namespace: str, config: Optional[Dict[str, Any]] = None
 ) -> SomaFractalMemoryEnterprise:
     """
-    Factory function to create a SomaFractalMemory instance based on the specified mode.
+    Factory function to create a SomaFractalMemoryEnterprise instance based on the specified mode.
+
+    Parameters
+    ----------
+    mode : MemoryMode
+        The mode to use (ON_DEMAND, LOCAL_AGENT, ENTERPRISE).
+    namespace : str
+        The namespace for the memory system.
+    config : Optional[Dict[str, Any]]
+        Optional configuration dictionary for backend setup.
+
+    Returns
+    -------
+    SomaFractalMemoryEnterprise
+        Configured memory system instance.
     """
     config = config or {}
     kv_store = None
@@ -37,42 +60,26 @@ def create_memory_system(
     graph_store = None
     prediction_provider = None
 
-    # Helper to choose vector backend
-    vec_cfg = (config.get("vector") or {}) if isinstance(config, dict) else {}
-    vec_backend = (vec_cfg.get("backend") or "").lower()
+    vector_cfg = config.get("vector", {})
+    enterprise_cfg = config.get("memory_enterprise", {})
 
     if mode == MemoryMode.ON_DEMAND:
         # Pure in-memory setup for quick tests and demos
         kv_store = RedisKeyValueStore(testing=True)
-        # Default to in-memory vectors for ON_DEMAND unless explicitly set otherwise
-        backend = vec_backend or "inmemory"
-        if backend == "inmemory":
+        if vector_cfg.get("backend") == "qdrant":
+            qconf = {"location": ":memory:"}
+            vector_store = QdrantVectorStore(collection_name=namespace, **qconf)
+        else:
             vector_store = InMemoryVectorStore()
-        else:
-            qdrant_config = {"location": ":memory:"}
-            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
-        if graph_backend == "neo4j" and Neo4jGraphStore:
-            neo = (config.get("graph", {}) or {}).get("neo4j", {})
-            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
-        else:
-            graph_store = NetworkXGraphStore()
+        graph_store = NetworkXGraphStore()
         prediction_provider = NoPredictionProvider()
 
     elif mode == MemoryMode.LOCAL_AGENT:
         redis_config = config.get("redis", {})
         qdrant_config = config.get("qdrant", {"path": f"./{namespace}_qdrant"})
         kv_store = RedisKeyValueStore(**redis_config)
-        if vec_backend == "inmemory":
-            vector_store = InMemoryVectorStore()
-        else:
-            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
-        if graph_backend == "neo4j" and Neo4jGraphStore:
-            neo = (config.get("graph", {}) or {}).get("neo4j", {})
-            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
-        else:
-            graph_store = NetworkXGraphStore()
+        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
+        graph_store = NetworkXGraphStore()
         prediction_provider = OllamaPredictionProvider()
 
     elif mode == MemoryMode.ENTERPRISE:
@@ -85,19 +92,15 @@ def create_memory_system(
             qdrant_config.pop("path", None)
 
         kv_store = RedisKeyValueStore(**redis_config)
-        if vec_backend == "inmemory":
-            vector_store = InMemoryVectorStore()
-        else:
-            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
-        if graph_backend == "neo4j" and Neo4jGraphStore:
-            neo = (config.get("graph", {}) or {}).get("neo4j", {})
-            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
-        else:
-            graph_store = NetworkXGraphStore()
+        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
+        graph_store = NetworkXGraphStore()  # Swap for a remote graph DB in prod
 
         ext_pred_cfg = config.get("external_prediction")
-        if isinstance(ext_pred_cfg, dict) and ext_pred_cfg.get("api_key") and ext_pred_cfg.get("endpoint"):
+        if (
+            isinstance(ext_pred_cfg, dict)
+            and ext_pred_cfg.get("api_key")
+            and ext_pred_cfg.get("endpoint")
+        ):
             prediction_provider = ExternalPredictionProvider(
                 api_key=ext_pred_cfg["api_key"], endpoint=ext_pred_cfg["endpoint"]
             )
@@ -107,25 +110,16 @@ def create_memory_system(
     else:
         raise ValueError(f"Unsupported memory mode: {mode}")
 
-    # Thread memory-related settings from config into the core constructor
-    mem_cfg = config.get("memory_enterprise", {}) if isinstance(config, dict) else {}
     return SomaFractalMemoryEnterprise(
         namespace=namespace,
         kv_store=kv_store,
         vector_store=vector_store,
         graph_store=graph_store,
         prediction_provider=prediction_provider,
-        vector_dim=mem_cfg.get("vector_dim", 768),
-        encryption_key=mem_cfg.get("encryption_key"),
-        pruning_interval_seconds=mem_cfg.get("pruning_interval_seconds", 600),
-        decay_thresholds_seconds=mem_cfg.get("decay_thresholds_seconds"),
-        decayable_keys_by_level=mem_cfg.get("decayable_keys_by_level"),
-        max_memory_size=mem_cfg.get("max_memory_size", 100000),
-        predictions_enabled=mem_cfg.get("predictions", {}).get("enabled", False),
-        predictions_error_policy=mem_cfg.get("predictions", {}).get("error_policy", "exact"),
-        predictions_threshold=float(mem_cfg.get("predictions", {}).get("threshold", 0.0)),
-        decay_enabled=mem_cfg.get("decay", {}).get("enabled", True),
-        reconsolidation_enabled=mem_cfg.get("reconsolidation", {}).get("enabled", False),
-        salience_threshold=float((mem_cfg.get("salience", {}) or {}).get("threshold", 0.0)),
-        salience_weights=(mem_cfg.get("salience", {}) or {}).get("weights", {}),
+        max_memory_size=enterprise_cfg.get("max_memory_size", 100000),
+        pruning_interval_seconds=enterprise_cfg.get("pruning_interval_seconds", 600),
+        decay_thresholds_seconds=enterprise_cfg.get("decay_thresholds_seconds", []),
+        decayable_keys_by_level=enterprise_cfg.get("decayable_keys_by_level", []),
+        decay_enabled=enterprise_cfg.get("decay_enabled", True),
+        reconcile_enabled=enterprise_cfg.get("reconcile_enabled", True),
     )

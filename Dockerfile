@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Minimal Dockerfile to run the FastAPI example
 FROM python:3.10-slim
 
@@ -6,13 +7,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /app/requirements.txt
 COPY api-requirements.txt /app/api-requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt -r /app/api-requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r /app/requirements.txt -r /app/api-requirements.txt
 
 COPY . /app
 
-EXPOSE 8000
+EXPOSE 9595
 
-CMD ["uvicorn", "examples.api:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:9595/health || exit 1
 
+# Default command (can be changed as needed)
+CMD ["uvicorn", "examples.api:app", "--host", "0.0.0.0", "--port", "9595", "--workers", "2", "--timeout-keep-alive", "30"]

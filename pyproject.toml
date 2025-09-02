@@ -45,7 +45,7 @@ warn_redundant_casts = true
 warn_unreachable = true
 warn_unused_ignores = true
 
-[tool.mypy.somafractalmemory.*]
+[tool.mypy.somafractalmemory]
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
