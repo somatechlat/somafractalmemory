@@ -1,0 +1,35 @@
+# Exclude VCS and local env
+.git
+.gitignore
+.DS_Store
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info
+.venv
+.env
+
+# Test and tooling caches
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Build artifacts
+build
+dist
+
+# Local databases and data
+qdrant.db
+
+# Not needed in image
+.docs
+*.md
+!README.md
+.docs/
+docs/
+examples/
+benchmarks/

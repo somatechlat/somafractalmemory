@@ -14,3 +14,5 @@ structlog
 dynaconf
 fakeredis>=2.0.0
 networkx
+uvicorn
+fastapi
