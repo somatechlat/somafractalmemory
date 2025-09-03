@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "somafractalmemory"
-version = "0.2.0"
+version = "0.1.0"
 description = "Small, elegant, in-memory fractal memory for agents (FAISS + exact rerank)."
 authors = [
   { name="SomaTech", email="ai@somatech.lat" }

@@ -1,6 +1,12 @@
-## Changelog
+# Changelog
 
-This project follows Keep a Changelog and Semantic Versioning.
+All notable changes to this project will be documented in this file.
+
+## [0.1.0] - 2025-09-02
+### Added
+- Initial public release with src/ packaging, CI, and docs skeleton.
+- Consolidated contributing guide and versioning policy.
+- Comprehensive .gitignore and repo hygiene.
 
 ## [0.2.0] - 2025-08-30
 ### Added

@@ -1,3 +1,24 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.sqlite3
+qdrant.db/
+recovery/
+*.ipynb_checkpoints
+*.swp
 # --- Virtual environments ---
 .venv/
 venv/
@@ -31,6 +52,8 @@ dist/
 somafractalmemory.egg-info/
 pip-wheel-metadata/
 wheels/
+*.eggs/
+*.egg
 
 # --- Logs ---
 *.log
@@ -55,9 +78,20 @@ Thumbs.db
 qdrant.db/
 *_qdrant/
 *.index
+*.sqlite
+*.db
 
 # --- Notebooks ---
 .ipynb_checkpoints/
 
 # --- Local recovery (not tracked) ---
 recovery/
+
+# --- Docs build ---
+docs/_build/
+
+# --- Tool caches ---
+.ruff_cache/
+
+# --- Legacy duplicates at repo root (canonical code is under src/) ---
+/somafractalmemory/
