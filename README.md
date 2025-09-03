@@ -1,12 +1,30 @@
 # SomaFractalMemory
 
-A powerful and flexible Python library for managing advanced fractal memory systems, designed to handle complex memory storage, retrieval, and linking with support for both in-memory and persistent vector backends.
+A practical “second brain” for AI agents—store what matters, find it fast, and connect the dots.
 
 ## Overview
 
-SomaFractalMemory is a cutting-edge Python package that provides a robust framework for building and interacting with fractal memory algorithms. It supports episodic and semantic memory types, hybrid search capabilities, and semantic graph traversal, making it ideal for applications requiring sophisticated memory management, such as AI agents, knowledge graphs, and data-intensive systems. The library integrates seamlessly with Redis for caching, Qdrant for vector storage, and Prometheus for observability, offering both in-memory and persistent storage options.
+SomaFractalMemory is a modular memory engine for AI agents and knowledge-heavy apps. It blends fast vector similarity with a semantic graph so you can recall facts quickly and traverse relationships between them. Start lightweight with an in‑memory setup for prototyping, then flip a config to use persistent backends (like Qdrant) without changing your code. It’s configurable, observable, and test‑friendly: use the CLI or HTTP API, enable metrics and tracing when needed, and keep heavy integrations optional. “Fractal” refers to the hierarchical indexing + exact re‑rank approach that balances speed and recall while staying simple to operate.
 
-For your local state/plan, use the `recovery/` folder (git-ignored): recovery/STATUS.md and recovery/ROADMAP.md.
+### Highlights
+- Hybrid recall: vector similarity + semantic graph traversal
+- Modular backends: in‑memory, Qdrant, Redis (optional), NetworkX
+- Local‑first defaults; flip a config for persistence
+- CLI and HTTP API for quick integration
+- Observability: metrics and structured logs
+- Configurable pruning, decay, and write gating
+- Test‑friendly: FakeRedis and in‑memory paths
+
+### Common uses
+- Long‑term memory for autonomous agents
+- RAG caches and working memory
+- Knowledge graph linking and traversal
+- Durable task history and context recall
+
+### Why “fractal”
+- Hierarchical candidate selection with exact re‑rank for precision
+- Scales from small prototypes to larger datasets via configuration
+- Predictable performance without heavy operational overhead
 
 ## Key Features
 
