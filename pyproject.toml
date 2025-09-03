@@ -69,18 +69,3 @@ src = ["src"]
 
 [tool.ruff.isort]
 known-first-party = ["somafractalmemory"]
-
-[tool.mypy]
-python_version = "3.10"
-ignore_missing_imports = true
-strict_optional = false
-warn_redundant_casts = true
-warn_unreachable = true
-warn_unused_ignores = true
-
-[tool.mypy."somafractalmemory.*"]
-disallow_untyped_defs = true
-
-[tool.pytest.ini_options]
-addopts = "-q -ra --maxfail=1"
-testpaths = ["tests"]
