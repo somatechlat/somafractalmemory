@@ -33,6 +33,10 @@ class LinkRequest(BaseModel):
     weight: float = 1.0
 
 
+class PayloadsByCoordsRequest(BaseModel):
+    coords: list[list[float]]
+
+
 # --- FastAPI app ---
 app = FastAPI(
     title="SomaFractalMemory API", description="Memory microservice for agents.", version="0.1.0"
@@ -102,3 +106,25 @@ def link(req: LinkRequest):
 
 
 # Add more endpoints as needed (neighbors, path, export, etc.)
+
+
+@app.post("/payloads_by_coords", tags=["memory"])
+def payloads_by_coords(req: PayloadsByCoordsRequest):
+    """Return payloads for the provided list of coordinates.
+
+    Body: { "coords": [[x,y,z], ...] }
+    Response: { "payloads": [ {...}, ... ] }
+    Missing coordinates are skipped.
+    """
+    mem = get_mem()
+    out: list[dict] = []
+    for c in req.coords or []:
+        try:
+            if not isinstance(c, list) or len(c) < 3:
+                continue
+            payload = mem.retrieve(tuple(c))  # type: ignore[arg-type]
+            if isinstance(payload, dict):
+                out.append(payload)
+        except Exception:
+            continue
+    return {"payloads": out}
