@@ -25,4 +25,3 @@ memory_enterprise:
   decayable_keys_by_level:
     - ["scratch", "temp_notes"]
     - ["low_importance"]
-
