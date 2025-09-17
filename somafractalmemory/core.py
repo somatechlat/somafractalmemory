@@ -171,7 +171,6 @@ class SomaFractalMemoryEnterprise:
         Synchronize the graph store from all current memories.
         (Stub: actual implementation can be added for full graph consistency.)
         """
-        pass
 
     def __init__(
         self,

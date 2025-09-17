@@ -1,4 +1,4 @@
-from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
@@ -21,7 +21,3 @@ def test_weighted_shortest_path(tmp_path):
     mem.link_memories(b, c, link_type="related", weight=1.0)
     path = mem.find_shortest_path(a, c, link_type="related")
     assert path == [a, b, c]
-
-
-def make_mem(ns: str = "ver_ns") -> SomaFractalMemoryEnterprise:
-    return create_memory_system(MemoryMode.LOCAL_AGENT, ns)
