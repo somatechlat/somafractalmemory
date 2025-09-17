@@ -1,6 +1,5 @@
-import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import create_memory_system, MemoryMode
 
 
 def test_find_by_coordinate_range(tmp_path):

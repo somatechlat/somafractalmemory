@@ -1,9 +1,9 @@
-import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import SomaFractalMemoryEnterprise
-from somafractalmemory.implementations.prediction import NoPredictionProvider, OllamaPredictionProvider, ExternalPredictionProvider
-from somafractalmemory.implementations.storage import RedisKeyValueStore, QdrantVectorStore, InMemoryVectorStore
-from unittest.mock import patch, MagicMock
+from somafractalmemory.factory import create_memory_system, MemoryMode
+from somafractalmemory.implementations.prediction import ExternalPredictionProvider, NoPredictionProvider, OllamaPredictionProvider
+from somafractalmemory.implementations.storage import InMemoryVectorStore, QdrantVectorStore, RedisKeyValueStore
+from unittest.mock import MagicMock, patch
+
 
 def test_create_on_demand_mode():
     memory = create_memory_system(MemoryMode.ON_DEMAND, "test_on_demand")
