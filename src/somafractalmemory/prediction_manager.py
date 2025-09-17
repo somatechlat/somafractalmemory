@@ -1,7 +1,7 @@
 # prediction_manager.py - Handles prediction and LLM integration
 
-from typing import Dict, Any, Tuple, Optional
 import logging
+from typing import Any, Dict, Optional, Tuple
 
 from .interfaces.prediction import IPredictionProvider
 

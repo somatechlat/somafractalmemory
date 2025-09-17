@@ -1,16 +1,17 @@
-import numpy as np
+import ast
+import atexit
+import hashlib
+import json
+import logging
+import os
 import pickle
 import threading
 import time
-import logging
-import os
-import hashlib
-import ast
-import json
-from typing import Dict, Any, List, Tuple, Optional, ContextManager, Callable
-import atexit
 import uuid
 from enum import Enum
+from typing import Any, Callable, ContextManager, Dict, List, Optional, Tuple
+
+import numpy as np
 
 # Optional heavy deps with safe fallbacks
 try:
@@ -79,13 +80,23 @@ except Exception:
 		def __getattr__(self, item):
 			return None
 
-from .interfaces.storage import IKeyValueStore, IVectorStore
+from .embedder import MultiModalEmbedder
+from .graph_manager import GraphManager
 from .interfaces.graph import IGraphStore
 from .interfaces.prediction import IPredictionProvider
-from .memory_manager import MemoryManager, MemoryType, SomaFractalMemoryError, _coord_to_key, _point_id, store_count, store_latency, recall_count, recall_latency
-from .graph_manager import GraphManager
+from .interfaces.storage import IKeyValueStore, IVectorStore
+from .memory_manager import (
+    MemoryManager,
+    MemoryType,
+    SomaFractalMemoryError,
+    _coord_to_key,
+    _point_id,
+    recall_count,
+    recall_latency,
+    store_count,
+    store_latency,
+)
 from .prediction_manager import PredictionManager
-from .embedder import MultiModalEmbedder
 from .wal_manager import WALManager
 
 # Setup logging
@@ -140,7 +151,9 @@ class SomaFractalMemoryEnterprise:
 		# Allow None in tests: fall back to in-memory KV store
 		self.kv_store = kv_store
 		if self.kv_store is None:
-			from .implementations.storage import InMemoryKeyValueStore  # lazy import to avoid cycles
+			from .implementations.storage import (
+			    InMemoryKeyValueStore,  # lazy import to avoid cycles
+			)
 			self.kv_store = InMemoryKeyValueStore()
 		self.vector_store = vector_store
 		self.graph_store = graph_store
@@ -161,6 +174,7 @@ class SomaFractalMemoryEnterprise:
 					self.dim = int(dim) if int(dim) > 0 else 768
 				def embed_text(self, text: str):
 					import hashlib
+
 					import numpy as _np
 					h = hashlib.blake2b(text.encode("utf-8")).digest()
 					arr = _np.frombuffer(h, dtype=_np.uint8).astype("float32")

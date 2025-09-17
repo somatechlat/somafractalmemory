@@ -1,10 +1,10 @@
 # wal_manager.py - Handles Write-Ahead Logging
 
+import logging
 import pickle
 import time
-import logging
-from typing import Dict, Any
 import uuid
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 

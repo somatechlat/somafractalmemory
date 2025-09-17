@@ -1,8 +1,11 @@
 import os
 import random
+
 import numpy as np
 
-from somafractalmemory.implementations.fractal_inmemory import FractalInMemoryVectorStore
+from somafractalmemory.implementations.fractal_inmemory import (
+    FractalInMemoryVectorStore,
+)
 
 
 def test_fractal_store_basic_search_and_rebuild():

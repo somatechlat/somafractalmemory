@@ -1,7 +1,9 @@
 import json
+
 import pytest
+
 from somafractalmemory.core import MemoryType
-from somafractalmemory.factory import create_memory_system, MemoryMode
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_store_memories_bulk_core(tmp_path):
@@ -17,7 +19,7 @@ def test_store_memories_bulk_core(tmp_path):
 
 def test_cli_store_bulk(tmp_path, capsys):
     from somafractalmemory import cli
-    from somafractalmemory.factory import create_memory_system, MemoryMode
+    from somafractalmemory.factory import MemoryMode, create_memory_system
     shared_mem = create_memory_system(MemoryMode.LOCAL_AGENT, "cli_bulk", config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "bulk_shared.db")}})
     cli.create_memory_system = lambda *a, **k: shared_mem
 

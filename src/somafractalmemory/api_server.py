@@ -37,6 +37,19 @@ class PayloadsByCoordsRequest(BaseModel):
     coords: list[list[float]]
 
 
+class NeighborsRequest(BaseModel):
+    from_coord: list[float]
+    type: str | None = None
+    limit: int | None = 50
+
+
+class KHopRequest(BaseModel):
+    starts: list[list[float]]
+    depth: int = 1
+    limit: int = 20
+    type: str | None = None
+
+
 # --- FastAPI app ---
 app = FastAPI(
     title="SomaFractalMemory API", description="Memory microservice for agents.", version="0.1.0"
@@ -128,3 +141,82 @@ def payloads_by_coords(req: PayloadsByCoordsRequest):
         except Exception:
             continue
     return {"payloads": out}
+
+
+@app.post("/neighbors", tags=["graph"])
+def neighbors(req: NeighborsRequest):
+    """Return outgoing neighbors with metadata from a start coordinate.
+
+    Body: { "from_coord": [x,y,z], "type": "retrieved_with" | null, "limit": N }
+    Response: { "edges": [ {"from": [x,y,z], "to": [x,y,z], "type": str, "weight": float}, ... ] }
+    """
+    mem = get_mem()
+    try:
+        fc = tuple(float(x) for x in req.from_coord[:3])  # type: ignore[call-arg]
+    except Exception:
+        return {"edges": []}
+    link_type = req.type
+    limit = req.limit if req.limit is not None else 50
+    edges: list[dict] = []
+    try:
+        nbrs = mem.graph_store.get_neighbors(fc, link_type=link_type, limit=limit)
+        for to_coord, meta in nbrs:
+            try:
+                edges.append(
+                    {
+                        "from": list(fc),
+                        "to": list(to_coord) if isinstance(to_coord, (list, tuple)) else to_coord,
+                        "type": (meta or {}).get("type"),
+                        "weight": float((meta or {}).get("weight", 1.0)),
+                    }
+                )
+            except Exception:
+                continue
+    except Exception:
+        edges = []
+    return {"edges": edges}
+
+
+@app.post("/k_hop", tags=["graph"])
+def k_hop(req: KHopRequest):
+    """Breadth-first expansion from start coords up to depth with optional type filter.
+
+    Body: { "starts": [[x,y,z], ...], "depth": 2, "limit": 20, "type": null }
+    Response: { "coords": [[x,y,z], ...] }
+    """
+    mem = get_mem()
+    # Normalize starts
+    starts = []
+    for s in (req.starts or []):
+        try:
+            if isinstance(s, list) and len(s) >= 3:
+                starts.append((float(s[0]), float(s[1]), float(s[2])))
+        except Exception:
+            continue
+    if not starts:
+        return {"coords": []}
+    depth = max(1, int(req.depth or 1))
+    limit = max(1, int(req.limit or 20))
+    type_filter = req.type
+    seen = set(starts)
+    frontier = list(starts)
+    out: list[list[float]] = []
+    try:
+        for _ in range(depth):
+            next_frontier = []
+            for u in frontier:
+                nbrs = mem.graph_store.get_neighbors(u, link_type=type_filter, limit=limit)
+                for v, _meta in nbrs:
+                    if v in seen:
+                        continue
+                    seen.add(v)
+                    out.append([float(v[0]), float(v[1]), float(v[2])])
+                    next_frontier.append(v)
+                    if len(out) >= limit:
+                        return {"coords": out}
+            frontier = next_frontier
+            if not frontier:
+                break
+    except Exception:
+        pass
+    return {"coords": out}

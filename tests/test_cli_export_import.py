@@ -3,7 +3,8 @@ import json
 
 def test_cli_export_import_shared_mem(tmp_path, capsys):
     from somafractalmemory import cli
-    from somafractalmemory.factory import create_memory_system, MemoryMode
+    from somafractalmemory.factory import MemoryMode, create_memory_system
+
     # Use one shared memory instance behind CLI to avoid local qdrant lock issues
     shared_mem = create_memory_system(MemoryMode.LOCAL_AGENT, "cli_ei", config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "ei.db")}})
     cli.create_memory_system = lambda *a, **k: shared_mem

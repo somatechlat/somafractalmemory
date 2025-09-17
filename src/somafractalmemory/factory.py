@@ -1,25 +1,31 @@
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.storage import (
-    RedisKeyValueStore,
-    QdrantVectorStore,
-    InMemoryVectorStore,
     InMemoryKeyValueStore,
+    InMemoryVectorStore,
+    QdrantVectorStore,
+    RedisKeyValueStore,
 )
+
 try:
-    from somafractalmemory.implementations.fractal_inmemory import FractalInMemoryVectorStore  # type: ignore
+    from somafractalmemory.implementations.fractal_inmemory import (
+        FractalInMemoryVectorStore,  # type: ignore
+    )
 except Exception:
     FractalInMemoryVectorStore = None  # type: ignore
+from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.prediction import (
+    ExternalPredictionProvider,
     NoPredictionProvider,
     OllamaPredictionProvider,
-    ExternalPredictionProvider,
 )
-from somafractalmemory.implementations.graph import NetworkXGraphStore
+
 try:
-    from somafractalmemory.implementations.graph_neo4j import Neo4jGraphStore  # type: ignore
+    from somafractalmemory.implementations.graph_neo4j import (
+        Neo4jGraphStore,  # type: ignore
+    )
 except Exception:
     Neo4jGraphStore = None  # type: ignore
 

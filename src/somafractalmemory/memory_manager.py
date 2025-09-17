@@ -1,19 +1,21 @@
 # memory_manager.py - Handles core memory operations like store, recall, delete
 
-import numpy as np
-import pickle
-import time
-import logging
 import hashlib
 import json
-from typing import Dict, Any, List, Tuple, Optional
+import logging
+import pickle
+import time
 import uuid
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
-from .interfaces.storage import IKeyValueStore, IVectorStore
+import numpy as np
+from prometheus_client import REGISTRY, Counter, Histogram
+
 from .interfaces.graph import IGraphStore
 from .interfaces.prediction import IPredictionProvider
-from prometheus_client import REGISTRY, Counter, Histogram
+from .interfaces.storage import IKeyValueStore, IVectorStore
+
 
 # Custom exception
 class SomaFractalMemoryError(Exception):
@@ -98,6 +100,7 @@ class MemoryManager:
         # Fourier-Physics: Spectral Denoising (wavelet-based if available)
         try:
             import pywt
+
             # Apply wavelet denoising to reduce noise (harmonic artifacts)
             coeffs = pywt.wavedec(vec.flatten(), 'db1', level=2)
             # Threshold detail coefficients (soft thresholding for energy conservation)

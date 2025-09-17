@@ -1,7 +1,8 @@
-import numpy as np
-from typing import Any, Dict, List, Iterator, Optional, Tuple
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
+from typing import Any, Dict, Iterator, List, Optional, Tuple
+
+import numpy as np
 
 from somafractalmemory.interfaces.storage import IVectorStore
 

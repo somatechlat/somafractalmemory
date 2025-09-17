@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
 
 class IGraphStore(ABC):
     @abstractmethod

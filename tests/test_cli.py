@@ -16,6 +16,7 @@ def run_cli(tmp_path: Path, args, qdrant_subdir: str = "qdrant.db"):
 
     sys.argv = ["soma", "--mode", "local_agent", "--namespace", "cli_ns", "--config-json", str(cfg_path)] + args
     from somafractalmemory import cli
+
     # Execute CLI main; capture prints via capsys in the tests
     cli.main()
     # Ensure Qdrant local client releases file locks between invocations

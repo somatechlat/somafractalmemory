@@ -1,8 +1,10 @@
 import json
-import pytest
 from pathlib import Path
-from somafractalmemory.factory import create_memory_system, MemoryMode
+
+import pytest
+
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_export_import_jsonl(tmp_path: Path):

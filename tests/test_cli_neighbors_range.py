@@ -3,7 +3,7 @@ import json
 
 def test_cli_neighbors_and_range(tmp_path, capsys):
     from somafractalmemory import cli
-    from somafractalmemory.factory import create_memory_system, MemoryMode
+    from somafractalmemory.factory import MemoryMode, create_memory_system
 
     # Use one shared memory instance for all CLI calls to avoid qdrant local locks
     shared_mem = create_memory_system(MemoryMode.LOCAL_AGENT, "cli_nr", config={

@@ -1,7 +1,8 @@
-import pytest
 import numpy as np
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
+import pytest
+
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 
 

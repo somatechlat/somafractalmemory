@@ -1,11 +1,11 @@
 import argparse
+import json
 import logging
 import os
-import json
-from typing import Tuple, Optional, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 
-from .factory import create_memory_system, MemoryMode
 from .core import MemoryType
+from .factory import MemoryMode, create_memory_system
 
 
 def parse_coord(text: str) -> Tuple[float, ...]:

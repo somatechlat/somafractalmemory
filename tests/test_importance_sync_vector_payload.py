@@ -1,7 +1,10 @@
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
-from somafractalmemory.implementations.storage import RedisKeyValueStore, InMemoryVectorStore
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.prediction import NoPredictionProvider
+from somafractalmemory.implementations.storage import (
+    InMemoryVectorStore,
+    RedisKeyValueStore,
+)
 
 
 def test_set_importance_syncs_vector_payload():

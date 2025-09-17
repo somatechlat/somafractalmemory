@@ -1,8 +1,10 @@
-from typing import Any, List, Tuple, Dict, Optional
-import networkx as nx
 import threading
+from typing import Any, Dict, List, Optional, Tuple
+
+import networkx as nx
 
 from somafractalmemory.interfaces.graph import IGraphStore
+
 
 class NetworkXGraphStore(IGraphStore):
     """NetworkX implementation of the graph store interface with thread safety."""

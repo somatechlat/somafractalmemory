@@ -6,17 +6,18 @@ Measures latency, throughput, memory, CPU, and compares to baselines.
 Supports large-scale testing (up to 1M items).
 """
 
-import time
-import importlib
-import os
-import json
-import csv
 import argparse
-import numpy as np
-from typing import List, Dict, Any, Optional
+import csv
 import gc
+import importlib
+import json
+import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 # Optional dependency: psutil (used for metrics). Fallback to limited metrics if unavailable.
 try:
@@ -24,9 +25,11 @@ try:
 except Exception:
     _psutil = None
 
-# Import the memory system
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+
+# Import the memory system
+from somafractalmemory.factory import MemoryMode, create_memory_system
+
 
 class PerformanceMonitor:
     """Monitor system performance metrics."""

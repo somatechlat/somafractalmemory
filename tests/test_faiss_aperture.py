@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 
 try:
     from somafractalmemory.implementations.faiss_aperture import FaissApertureStore

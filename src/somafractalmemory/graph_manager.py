@@ -1,7 +1,7 @@
 # graph_manager.py - Handles semantic graph operations
 
-from typing import Dict, Any, List, Tuple, Optional
 import logging
+from typing import Any, Dict, List, Optional, Tuple
 
 from .interfaces.graph import IGraphStore
 

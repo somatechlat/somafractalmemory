@@ -1,11 +1,13 @@
 import json
+
 import pytest
 
 
 def test_cli_path(tmp_path, capsys):
     # Three steps: store two, link, then path. Use distinct qdrant paths to avoid local lock contention
     from somafractalmemory import cli
-    from somafractalmemory.factory import create_memory_system, MemoryMode
+    from somafractalmemory.factory import MemoryMode, create_memory_system
+
     # Create a shared memory instance and monkeypatch the CLI factory to reuse it
     shared_mem = create_memory_system(MemoryMode.LOCAL_AGENT, "cli_path", config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "qp_shared.db")}})
     cli.create_memory_system = lambda *a, **k: shared_mem

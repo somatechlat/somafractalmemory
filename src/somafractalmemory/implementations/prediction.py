@@ -1,6 +1,9 @@
-from somafractalmemory.interfaces.prediction import IPredictionProvider
-from typing import Tuple, Dict, Any, Optional
+from typing import Any, Dict, Optional, Tuple
+
 import numpy as np
+
+from somafractalmemory.interfaces.prediction import IPredictionProvider
+
 
 def _safe_requests_get(url: str) -> Optional[Any]:
     """Lazily import requests and perform a GET; return None on failure/missing."""

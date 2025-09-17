@@ -1,6 +1,7 @@
-import uuid
-from typing import Any, Dict, List, Iterator, Mapping, Optional, ContextManager, cast
 import logging
+import uuid
+from typing import Any, ContextManager, Dict, Iterator, List, Mapping, Optional, cast
+
 import numpy as np
 
 from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
@@ -28,9 +29,9 @@ try:  # qdrant is optional
 except Exception:  # pragma: no cover - optional
     _qdrant_client = None
 
+import math
 import threading
 from collections import defaultdict
-import math
 from dataclasses import dataclass
 from typing import Iterable
 

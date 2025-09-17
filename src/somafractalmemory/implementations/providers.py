@@ -1,9 +1,14 @@
 
-from typing import List, Tuple, Dict, Any
-import numpy as np
-from transformers import AutoTokenizer, AutoModel
+from typing import Any, Dict, List, Tuple
 
-from somafractalmemory.interfaces.providers import IEmbeddingProvider, IPredictionProvider
+import numpy as np
+from transformers import AutoModel, AutoTokenizer
+
+from somafractalmemory.interfaces.providers import (
+    IEmbeddingProvider,
+    IPredictionProvider,
+)
+
 
 class TransformersEmbeddingProvider(IEmbeddingProvider):
     """An embedding provider that uses Hugging Face Transformers."""

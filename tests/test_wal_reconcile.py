@@ -1,6 +1,7 @@
 import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
+
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):

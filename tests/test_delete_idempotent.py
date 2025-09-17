@@ -1,6 +1,7 @@
 import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
+
 from somafractalmemory.core import SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 @pytest.fixture
