@@ -1,13 +1,15 @@
-import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
     mem: SomaFractalMemoryEnterprise = create_memory_system(
         MemoryMode.LOCAL_AGENT,
         "wal_ns",
-        config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
+        config={
+            "redis": {"testing": True},
+            "qdrant": {"path": str(tmp_path / "q.db")},
+        },
     )
 
     calls = {"upsert": 0}
@@ -35,9 +37,9 @@ def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
 
     # WAL entries should be committed
     import pickle
+
     for k in wal_keys:
         raw = mem.kv_store.get(k)
         if raw:
             entry = pickle.loads(raw)
             assert entry.get("status") == "committed"
-

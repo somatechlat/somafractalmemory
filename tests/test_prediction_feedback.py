@@ -1,6 +1,5 @@
-import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 class StubPredictor:
@@ -19,9 +18,7 @@ def test_prediction_enrichment_and_feedback(tmp_path):
     cfg = {
         "qdrant": {"path": str(tmp_path / "q.db")},
         "redis": {"testing": True},
-        "memory_enterprise": {
-            "predictions": {"enabled": True, "error_policy": "exact"}
-        },
+        "memory_enterprise": {"predictions": {"enabled": True, "error_policy": "exact"}},
     }
     mem = create_memory_system(MemoryMode.LOCAL_AGENT, "pred_ns", config=cfg)
     # Swap in a stub predictor for determinism
@@ -38,8 +35,6 @@ def test_prediction_enrichment_and_feedback(tmp_path):
     result = mem.report_outcome(coord, outcome="bar")
     assert result.get("error") is True
     # Importance lowered (may be absent if not set initially, so just ensure no error)
-    updated = mem.retrieve(coord)
     # A corrective semantic memory should have been created
     semantics = mem.retrieve_memories(MemoryType.SEMANTIC)
     assert any("corrective_for" in s for s in semantics)
-

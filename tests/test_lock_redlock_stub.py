@@ -1,5 +1,4 @@
-import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_lock_redlock_stub(tmp_path):
@@ -14,4 +13,3 @@ def test_lock_redlock_stub(tmp_path):
     assert lock is not None
     with lock:
         pass
-
