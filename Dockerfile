@@ -22,11 +22,14 @@ COPY pyproject.toml README.md requirements.txt ./
 COPY src ./src
 COPY tests ./tests
 
-RUN python -m pip install --upgrade pip \
+RUN python -m pip install --upgrade pip setuptools wheel build \
  && pip install -e '.[dev]' \
  && pip install -r requirements.txt
 
-# Run tests inside builder to validate the image
+# Build a wheel artifact for the runtime stage
+RUN python -m build --wheel --outdir /dist
+
+# Run tests inside builder to validate the wheel (install dev extras already installed)
 RUN pytest -q
 
 ##############################
@@ -40,14 +43,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Copy only what is needed to install and run
-COPY --from=builder /app/pyproject.toml /app/README.md ./
-COPY --from=builder /app/requirements.txt ./requirements.txt
-COPY --from=builder /app/src ./src
-
-RUN python -m pip install --upgrade pip \
- && pip install -r requirements.txt \
- && pip install .
+# Copy the built wheel from the builder stage and install it in the runtime image
+COPY --from=builder /dist /dist
+RUN python -m pip install --upgrade pip setuptools wheel \
+ && pip install /dist/*.whl
 
 LABEL org.opencontainers.image.title="somafractalmemory" \
       org.opencontainers.image.description="Modular memory for AI agents: vector search + semantic graph" \
