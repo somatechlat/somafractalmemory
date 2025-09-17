@@ -8,9 +8,11 @@ Then scrape:
 """
 
 from time import sleep
+
 from prometheus_client import start_http_server
-from somafractalmemory.factory import create_memory_system, MemoryMode
+
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def main():
@@ -28,4 +30,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

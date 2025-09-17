@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
 
 class IGraphStore(ABC):
     @abstractmethod
@@ -7,15 +8,27 @@ class IGraphStore(ABC):
         pass
 
     @abstractmethod
-    def add_link(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]):
+    def add_link(
+        self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]
+    ):
         pass
 
     @abstractmethod
-    def get_neighbors(self, coordinate: Tuple[float, ...], link_type: Optional[str] = None, limit: Optional[int] = None) -> List[Tuple[Any, Dict[str, Any]]]:
+    def get_neighbors(
+        self,
+        coordinate: Tuple[float, ...],
+        link_type: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Tuple[Any, Dict[str, Any]]]:
         pass
 
     @abstractmethod
-    def find_shortest_path(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_type: Optional[str] = None) -> List[Any]:
+    def find_shortest_path(
+        self,
+        from_coord: Tuple[float, ...],
+        to_coord: Tuple[float, ...],
+        link_type: Optional[str] = None,
+    ) -> List[Any]:
         pass
 
     @abstractmethod

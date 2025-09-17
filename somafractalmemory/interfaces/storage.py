@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple, Iterator, Mapping, Optional, ContextManager
+from typing import Any, ContextManager, Dict, Iterator, List, Mapping, Optional
+
 
 class IKeyValueStore(ABC):
     @abstractmethod
@@ -29,10 +30,11 @@ class IKeyValueStore(ABC):
     @abstractmethod
     def lock(self, name: str, timeout: int) -> ContextManager:
         pass
-    
+
     @abstractmethod
     def health_check(self) -> bool:
         pass
+
 
 class IVectorStore(ABC):
     @abstractmethod

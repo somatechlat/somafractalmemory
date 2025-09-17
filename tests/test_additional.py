@@ -1,7 +1,8 @@
-import pytest
 import numpy as np
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
+import pytest
+
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 
 
@@ -14,7 +15,7 @@ def mem(tmp_path) -> SomaFractalMemoryEnterprise:
             "pruning_interval_seconds": 1,
             "decay_thresholds_seconds": [1],
             "decayable_keys_by_level": [["scratch"]],
-        }
+        },
     }
     return create_memory_system(MemoryMode.LOCAL_AGENT, "additional_ns", config=config)
 
@@ -42,19 +43,24 @@ def test_versioning_roundtrip(mem: SomaFractalMemoryEnterprise):
 
 def test_hooks_fire_and_resilient(mem: SomaFractalMemoryEnterprise):
     seen = []
+
     def before_store(data, coordinate, memory_type):
         seen.append(("before_store", coordinate))
+
     def after_store(data, coordinate, memory_type):
         seen.append(("after_store", coordinate))
+
     def before_recall(*args, **kwargs):
         seen.append(("before_recall",))
         raise RuntimeError("ignored in hooks")
+
     def after_recall(*args, **kwargs):
         seen.append(("after_recall",))
-    mem.set_hook('before_store', before_store)
-    mem.set_hook('after_store', after_store)
-    mem.set_hook('before_recall', before_recall)
-    mem.set_hook('after_recall', after_recall)
+
+    mem.set_hook("before_store", before_store)
+    mem.set_hook("after_store", after_store)
+    mem.set_hook("before_recall", before_recall)
+    mem.set_hook("after_recall", after_recall)
 
     coord = (1.2, 3.4, 5.6)
     mem.remember({"task": "t"}, coordinate=coord, memory_type=MemoryType.EPISODIC)
@@ -74,4 +80,3 @@ def test_embed_fallback_deterministic(mem: SomaFractalMemoryEnterprise):
     assert v1.shape == (1, mem.vector_dim)
     assert v2.shape == (1, mem.vector_dim)
     assert np.allclose(v1, v2)
-

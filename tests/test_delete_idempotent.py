@@ -1,6 +1,7 @@
 import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
+
 from somafractalmemory.core import SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 @pytest.fixture
@@ -22,4 +23,3 @@ def test_delete_idempotent(mem: SomaFractalMemoryEnterprise):
     # Second delete should not raise
     mem.delete(coord)
     assert mem.retrieve(coord) is None
-

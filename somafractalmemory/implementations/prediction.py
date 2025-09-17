@@ -1,14 +1,19 @@
-from somafractalmemory.interfaces.prediction import IPredictionProvider
-from typing import Tuple, Dict, Any
+from typing import Any, Dict, Tuple
+
 import numpy as np
+
+from somafractalmemory.interfaces.prediction import IPredictionProvider
+
 
 def _safe_requests_get(url: str):
     """Lazily import requests and perform a GET; return None on failure/missing."""
     try:
         import requests  # type: ignore
+
         return requests.get(url)
     except Exception:
         return None
+
 
 class NoPredictionProvider(IPredictionProvider):
     def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
@@ -17,8 +22,9 @@ class NoPredictionProvider(IPredictionProvider):
     def health_check(self) -> bool:
         return True
 
+
 class OllamaPredictionProvider(IPredictionProvider):
-    def __init__(self, host='http://localhost:11434'):
+    def __init__(self, host="http://localhost:11434"):
         self.host = host
 
     def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
@@ -30,6 +36,7 @@ class OllamaPredictionProvider(IPredictionProvider):
     def health_check(self) -> bool:
         resp = _safe_requests_get(self.host)
         return bool(resp and resp.status_code == 200)
+
 
 class ExternalPredictionProvider(IPredictionProvider):
     def __init__(self, api_key: str, endpoint: str):

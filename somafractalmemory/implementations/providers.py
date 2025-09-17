@@ -1,9 +1,9 @@
+from typing import Any, Dict, List, Tuple
 
-from typing import List, Tuple, Dict, Any
-import numpy as np
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModel, AutoTokenizer
 
 from somafractalmemory.interfaces.providers import IEmbeddingProvider, IPredictionProvider
+
 
 class TransformersEmbeddingProvider(IEmbeddingProvider):
     """An embedding provider that uses Hugging Face Transformers."""
@@ -16,7 +16,9 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
         return self.embed_texts([text])[0]
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=512)
+        inputs = self.tokenizer(
+            texts, padding=True, truncation=True, return_tensors="pt", max_length=512
+        )
         with self.model.no_grad():
             outputs = self.model(**inputs)
         # Perform pooling

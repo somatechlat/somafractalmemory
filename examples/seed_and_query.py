@@ -5,8 +5,8 @@ Run:
   python examples/seed_and_query.py
 """
 
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def main():
@@ -33,4 +33,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

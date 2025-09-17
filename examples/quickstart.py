@@ -1,5 +1,5 @@
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def main():
@@ -18,7 +18,9 @@ def main():
 
     # Store
     coord1 = (1.0, 2.0, 3.0)
-    mem.store_memory(coord1, {"task": "write docs", "importance": 2}, memory_type=MemoryType.EPISODIC)
+    mem.store_memory(
+        coord1, {"task": "write docs", "importance": 2}, memory_type=MemoryType.EPISODIC
+    )
 
     coord2 = (4.0, 5.0, 6.0)
     mem.store_memory(coord2, {"fact": "docs published"}, memory_type=MemoryType.SEMANTIC)
@@ -36,4 +38,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
