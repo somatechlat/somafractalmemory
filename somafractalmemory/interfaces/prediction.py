@@ -8,11 +8,9 @@ class IPredictionProvider(ABC):
         """
         Takes memory data and returns a predicted outcome (str) and confidence (float).
         """
-        pass
 
     @abstractmethod
     def health_check(self) -> bool:
         """
         Returns True if the provider is healthy, False otherwise.
         """
-        pass
