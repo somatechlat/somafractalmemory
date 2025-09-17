@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple
+from typing import Any
 
 
 class IPredictionProvider(ABC):
     @abstractmethod
-    def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
+    def predict(self, memory_data: dict[str, Any]) -> tuple[str, float]:
         """
         Takes memory data and returns a predicted outcome (str) and confidence (float).
         """

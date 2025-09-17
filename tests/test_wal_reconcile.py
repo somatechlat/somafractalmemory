@@ -1,5 +1,3 @@
-import pytest
-
 from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
@@ -36,9 +34,9 @@ def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
 
     # WAL entries should be committed
     import pickle
+
     for k in wal_keys:
         raw = mem.kv_store.get(k)
         if raw:
             entry = pickle.loads(raw)
             assert entry.get("status") == "committed"
-

@@ -1,9 +1,8 @@
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.storage import (
-    InMemoryKeyValueStore,
     InMemoryVectorStore,
     QdrantVectorStore,
     RedisKeyValueStore,
@@ -37,7 +36,7 @@ class MemoryMode(Enum):
 
 
 def create_memory_system(
-    mode: MemoryMode, namespace: str, config: Optional[Dict[str, Any]] = None
+    mode: MemoryMode, namespace: str, config: dict[str, Any] | None = None
 ) -> SomaFractalMemoryEnterprise:
     """
     Factory function to create a SomaFractalMemory instance based on the specified mode.
@@ -54,7 +53,11 @@ def create_memory_system(
         graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
         if graph_backend == "neo4j" and Neo4jGraphStore:
             neo = (config.get("graph", {}) or {}).get("neo4j", {})
-            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
+            graph_store = Neo4jGraphStore(
+                uri=neo.get("uri", "bolt://localhost:7687"),
+                user=neo.get("user", "neo4j"),
+                password=neo.get("password", "neo4j"),
+            )
         else:
             graph_store = NetworkXGraphStore()
         prediction_provider = NoPredictionProvider()
@@ -65,7 +68,11 @@ def create_memory_system(
         graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
         if graph_backend == "neo4j" and Neo4jGraphStore:
             neo = (config.get("graph", {}) or {}).get("neo4j", {})
-            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
+            graph_store = Neo4jGraphStore(
+                uri=neo.get("uri", "bolt://localhost:7687"),
+                user=neo.get("user", "neo4j"),
+                password=neo.get("password", "neo4j"),
+            )
         else:
             graph_store = NetworkXGraphStore()
         prediction_provider = OllamaPredictionProvider()
@@ -76,11 +83,19 @@ def create_memory_system(
         graph_backend = (config.get("graph", {}) or {}).get("backend", "networkx")
         if graph_backend == "neo4j" and Neo4jGraphStore:
             neo = (config.get("graph", {}) or {}).get("neo4j", {})
-            graph_store = Neo4jGraphStore(uri=neo.get("uri", "bolt://localhost:7687"), user=neo.get("user", "neo4j"), password=neo.get("password", "neo4j"))
+            graph_store = Neo4jGraphStore(
+                uri=neo.get("uri", "bolt://localhost:7687"),
+                user=neo.get("user", "neo4j"),
+                password=neo.get("password", "neo4j"),
+            )
         else:
             graph_store = NetworkXGraphStore()
         ext_pred_cfg = config.get("external_prediction")
-        if isinstance(ext_pred_cfg, dict) and ext_pred_cfg.get("api_key") and ext_pred_cfg.get("endpoint"):
+        if (
+            isinstance(ext_pred_cfg, dict)
+            and ext_pred_cfg.get("api_key")
+            and ext_pred_cfg.get("endpoint")
+        ):
             prediction_provider = ExternalPredictionProvider(
                 api_key=ext_pred_cfg["api_key"], endpoint=ext_pred_cfg["endpoint"]
             )
@@ -120,15 +135,21 @@ def create_memory_system(
         aperture_config = config.get("faiss_aperture", {})
         profile = aperture_config.get("profile", "fast")
         # Pass the entire config dict to allow for GPU and parameter overrides
-        vector_store = FaissApertureStore(vector_dim=vector_dim, profile=profile, config=aperture_config)
+        vector_store = FaissApertureStore(
+            vector_dim=vector_dim, profile=profile, config=aperture_config
+        )
     elif vector_backend in {"inmemory", "fractal", "fractal_inmemory"}:
         # Feature flag: env SFM_FRACTAL_BACKEND=1 or config vector.fractal_enabled
         import os as _os
+
         fractal_enabled = False
         if vector_backend in {"fractal", "fractal_inmemory"}:
             fractal_enabled = True
         else:
-            fractal_enabled = bool(vec_cfg.get("fractal_enabled", False) or _os.environ.get("SFM_FRACTAL_BACKEND") == "1")
+            fractal_enabled = bool(
+                vec_cfg.get("fractal_enabled", False)
+                or _os.environ.get("SFM_FRACTAL_BACKEND") == "1"
+            )
         if fractal_enabled and FractalInMemoryVectorStore is not None:
             fcfg = vec_cfg.get("fractal", {}) if isinstance(vec_cfg.get("fractal"), dict) else {}
             vector_store = FractalInMemoryVectorStore(
@@ -162,9 +183,9 @@ def create_memory_system(
         reconsolidation_enabled=mem_cfg.get("reconsolidation", {}).get("enabled", False),
         salience_threshold=float((mem_cfg.get("salience", {}) or {}).get("threshold", 0.0)),
         salience_weights=(mem_cfg.get("salience", {}) or {}).get("weights", {}),
-    # Novelty gate (optional): salience.novelty_gate and salience.novelty_threshold
-    novelty_gate_enabled=bool((mem_cfg.get("salience", {}) or {}).get("novelty_gate", False)),
-    novelty_threshold=float((mem_cfg.get("salience", {}) or {}).get("novelty_threshold", 0.0)),
+        # Novelty gate (optional): salience.novelty_gate and salience.novelty_threshold
+        novelty_gate_enabled=bool((mem_cfg.get("salience", {}) or {}).get("novelty_gate", False)),
+        novelty_threshold=float((mem_cfg.get("salience", {}) or {}).get("novelty_threshold", 0.0)),
         pruning_interval_seconds=mem_cfg.get("pruning_interval_seconds", 600),
         decay_config=mem_cfg.get("decay", {}).get("config"),
         anomaly_detection_enabled=mem_cfg.get("anomaly_detection", {}).get("enabled", False),

@@ -165,7 +165,7 @@ def neighbors(req: NeighborsRequest):
                 edges.append(
                     {
                         "from": list(fc),
-                        "to": list(to_coord) if isinstance(to_coord, (list, tuple)) else to_coord,
+                        "to": list(to_coord) if isinstance(to_coord, list | tuple) else to_coord,
                         "type": (meta or {}).get("type"),
                         "weight": float((meta or {}).get("weight", 1.0)),
                     }
@@ -187,7 +187,7 @@ def k_hop(req: KHopRequest):
     mem = get_mem()
     # Normalize starts
     starts = []
-    for s in (req.starts or []):
+    for s in req.starts or []:
         try:
             if isinstance(s, list) and len(s) >= 3:
                 starts.append((float(s[0]), float(s[1]), float(s[2])))

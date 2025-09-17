@@ -1,8 +1,9 @@
 import math
 import threading
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -27,7 +28,7 @@ class FractalInMemoryVectorStore(IVectorStore):
 
     def __init__(
         self,
-        centroids: Optional[int] = None,
+        centroids: int | None = None,
         beam_width: int = 4,
         max_candidates: int = 1024,
         rebuild_enabled: bool = True,
@@ -37,16 +38,16 @@ class FractalInMemoryVectorStore(IVectorStore):
         self._vector_dim = 0
         self.collection_name = ""
         self._lock = threading.RLock()
-        self._points: Dict[str, dict] = {}
-        self._vectors: Optional[np.ndarray] = None  # [N, D]
-        self._ids: List[str] = []
-        self._id_to_idx: Dict[str, int] = {}
+        self._points: dict[str, dict] = {}
+        self._vectors: np.ndarray | None = None  # [N, D]
+        self._ids: list[str] = []
+        self._id_to_idx: dict[str, int] = {}
         self._tombstones: set[str] = set()
 
         # Index structures
-        self._centroids: Optional[np.ndarray] = None  # [C, D]
-        self._assignments: Optional[np.ndarray] = None  # [N]
-        self._lists: List[List[int]] = []  # indices per centroid
+        self._centroids: np.ndarray | None = None  # [C, D]
+        self._assignments: np.ndarray | None = None  # [N]
+        self._lists: list[list[int]] = []  # indices per centroid
 
         # Config
         self._requested_centroids = centroids  # may be None (auto)
@@ -67,7 +68,7 @@ class FractalInMemoryVectorStore(IVectorStore):
             self.collection_name = namespace
             self._maybe_rebuild(force=True)
 
-    def upsert(self, points: List[Dict[str, Any]]) -> None:
+    def upsert(self, points: list[dict[str, Any]]) -> None:
         if not points:
             return
         with self._lock:
@@ -119,7 +120,7 @@ class FractalInMemoryVectorStore(IVectorStore):
 
             self._maybe_rebuild(force=False)
 
-    def search(self, vector: List[float], top_k: int) -> List[_Hit]:
+    def search(self, vector: list[float], top_k: int) -> list[_Hit]:
         k = max(0, int(top_k))
         if k == 0:
             return []
@@ -134,7 +135,7 @@ class FractalInMemoryVectorStore(IVectorStore):
                     q = q[: self._vector_dim]
 
             # Candidate selection
-            cand_indices: List[int]
+            cand_indices: list[int]
             if self._centroids is None or self._assignments is None or not self._lists:
                 # Fallback to scanning all
                 cand_indices = [i for i, pid in enumerate(self._ids) if pid not in self._tombstones]
@@ -185,14 +186,18 @@ class FractalInMemoryVectorStore(IVectorStore):
             V = self._vectors[np.array(cand_indices, dtype=np.int32), :]
             scores = self._cosine_batch(q, V)
             top_idx = np.argsort(-scores)[:k]
-            hits: List[_Hit] = []
+            hits: list[_Hit] = []
             for j in top_idx:
                 idx = cand_indices[int(j)]
                 pid = self._ids[idx]
-                hits.append(_Hit(id=pid, score=float(scores[int(j)]), payload=dict(self._points.get(pid, {}))))
+                hits.append(
+                    _Hit(
+                        id=pid, score=float(scores[int(j)]), payload=dict(self._points.get(pid, {}))
+                    )
+                )
             return hits
 
-    def delete(self, ids: List[str]) -> None:
+    def delete(self, ids: list[str]) -> None:
         if not ids:
             return
         with self._lock:
@@ -204,6 +209,7 @@ class FractalInMemoryVectorStore(IVectorStore):
         with self._lock:
             if self._vectors is None:
                 return iter(())
+
             # yield shallow records with payload attribute
             @dataclass
             class _Record:
@@ -214,7 +220,11 @@ class FractalInMemoryVectorStore(IVectorStore):
             for i, pid in enumerate(self._ids):
                 if pid in self._tombstones:
                     continue
-                yield _Record(id=pid, vector=self._vectors[i, :].tolist(), payload=dict(self._points.get(pid, {})))
+                yield _Record(
+                    id=pid,
+                    vector=self._vectors[i, :].tolist(),
+                    payload=dict(self._points.get(pid, {})),
+                )
 
     def health_check(self) -> bool:
         with self._lock:
@@ -224,7 +234,11 @@ class FractalInMemoryVectorStore(IVectorStore):
             if n == 0:
                 return True
             # If rebuild enabled and stale, still healthy but suggests maintenance.
-            return self._centroids is not None and self._assignments is not None and len(self._lists) > 0
+            return (
+                self._centroids is not None
+                and self._assignments is not None
+                and len(self._lists) > 0
+            )
 
     # ---- Internals ----
     def _maybe_rebuild(self, force: bool) -> None:
@@ -288,7 +302,7 @@ class FractalInMemoryVectorStore(IVectorStore):
 
         # Final assignments
         assign = self._nearest_centroid(X, centroids)
-        lists: List[List[int]] = [[] for _ in range(C)]
+        lists: list[list[int]] = [[] for _ in range(C)]
         for i, cidx in enumerate(assign):
             pid = self._ids[i]
             if pid in self._tombstones:

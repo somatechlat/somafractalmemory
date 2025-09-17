@@ -4,9 +4,10 @@ import logging
 import pickle
 import time
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
 
 class WALManager:
     def __init__(self, namespace: str, kv_store: Any) -> None:
@@ -16,11 +17,13 @@ class WALManager:
     def _wal_key(self, wid: str) -> str:
         return f"{self.namespace}:wal:{wid}"
 
-    def write(self, entry: Dict[str, Any]) -> str:
+    def write(self, entry: dict[str, Any]) -> str:
         wid = str(uuid.uuid4())
         payload = dict(entry)
         payload.update({"id": wid, "status": "pending", "ts": time.time()})
-        self.kv_store.set(self._wal_key(wid), pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
+        self.kv_store.set(
+            self._wal_key(wid), pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+        )
         return wid
 
     def commit(self, wid: str) -> None:
@@ -30,7 +33,9 @@ class WALManager:
                 return
             entry = pickle.loads(raw)
             entry["status"] = "committed"
-            self.kv_store.set(self._wal_key(wid), pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL))
+            self.kv_store.set(
+                self._wal_key(wid), pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL)
+            )
         except Exception:
             pass
 
@@ -43,7 +48,9 @@ class WALManager:
             entry["status"] = "failed"
             if error:
                 entry["error"] = error
-            self.kv_store.set(self._wal_key(wid), pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL))
+            self.kv_store.set(
+                self._wal_key(wid), pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL)
+            )
         except Exception:
             pass
 
@@ -59,6 +66,8 @@ class WALManager:
                     logger.info(f"Reconciling WAL entry {entry.get('id')}")
                     # For now, mark as committed
                     entry["status"] = "committed"
-                    self.kv_store.set(wal_key, pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL))
+                    self.kv_store.set(
+                        wal_key, pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL)
+                    )
             except Exception as e:
                 logger.warning(f"Error during WAL reconcile for {wal_key}: {e}")

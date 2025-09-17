@@ -23,4 +23,3 @@ def test_delete_idempotent(mem: SomaFractalMemoryEnterprise):
     # Second delete should not raise
     mem.delete(coord)
     assert mem.retrieve(coord) is None
-

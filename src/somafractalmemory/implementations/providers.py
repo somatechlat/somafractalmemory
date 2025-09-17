@@ -1,7 +1,5 @@
+from typing import Any
 
-from typing import Any, Dict, List, Tuple
-
-import numpy as np
 from transformers import AutoModel, AutoTokenizer
 
 from somafractalmemory.interfaces.providers import (
@@ -17,11 +15,13 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         return self.embed_texts([text])[0]
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=512)
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        inputs = self.tokenizer(
+            texts, padding=True, truncation=True, return_tensors="pt", max_length=512
+        )
         with self.model.no_grad():
             outputs = self.model(**inputs)
         # Perform pooling
@@ -32,6 +32,6 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
 class StubPredictionProvider(IPredictionProvider):
     """A stub implementation of the prediction provider for testing."""
 
-    def generate_prediction(self, data: Dict[str, Any]) -> Tuple[str, float]:
+    def generate_prediction(self, data: dict[str, Any]) -> tuple[str, float]:
         """Returns a dummy prediction."""
         return "This is a dummy prediction.", 0.9

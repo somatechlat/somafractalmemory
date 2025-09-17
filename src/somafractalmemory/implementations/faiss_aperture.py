@@ -1,6 +1,7 @@
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -28,7 +29,9 @@ class FaissApertureStore(IVectorStore):
     profiles, including IVF-PQ for speed and HNSW for high recall.
     """
 
-    def __init__(self, vector_dim: int, profile: str = "fast", config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self, vector_dim: int, profile: str = "fast", config: dict[str, Any] | None = None
+    ) -> None:
         if faiss is None:
             raise ImportError(
                 "faiss-cpu or faiss-gpu is required for FaissApertureStore. Run 'pip install faiss-cpu'."
@@ -42,20 +45,34 @@ class FaissApertureStore(IVectorStore):
         # --- Performance Profiles & Configuration ---
         self.profile = profile
 
-        default_profiles: Dict[str, Dict[str, Any]] = {
+        default_profiles: dict[str, dict[str, Any]] = {
             "fast": {
-                "index_type": "ivfpq", "nlist": 4096, "nprobe": 16, "m": 8, "nbits": 8, "rerank_k": 128,
+                "index_type": "ivfpq",
+                "nlist": 4096,
+                "nprobe": 16,
+                "m": 8,
+                "nbits": 8,
+                "rerank_k": 128,
             },
             "balanced": {
-                "index_type": "ivfpq", "nlist": 4096, "nprobe": 32, "m": 8, "nbits": 8, "rerank_k": 256,
+                "index_type": "ivfpq",
+                "nlist": 4096,
+                "nprobe": 32,
+                "m": 8,
+                "nbits": 8,
+                "rerank_k": 256,
             },
             "high_recall": {
-                "index_type": "hnsw", "hnsw_m": 64, "ef_construction": 128, "ef_search": 64, "rerank_k": 256,
+                "index_type": "hnsw",
+                "hnsw_m": 64,
+                "ef_construction": 128,
+                "ef_search": 64,
+                "rerank_k": 256,
             },
         }
 
         # Start with profile defaults, then override with user-provided config
-        params: Dict[str, Any] = default_profiles.get(profile, {}).copy()
+        params: dict[str, Any] = default_profiles.get(profile, {}).copy()
         params.update(config)
 
         # Set attributes from the final parameters
@@ -87,10 +104,10 @@ class FaissApertureStore(IVectorStore):
         self.index = None
 
         # Stores for re-ranking, payloads, and ID mapping
-        self._vector_store: Dict[str, np.ndarray] = {}
-        self._payload_store: Dict[str, dict] = {}
-        self._string_to_int_id: Dict[str, int] = {}
-        self._int_to_string_id: Dict[int, str] = {}
+        self._vector_store: dict[str, np.ndarray] = {}
+        self._payload_store: dict[str, dict] = {}
+        self._string_to_int_id: dict[str, int] = {}
+        self._int_to_string_id: dict[int, str] = {}
         self._next_int_id = 0
 
     # ---------------- Internal helpers ----------------
@@ -115,7 +132,9 @@ class FaissApertureStore(IVectorStore):
 
     def setup(self, vector_dim: int, namespace: str) -> None:
         if self.d != vector_dim:
-            raise ValueError(f"Store initialized with dim {self.d} but setup called with {vector_dim}")
+            raise ValueError(
+                f"Store initialized with dim {self.d} but setup called with {vector_dim}"
+            )
         self.collection_name = namespace
 
     def _initialize_index(self) -> None:
@@ -129,9 +148,7 @@ class FaissApertureStore(IVectorStore):
             else:
                 self.opq_matrix = faiss.OPQMatrix(self.d, self.m)
                 quantizer = faiss.IndexFlatL2(self.d)
-                ivf_index = faiss.IndexIVFPQ(
-                    quantizer, self.d, self.nlist, self.m, self.nbits
-                )
+                ivf_index = faiss.IndexIVFPQ(quantizer, self.d, self.nlist, self.m, self.nbits)
                 id_mapped_index = faiss.IndexIDMap2(ivf_index)
                 self.index = faiss.IndexPreTransform(self.opq_matrix, id_mapped_index)
         elif self.index_type == "hnsw":
@@ -147,10 +164,12 @@ class FaissApertureStore(IVectorStore):
                     raise AttributeError("faiss-gpu symbols not available")
                 res = StdGpuRes()
                 self.index = cpu_to_gpu(res, self.gpu_id, self.index)
-            except AttributeError:
-                raise ImportError("faiss-gpu is required for GPU support. Please install it.")
+            except AttributeError as e:
+                raise ImportError(
+                    "faiss-gpu is required for GPU support. Please install it."
+                ) from e
             except Exception as e:
-                raise RuntimeError(f"Failed to move index to GPU {self.gpu_id}: {e}")
+                raise RuntimeError(f"Failed to move index to GPU {self.gpu_id}: {e}") from e
 
     def _train(self, vectors: np.ndarray) -> None:
         """Trains the OPQ matrix and IVF-PQ index."""
@@ -190,7 +209,7 @@ class FaissApertureStore(IVectorStore):
                     raise ValueError("Training vectors contain NaN or infinite values")
 
                 # Train the OPQ/IVF-PQ pipeline. Note: faiss train() returns None on success.
-                if hasattr(self.index, 'train'):
+                if hasattr(self.index, "train"):
                     _ = self.index.train(vectors)  # type: ignore
                 else:
                     raise RuntimeError("FAISS index does not support training")
@@ -200,6 +219,7 @@ class FaissApertureStore(IVectorStore):
             except Exception as e:
                 # Log the error and fall back to Flat index if training fails
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"FAISS training failed: {e}. Falling back to Flat index.")
 
@@ -211,13 +231,13 @@ class FaissApertureStore(IVectorStore):
         else:
             raise TypeError("Index is not of expected type IndexPreTransform")
 
-    def upsert(self, points: List[Dict[str, Any]]) -> None:
+    def upsert(self, points: list[dict[str, Any]]) -> None:
         if not points:
             return
 
         # --- Step 1: Buffer new points and decide on indexing strategy ---
-        ids_to_index: List[str] = []
-        vectors_to_index: Optional[np.ndarray] = None
+        ids_to_index: list[str] = []
+        vectors_to_index: np.ndarray | None = None
 
         if (not self.is_trained) and self.index_type == "ivfpq":
             # Buffer all incoming points until we have enough to train (>= nlist)
@@ -259,7 +279,9 @@ class FaissApertureStore(IVectorStore):
                 self._payload_store[p["id"]] = p["payload"]
             ids_to_index = [p["id"] for p in points]
             # Build a 2D matrix with guaranteed dimension
-            vectors_to_index = np.vstack([self._vector_store[i] for i in ids_to_index]).astype(np.float32)
+            vectors_to_index = np.vstack([self._vector_store[i] for i in ids_to_index]).astype(
+                np.float32
+            )
 
         if self.index is None:
             self._initialize_index()
@@ -271,7 +293,7 @@ class FaissApertureStore(IVectorStore):
             return
 
         # --- Step 2: Generate integer IDs and add to the Faiss index ---
-        int_ids: List[int] = []
+        int_ids: list[int] = []
         for string_id in ids_to_index:
             if string_id not in self._string_to_int_id:
                 self._string_to_int_id[string_id] = self._next_int_id
@@ -285,7 +307,7 @@ class FaissApertureStore(IVectorStore):
         if self.index is not None and len(vectors_to_index) > 0:
             self.index.add_with_ids(vectors_to_index, np.array(int_ids, dtype=np.int64))  # type: ignore
 
-    def search(self, vector: List[float], top_k: int) -> List[FaissHit]:
+    def search(self, vector: list[float], top_k: int) -> list[FaissHit]:
         if not self.is_trained or self.index is None or self.index.ntotal == 0:
             return []
 
@@ -330,8 +352,8 @@ class FaissApertureStore(IVectorStore):
             return []
 
         # Map integer IDs back to string IDs and fetch full vectors, keeping IDs and vectors aligned
-        filtered_ids: List[str] = []
-        filtered_vecs: List[np.ndarray] = []
+        filtered_ids: list[str] = []
+        filtered_vecs: list[np.ndarray] = []
         for int_id in candidate_int_ids:
             sid = self._int_to_string_id.get(int_id)
             if sid is None:
@@ -353,10 +375,12 @@ class FaissApertureStore(IVectorStore):
         exact_distances_sq = np.sum(diff**2, axis=1)
 
         # Combine and sort by exact distance, preserving alignment
-        reranked_results = sorted(zip(exact_distances_sq, filtered_ids), key=lambda x: x[0])
+        reranked_results = sorted(
+            zip(exact_distances_sq, filtered_ids, strict=False), key=lambda x: x[0]
+        )
 
         # Build the final list of hits
-        final_hits: List[FaissHit] = []
+        final_hits: list[FaissHit] = []
         for dist_sq, string_id in reranked_results[:top_k]:
             final_hits.append(
                 FaissHit(
@@ -367,12 +391,14 @@ class FaissApertureStore(IVectorStore):
             )
         return final_hits
 
-    def delete(self, ids: List[str]) -> None:
+    def delete(self, ids: list[str]) -> None:
         if not self.is_trained or self.index is None:
             return
         assert faiss is not None, "FAISS must be installed to delete from the index"
 
-        int_ids_to_remove = [self._string_to_int_id[sid] for sid in ids if sid in self._string_to_int_id]
+        int_ids_to_remove = [
+            self._string_to_int_id[sid] for sid in ids if sid in self._string_to_int_id
+        ]
         if int_ids_to_remove:
             # Try to find an index object that supports remove_ids
             target = None

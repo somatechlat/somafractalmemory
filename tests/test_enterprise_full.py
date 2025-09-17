@@ -1,5 +1,3 @@
-import time
-
 import numpy as np
 import pytest
 from redis.exceptions import ConnectionError
@@ -10,10 +8,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
-    config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True}
-    }
+    config = {"qdrant": {"path": str(tmp_path / "qdrant.db")}, "redis": {"testing": True}}
     return create_memory_system(MemoryMode.LOCAL_AGENT, "test_ns", config=config)
 
 
@@ -40,7 +35,7 @@ def test_distributed_lock(mem: SomaFractalMemoryEnterprise):
 
 def test_store_vector_only(mem: SomaFractalMemoryEnterprise):
     vector = np.random.rand(mem.vector_dim).astype("float32")
-    mem.store_vector_only((0,0,0), vector, payload={"meta": "data"})
+    mem.store_vector_only((0, 0, 0), vector, payload={"meta": "data"})
     # Verification would require a search, but we're just testing the call
     results = mem.recall("a query", top_k=1)
     assert len(results) > 0
@@ -50,17 +45,17 @@ def test_backend_failover(mem: SomaFractalMemoryEnterprise, monkeypatch):
     # Simulate Redis connection error
     def mock_ping_fail():
         raise ConnectionError
-    
+
     monkeypatch.setattr(mem.kv_store, "health_check", mock_ping_fail)
-    
+
     health = mem.health_check()
     assert not health["kv_store"]
-    
+
     # Simulate Qdrant failure
     def mock_qdrant_fail():
         raise Exception("Qdrant down")
-        
+
     monkeypatch.setattr(mem.vector_store, "health_check", mock_qdrant_fail)
-    
+
     health = mem.health_check()
     assert not health["vector_store"]

@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
@@ -30,4 +28,3 @@ def test_export_import_jsonl(tmp_path: Path):
     got = m2.retrieve(c)
     assert got is not None
     assert got.get("task") == "export me"
-

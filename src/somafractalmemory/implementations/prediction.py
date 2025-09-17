@@ -1,30 +1,33 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
 from somafractalmemory.interfaces.prediction import IPredictionProvider
 
 
-def _safe_requests_get(url: str) -> Optional[Any]:
+def _safe_requests_get(url: str) -> Any | None:
     """Lazily import requests and perform a GET; return None on failure/missing."""
     try:
         import requests  # type: ignore
+
         return requests.get(url)
     except Exception:
         return None
 
+
 class NoPredictionProvider(IPredictionProvider):
-    def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
+    def predict(self, memory_data: dict[str, Any]) -> tuple[str, float]:
         return "", 0.0
 
     def health_check(self) -> bool:
         return True
 
+
 class OllamaPredictionProvider(IPredictionProvider):
-    def __init__(self, host: str = 'http://localhost:11434') -> None:
+    def __init__(self, host: str = "http://localhost:11434") -> None:
         self.host = host
 
-    def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
+    def predict(self, memory_data: dict[str, Any]) -> tuple[str, float]:
         # Placeholder for actual Ollama call
         predicted_outcome = "Predicted by Ollama."
         confidence = np.random.uniform(0.7, 0.99)
@@ -34,12 +37,13 @@ class OllamaPredictionProvider(IPredictionProvider):
         resp = _safe_requests_get(self.host)
         return bool(resp and resp.status_code == 200)
 
+
 class ExternalPredictionProvider(IPredictionProvider):
     def __init__(self, api_key: str, endpoint: str) -> None:
         self.api_key = api_key
         self.endpoint = endpoint
 
-    def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
+    def predict(self, memory_data: dict[str, Any]) -> tuple[str, float]:
         # Placeholder for actual external API call
         predicted_outcome = "Predicted by External API."
         confidence = np.random.uniform(0.8, 0.99)

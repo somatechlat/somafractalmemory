@@ -1,6 +1,8 @@
 import logging
 import uuid
-from typing import Any, ContextManager, Dict, Iterator, List, Mapping, Optional, cast
+from collections.abc import Iterator, Mapping
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 import numpy as np
 
@@ -9,15 +11,20 @@ from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
 # Optional dependencies: import lazily/guarded so core package works without extras
 try:  # redis is optional
     import redis as _redis
+
     try:
         from redis.exceptions import ConnectionError as RedisConnectionError
     except Exception:  # pragma: no cover - fallback
+
         class RedisConnectionError(Exception):
             pass
+
 except Exception:  # pragma: no cover - optional
     _redis = None
+
     class RedisConnectionError(Exception):
         pass
+
 
 try:  # fakeredis is optional (used for testing)
     import fakeredis as _fakeredis
@@ -32,8 +39,8 @@ except Exception:  # pragma: no cover - optional
 import math
 import threading
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +48,8 @@ logger = logging.getLogger(__name__)
 # Minimal in-proc Redis-like stub when fakeredis isn't available
 class _InProcRedisStub:
     def __init__(self):
-        self._data: Dict[str, bytes] = {}
-        self._hashes: Dict[str, Dict[bytes, bytes]] = defaultdict(dict)
+        self._data: dict[str, bytes] = {}
+        self._hashes: dict[str, dict[bytes, bytes]] = defaultdict(dict)
 
     def set(self, key: str, value: bytes):
         self._data[str(key)] = value
@@ -56,12 +63,13 @@ class _InProcRedisStub:
 
     def scan_iter(self, pattern: str):
         import re
-        regex = re.compile(pattern.replace('*', '.*'))
+
+        regex = re.compile(pattern.replace("*", ".*"))
         for k in list(self._data.keys()) + list(self._hashes.keys()):
             if regex.match(k):
-                yield k.encode('utf-8')
+                yield k.encode("utf-8")
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         return dict(self._hashes.get(str(key), {}))
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
@@ -74,8 +82,10 @@ class _InProcRedisStub:
     def ping(self) -> bool:
         return True
 
+
 class InMemoryKeyValueStore(IKeyValueStore):
     """An in-memory implementation of the key-value store for testing and ON_DEMAND mode."""
+
     def __init__(self):
         self._data = {}
         self._lock = threading.Lock()
@@ -83,7 +93,7 @@ class InMemoryKeyValueStore(IKeyValueStore):
     def set(self, key: str, value: bytes):
         self._data[key] = value
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         return self._data.get(key)
 
     def delete(self, key: str):
@@ -93,34 +103,46 @@ class InMemoryKeyValueStore(IKeyValueStore):
     def scan_iter(self, pattern: str) -> Iterator[str]:
         # A simple pattern matcher for in-memory store
         import re
-        regex = re.compile(pattern.replace('*', '.*'))
+
+        regex = re.compile(pattern.replace("*", ".*"))
         return (key for key in self._data if regex.match(key))
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         # This is a simplified implementation for non-hash types
         value = self.get(key)
-        return {b'data': value} if value else {}
+        return {b"data": value} if value else {}
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
         # This is a simplified implementation for non-hash types
         # It will store the mapping as a single value, e.g., pickled.
         import pickle
+
         self.set(key, pickle.dumps(mapping))
 
-    def lock(self, name: str, timeout: int = 10) -> ContextManager:
+    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         return self._lock
 
     def health_check(self) -> bool:
         return True
 
+
 class RedisKeyValueStore(IKeyValueStore):
     """Redis implementation of the key-value store interface."""
-    def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0, testing: bool = False, locks_mode: str = "redis", redlock_endpoints: Optional[List[str]] = None):
+
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 6379,
+        db: int = 0,
+        testing: bool = False,
+        locks_mode: str = "redis",
+        redlock_endpoints: list[str] | None = None,
+    ):
         self._testing = testing
         self._locks_mode = (locks_mode or "redis").lower()
         self._redlock_endpoints = redlock_endpoints or []
         # Always prepare an in-proc lock map for tests and fakeredis
-        self._inproc_locks: Dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
+        self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
         if testing:
             if _fakeredis is not None:
                 self.client = _fakeredis.FakeRedis()
@@ -129,35 +151,36 @@ class RedisKeyValueStore(IKeyValueStore):
                 self.client = _InProcRedisStub()
         else:
             if _redis is None:
-                raise ImportError("redis extra is required for RedisKeyValueStore. Install with `pip install somafractalmemory[redis]`.")
+                raise ImportError(
+                    "redis extra is required for RedisKeyValueStore. Install with `pip install somafractalmemory[redis]`."
+                )
             self.client = _redis.Redis(host=host, port=port, db=db)
 
-        
     def set(self, key: str, value: bytes):
         self.client.set(key, value)
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         # Some redis clients may be typed as Any/awaitable by static checkers; cast to Optional[bytes]
-        return cast(Optional[bytes], self.client.get(key))
+        return cast(bytes | None, self.client.get(key))
 
     def delete(self, key: str):
         self.client.delete(key)
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
         for key in self.client.scan_iter(pattern):
-            if isinstance(key, (bytes, bytearray)):
-                yield key.decode('utf-8')
+            if isinstance(key, bytes | bytearray):
+                yield key.decode("utf-8")
             else:
                 yield str(key)
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         result: Any = self.client.hgetall(key)
-        return dict(result) if isinstance(result, dict) else cast(Dict[bytes, bytes], result)
+        return dict(result) if isinstance(result, dict) else cast(dict[bytes, bytes], result)
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
         self.client.hset(key, mapping=dict(mapping))
 
-    def lock(self, name: str, timeout: int = 10) -> ContextManager:
+    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         """Return a lock. Testing/fakeredis: in-process RLock. Redlock mode returns a simple in-proc emulation.
 
         Note: For true Redlock, configure multiple Redis endpoints and provide a Redlock implementation.
@@ -178,11 +201,15 @@ class RedisKeyValueStore(IKeyValueStore):
         except RedisConnectionError:
             return False
 
+
 class QdrantVectorStore(IVectorStore):
     """Qdrant implementation of the vector store interface."""
+
     def __init__(self, collection_name: str, **kwargs):
         if _qdrant_client is None:
-            raise ImportError("qdrant-client extra is required for QdrantVectorStore. Install with `pip install somafractalmemory[qdrant]`.")
+            raise ImportError(
+                "qdrant-client extra is required for QdrantVectorStore. Install with `pip install somafractalmemory[qdrant]`."
+            )
         self._init_kwargs = kwargs
         self.client = _qdrant_client.QdrantClient(**self._init_kwargs)
         self.collection_name = collection_name
@@ -204,16 +231,19 @@ class QdrantVectorStore(IVectorStore):
             current_dim = None
             # Import qdrant models lazily
             from qdrant_client.http.models import Distance, VectorParams
+
             try:
                 exists = bool(self.client.collection_exists(self.collection_name))
                 if exists:
                     # Check if existing collection has correct dimensions
-                    collection_info = self.client.get_collection(collection_name=self.collection_name)
+                    collection_info = self.client.get_collection(
+                        collection_name=self.collection_name
+                    )
                     # Qdrant can return VectorParams or a dict of named vectors
                     vectors_any = cast(Any, getattr(collection_info.config.params, "vectors", None))
                     try:
                         if hasattr(vectors_any, "size"):
-                            current_dim = int(getattr(vectors_any, "size"))
+                            current_dim = int(vectors_any.size)
                         elif isinstance(vectors_any, dict) and vectors_any:
                             first_params = next(iter(vectors_any.values()))
                             current_dim = int(getattr(first_params, "size", 0)) or None
@@ -224,12 +254,14 @@ class QdrantVectorStore(IVectorStore):
             except Exception:
                 # Fallback: attempt to get the collection
                 try:
-                    collection_info = self.client.get_collection(collection_name=self.collection_name)
+                    collection_info = self.client.get_collection(
+                        collection_name=self.collection_name
+                    )
                     exists = True
                     vectors_any = cast(Any, getattr(collection_info.config.params, "vectors", None))
                     try:
                         if hasattr(vectors_any, "size"):
-                            current_dim = int(getattr(vectors_any, "size"))
+                            current_dim = int(vectors_any.size)
                         elif isinstance(vectors_any, dict) and vectors_any:
                             first_params = next(iter(vectors_any.values()))
                             current_dim = int(getattr(first_params, "size", 0)) or None
@@ -239,7 +271,7 @@ class QdrantVectorStore(IVectorStore):
                         current_dim = None
                 except Exception:
                     exists = False
-            
+
             if not exists:
                 self.client.create_collection(
                     collection_name=self.collection_name,
@@ -247,7 +279,9 @@ class QdrantVectorStore(IVectorStore):
                 )
             elif current_dim != vector_dim:
                 # Recreate collection with correct dimensions
-                logger.warning(f"Recreating collection {self.collection_name} with correct vector dimension {vector_dim} (was {current_dim})")
+                logger.warning(
+                    f"Recreating collection {self.collection_name} with correct vector dimension {vector_dim} (was {current_dim})"
+                )
                 self.client.delete_collection(collection_name=self.collection_name)
                 self.client.create_collection(
                     collection_name=self.collection_name,
@@ -258,7 +292,7 @@ class QdrantVectorStore(IVectorStore):
             # As a last resort, ignore setup errors; tests cover behavior
             pass
 
-    def upsert(self, points: List[Dict[str, Any]]):
+    def upsert(self, points: list[dict[str, Any]]):
         """Upsert points with robust dimension validation and error handling."""
         if not points:
             return
@@ -283,7 +317,7 @@ class QdrantVectorStore(IVectorStore):
                     # Validate dimension consistency
                     if len(vec_array) == 0:
                         raise ValueError("Empty vector")
-                    
+
                     # Check for NaN or infinite values
                     if not np.isfinite(vec_array).all():
                         raise ValueError("Vector contains NaN or infinite values")
@@ -308,18 +342,17 @@ class QdrantVectorStore(IVectorStore):
             logger.error(f"Vector store upsert failed: {e}")
             raise
 
-    def _upsert_impl(self, points: List[Dict[str, Any]]):
+    def _upsert_impl(self, points: list[dict[str, Any]]):
         """Internal upsert implementation after validation."""
         # Import models lazily to avoid import-time errors when qdrant-client isn't installed
         from qdrant_client.http.models import PointStruct
-        point_structs = [PointStruct(id=p["id"], vector=p["vector"], payload=p["payload"]) for p in points]
-        self.client.upsert(
-            collection_name=self.collection_name,
-            wait=True,
-            points=point_structs
-        )
 
-    def _search_impl(self, query_vector: List[float], limit: int, **kwargs) -> List[Dict[str, Any]]:
+        point_structs = [
+            PointStruct(id=p["id"], vector=p["vector"], payload=p["payload"]) for p in points
+        ]
+        self.client.upsert(collection_name=self.collection_name, wait=True, points=point_structs)
+
+    def _search_impl(self, query_vector: list[float], limit: int, **kwargs) -> list[dict[str, Any]]:
         """Internal search implementation after validation."""
         search_result = self.client.search(
             collection_name=self.collection_name,
@@ -329,7 +362,7 @@ class QdrantVectorStore(IVectorStore):
         )
         return [hit.payload for hit in search_result if hit.payload is not None]
 
-    def search(self, vector: List[float], top_k: int) -> List[Any]:
+    def search(self, vector: list[float], top_k: int) -> list[Any]:
         # Newer API uses query_points; keep a fallback to deprecated search
         try:
             hits = self.client.query_points(
@@ -340,15 +373,14 @@ class QdrantVectorStore(IVectorStore):
             ).points
         except Exception:
             hits = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=vector,
-                limit=top_k
+                collection_name=self.collection_name, query_vector=vector, limit=top_k
             )
         return hits
 
-    def delete(self, ids: List[str]):
+    def delete(self, ids: list[str]):
         # Qdrant point IDs can be strings or UUIDs. We'll stick to strings as passed.
         from qdrant_client.http.models import PointIdsList
+
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=PointIdsList(points=[i for i in ids if i]),
@@ -356,13 +388,19 @@ class QdrantVectorStore(IVectorStore):
         )
 
     def scroll(self) -> Iterator[Any]:
-        records, next_page_offset = self.client.scroll(collection_name=self.collection_name, limit=100, with_payload=True)
+        records, next_page_offset = self.client.scroll(
+            collection_name=self.collection_name, limit=100, with_payload=True
+        )
         while records:
-            for record in records:
-                yield record
+            yield from records
             if next_page_offset is None:
                 break
-            records, next_page_offset = self.client.scroll(collection_name=self.collection_name, limit=100, with_payload=True, offset=next_page_offset)
+            records, next_page_offset = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=100,
+                with_payload=True,
+                offset=next_page_offset,
+            )
 
     def health_check(self) -> bool:
         try:
@@ -409,30 +447,30 @@ class InMemoryVectorStore(IVectorStore):
             try:
                 pid = str(p["id"]) if "id" in p else str(uuid.uuid4())
                 vec = p.get("vector", [])
-                
+
                 # Validate vector type and convert if needed
-                if hasattr(vec, 'tolist') and hasattr(vec, 'ndim'):  # numpy array
+                if hasattr(vec, "tolist") and hasattr(vec, "ndim"):  # numpy array
                     vec = vec.tolist()
                 elif not isinstance(vec, list):
                     raise ValueError(f"Invalid vector type: {type(vec)}")
-                
+
                 # Ensure vector is 1D and contains only floats
                 vec = [float(x) for x in vec]
-                
+
                 # Validate dimension consistency
                 if self._vector_dim and len(vec) != self._vector_dim:
                     if len(vec) < self._vector_dim:
                         vec = vec + [0.0] * (self._vector_dim - len(vec))
                     else:
                         vec = vec[: self._vector_dim]
-                
+
                 # Check for NaN or infinite values
                 if not all(math.isfinite(x) for x in vec):
                     raise ValueError("Vector contains NaN or infinite values")
-                
+
                 payload = dict(p.get("payload", {}))
                 self._points[pid] = InMemoryVectorStore._Record(id=pid, vector=vec, payload=payload)
-                
+
             except Exception as e:
                 logger.warning(f"Skipping invalid point {p.get('id', 'unknown')}: {e}")
                 continue
@@ -442,7 +480,7 @@ class InMemoryVectorStore(IVectorStore):
         dot = 0.0
         na = 0.0
         nb = 0.0
-        for xa, xb in zip(a, b):
+        for xa, xb in zip(a, b, strict=False):
             dot += xa * xb
             na += xa * xa
             nb += xb * xb
@@ -475,7 +513,9 @@ class InMemoryVectorStore(IVectorStore):
         """Iterate over all stored records, yielding objects with `.payload` for API compatibility."""
         # Yield shallow copies to avoid accidental external mutation
         for rec in list(self._points.values()):
-            yield InMemoryVectorStore._Record(id=rec.id, vector=list(rec.vector), payload=dict(rec.payload))
+            yield InMemoryVectorStore._Record(
+                id=rec.id, vector=list(rec.vector), payload=dict(rec.payload)
+            )
 
     def health_check(self) -> bool:
         return True

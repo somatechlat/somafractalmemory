@@ -72,7 +72,6 @@ def test_faiss_aperture_delete(faiss_aperture_store):
     if faiss_aperture_store.index_type == "ivfpq":
         assert faiss_aperture_store.is_trained
 
-
     # Add the point to be deleted
     vec_to_del = np.random.rand(dim).astype("float32")
     vec_to_del /= np.linalg.norm(vec_to_del)

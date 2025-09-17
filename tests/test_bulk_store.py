@@ -1,16 +1,18 @@
 import json
 
-import pytest
-
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_store_memories_bulk_core(tmp_path):
-    mem = create_memory_system(MemoryMode.LOCAL_AGENT, "bulk_core", config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}})
+    mem = create_memory_system(
+        MemoryMode.LOCAL_AGENT,
+        "bulk_core",
+        config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
+    )
     items = [
-        ((1,1,1), {"d": 1}, MemoryType.EPISODIC),
-        ((2,2,2), {"f": 2}, MemoryType.SEMANTIC),
+        ((1, 1, 1), {"d": 1}, MemoryType.EPISODIC),
+        ((2, 2, 2), {"f": 2}, MemoryType.SEMANTIC),
     ]
     mem.store_memories_bulk(items)
     all_mems = mem.get_all_memories()
@@ -20,7 +22,12 @@ def test_store_memories_bulk_core(tmp_path):
 def test_cli_store_bulk(tmp_path, capsys):
     from somafractalmemory import cli
     from somafractalmemory.factory import MemoryMode, create_memory_system
-    shared_mem = create_memory_system(MemoryMode.LOCAL_AGENT, "cli_bulk", config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "bulk_shared.db")}})
+
+    shared_mem = create_memory_system(
+        MemoryMode.LOCAL_AGENT,
+        "cli_bulk",
+        config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "bulk_shared.db")}},
+    )
     cli.create_memory_system = lambda *a, **k: shared_mem
 
     data = [
@@ -31,16 +38,26 @@ def test_cli_store_bulk(tmp_path, capsys):
     fpath.write_text(json.dumps(data))
 
     cfg_path = tmp_path / "cfg.json"
-    cfg_path.write_text(json.dumps({"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "bulk_cli.db")}}))
+    cfg_path.write_text(
+        json.dumps({"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "bulk_cli.db")}})
+    )
 
-    cli.sys = __import__('sys')
+    cli.sys = __import__("sys")
     cli.sys.argv = [
-        "soma", "--mode", "local_agent", "--namespace", "cli_bulk", "--config-json", str(cfg_path),
-        "store-bulk", "--file", str(fpath)
+        "soma",
+        "--mode",
+        "local_agent",
+        "--namespace",
+        "cli_bulk",
+        "--config-json",
+        str(cfg_path),
+        "store-bulk",
+        "--file",
+        str(fpath),
     ]
     cli.main()
     out = capsys.readouterr().out.strip().splitlines()
     import json as _json
+
     resp = _json.loads(out[-1]) if out else {}
     assert resp.get("stored") == 2
-

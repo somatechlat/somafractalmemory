@@ -1,5 +1,3 @@
-import time
-
 import pytest
 
 from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
@@ -53,4 +51,3 @@ def test_find_hybrid_with_context(mem: SomaFractalMemoryEnterprise):
     res = mem.find_hybrid_with_context("email", {"channel": "gmail"}, top_k=3)
     assert isinstance(res, list)
     assert any(isinstance(r, dict) for r in res)
-

@@ -1,6 +1,3 @@
-import os
-import random
-
 import numpy as np
 
 from somafractalmemory.implementations.fractal_inmemory import (

@@ -1,17 +1,21 @@
 # embedder.py - Handles multi-modal embeddings
 
-import hashlib
 import logging
-from typing import Union
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
 class MultiModalEmbedder:
     """Handles multi-modal embedding (text, image, audio)."""
 
-    def __init__(self, text_model_name="microsoft/codebert-base", image_model_name="openai/clip-vit-base-patch16", audio_model_name="openai/whisper-base"):
+    def __init__(
+        self,
+        text_model_name="microsoft/codebert-base",
+        image_model_name="openai/clip-vit-base-patch16",
+        audio_model_name="openai/whisper-base",
+    ):
         self.text_model_name = text_model_name
         self.image_model_name = image_model_name
         self.audio_model_name = audio_model_name
@@ -21,6 +25,7 @@ class MultiModalEmbedder:
         # Text embedding
         try:
             from transformers import AutoModel, AutoTokenizer
+
             self.text_tokenizer = AutoTokenizer.from_pretrained(self.text_model_name)
             self.text_model = AutoModel.from_pretrained(self.text_model_name, use_safetensors=True)
         except Exception as e:
@@ -31,8 +36,11 @@ class MultiModalEmbedder:
         # Image embedding
         try:
             from transformers import CLIPModel, CLIPProcessor
+
             self.image_processor = CLIPProcessor.from_pretrained(self.image_model_name)
-            self.image_model = CLIPModel.from_pretrained(self.image_model_name, use_safetensors=True)
+            self.image_model = CLIPModel.from_pretrained(
+                self.image_model_name, use_safetensors=True
+            )
         except Exception as e:
             logger.warning(f"Image model loading failed: {e}")
             self.image_processor = None
@@ -41,8 +49,11 @@ class MultiModalEmbedder:
         # Audio embedding
         try:
             from transformers import WhisperModel, WhisperProcessor
+
             self.audio_processor = WhisperProcessor.from_pretrained(self.audio_model_name)
-            self.audio_model = WhisperModel.from_pretrained(self.audio_model_name, use_safetensors=True)
+            self.audio_model = WhisperModel.from_pretrained(
+                self.audio_model_name, use_safetensors=True
+            )
         except Exception as e:
             logger.warning(f"Audio model loading failed: {e}")
             self.audio_processor = None
@@ -52,6 +63,7 @@ class MultiModalEmbedder:
         if self.text_tokenizer is None or self.text_model is None:
             # Fallback to hash-based embedding with consistent dimensions
             import hashlib
+
             h = hashlib.blake2b(text.encode("utf-8")).digest()
             arr = np.frombuffer(h, dtype=np.uint8).astype("float32")
             # Ensure consistent 768 dimensions
@@ -61,7 +73,7 @@ class MultiModalEmbedder:
             elif arr.size > 768:
                 arr = arr[:768]
             return arr.reshape(1, -1)
-        
+
         try:
             inputs = self.text_tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
             outputs = self.text_model(**inputs)
@@ -94,6 +106,7 @@ class MultiModalEmbedder:
         import io
 
         from PIL import Image
+
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         inputs = self.image_processor(images=image, return_tensors="pt")
         outputs = self.image_model(**inputs)
@@ -106,13 +119,14 @@ class MultiModalEmbedder:
         import io
 
         import torchaudio
+
         waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
         inputs = self.audio_processor(waveform, sampling_rate=sample_rate, return_tensors="pt")
         outputs = self.audio_model(**inputs)
         emb = outputs.last_hidden_state.mean(dim=1).detach().cpu().numpy().astype("float32")
         return emb
 
-    def embed(self, data: Union[str, bytes], modality: str = "text") -> np.ndarray:
+    def embed(self, data: str | bytes, modality: str = "text") -> np.ndarray:
         if modality == "text":
             return self.embed_text(data)
         elif modality == "image":

@@ -1,26 +1,38 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class IGraphStore(ABC):
     @abstractmethod
-    def add_memory(self, coordinate: Tuple[float, ...], memory_data: Dict[str, Any]) -> None:
+    def add_memory(self, coordinate: tuple[float, ...], memory_data: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
-    def add_link(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]) -> None:
+    def add_link(
+        self, from_coord: tuple[float, ...], to_coord: tuple[float, ...], link_data: dict[str, Any]
+    ) -> None:
         pass
 
     @abstractmethod
-    def get_neighbors(self, coordinate: Tuple[float, ...], link_type: Optional[str] = None, limit: Optional[int] = None) -> List[Tuple[Any, Dict[str, Any]]]:
+    def get_neighbors(
+        self,
+        coordinate: tuple[float, ...],
+        link_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[tuple[Any, dict[str, Any]]]:
         pass
 
     @abstractmethod
-    def find_shortest_path(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_type: Optional[str] = None) -> List[Any]:
+    def find_shortest_path(
+        self,
+        from_coord: tuple[float, ...],
+        to_coord: tuple[float, ...],
+        link_type: str | None = None,
+    ) -> list[Any]:
         pass
 
     @abstractmethod
-    def remove_memory(self, coordinate: Tuple[float, ...]) -> None:
+    def remove_memory(self, coordinate: tuple[float, ...]) -> None:
         pass
 
     @abstractmethod
