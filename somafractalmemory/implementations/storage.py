@@ -200,8 +200,11 @@ class QdrantVectorStore(IVectorStore):
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
             )
-        except Exception:  # Catch if collection already exists
-            pass
+        except Exception as e:  # Catch if collection already exists or other errors
+            import logging
+
+            logging.warning(f"Could not recreate collection '{self.collection_name}': {e}")
+            # This is safe: collection may already exist, or another recoverable error occurred.
 
     def upsert(self, points: List[Dict[str, Any]]):
         point_structs = [
