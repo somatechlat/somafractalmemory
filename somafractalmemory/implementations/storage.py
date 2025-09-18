@@ -100,10 +100,17 @@ class InMemoryKeyValueStore(IKeyValueStore):
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
         # This is a simplified implementation for non-hash types
-        # It will store the mapping as a single value, e.g., pickled.
-        import pickle
+        # It will store the mapping as a single value, e.g., JSON-encoded.
+        import json
 
-        self.set(key, pickle.dumps(mapping))
+        # Convert bytes keys/values to strings for JSON serialization
+        mapping_str = {
+            k.decode() if isinstance(k, bytes) else str(k): (
+                v.decode() if isinstance(v, bytes) else str(v)
+            )
+            for k, v in mapping.items()
+        }
+        self.set(key, json.dumps(mapping_str).encode())
 
     def lock(self, name: str, timeout: int = 10) -> ContextManager:
         return self._lock

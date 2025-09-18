@@ -132,17 +132,22 @@ class SomaFractalMemoryEnterprise:
 
         This is used for reliability in case of vector store failures.
         """
-        import pickle
-
         wal_prefix = f"{self.namespace}:wal:"
         for wal_key in self.kv_store.scan_iter(f"{wal_prefix}*"):
             raw = self.kv_store.get(wal_key)
             if not raw:
                 continue
-            entry = pickle.loads(raw)
-            if entry.get("status") != "committed":
-                entry["status"] = "committed"
-                self.kv_store.set(wal_key, pickle.dumps(entry))
+            # Use JSON for in-memory store, pickle for others
+            if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                entry = json.loads(raw.decode())
+                if entry.get("status") != "committed":
+                    entry["status"] = "committed"
+                    self.kv_store.set(wal_key, json.dumps(entry).encode())
+            else:
+                entry = pickle.loads(raw)
+                if entry.get("status") != "committed":
+                    entry["status"] = "committed"
+                    self.kv_store.set(wal_key, pickle.dumps(entry))
 
     def delete(self, coordinate: Tuple[float, ...]) -> bool:
         """
@@ -267,7 +272,11 @@ class SomaFractalMemoryEnterprise:
     # --------- Core KV/Vector storage ---------
     def store(self, coordinate: Tuple[float, ...], value: dict):
         data_key, meta_key = _coord_to_key(self.namespace, coordinate)
-        self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+        # Use JSON for in-memory store, pickle for others
+        if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+            self.kv_store.set(data_key, json.dumps(value).encode())
+        else:
+            self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
         try:
             self.kv_store.hset(
                 meta_key, mapping={b"creation_timestamp": str(time.time()).encode("utf-8")}
@@ -292,9 +301,12 @@ class SomaFractalMemoryEnterprise:
                     "error": str(e),
                     "ts": time.time(),
                 }
-                self.kv_store.set(
-                    wal_key, pickle.dumps(wal_payload, protocol=pickle.HIGHEST_PROTOCOL)
-                )
+                if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                    self.kv_store.set(wal_key, json.dumps(wal_payload).encode())
+                else:
+                    self.kv_store.set(
+                        wal_key, pickle.dumps(wal_payload, protocol=pickle.HIGHEST_PROTOCOL)
+                    )
             except Exception:
                 pass
         return True
@@ -311,15 +323,22 @@ class SomaFractalMemoryEnterprise:
                     raw_data = self.kv_store.get(data_key)
                     if not raw_data:
                         continue
-                    memory_item = pickle.loads(raw_data)
+                    # Use JSON for in-memory store, pickle for others
+                    if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                        memory_item = json.loads(raw_data.decode())
+                    else:
+                        memory_item = pickle.loads(raw_data)
                     for i, threshold in enumerate(self.decay_thresholds_seconds):
                         if age > threshold:
                             keys_to_remove = set(self.decayable_keys_by_level[i])
                             for key in keys_to_remove:
                                 memory_item.pop(key, None)
-                    self.kv_store.set(
-                        data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
-                    )
+                    if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                        self.kv_store.set(data_key, json.dumps(memory_item).encode())
+                    else:
+                        self.kv_store.set(
+                            data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
+                        )
                 except Exception as e:
                     logger.warning(f"Error during decay for {meta_key}: {e}")
             time.sleep(self.pruning_interval_seconds)
@@ -374,9 +393,16 @@ class SomaFractalMemoryEnterprise:
         data = self.kv_store.get(data_key)
         if not data:
             raise SomaFractalMemoryError(f"No memory at {coordinate}")
-        value = pickle.loads(data)
+        # Use JSON for in-memory store, pickle for others
+        if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+            value = json.loads(data.decode())
+        else:
+            value = pickle.loads(data)
         value["importance"] = importance
-        self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+        if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+            self.kv_store.set(data_key, json.dumps(value).encode())
+        else:
+            self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
         try:
             updates = []
             for rec in self.vector_store.scroll():
@@ -409,9 +435,18 @@ class SomaFractalMemoryEnterprise:
                 self.kv_store.hset(
                     meta_key, mapping={b"last_accessed_timestamp": str(time.time()).encode("utf-8")}
                 )
-                value = pickle.loads(data)
+                # Use JSON for in-memory store, pickle for others
+                if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                    value = json.loads(data.decode())
+                else:
+                    value = pickle.loads(data)
                 value["access_count"] = value.get("access_count", 0) + 1
-                self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+                if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                    self.kv_store.set(data_key, json.dumps(value).encode())
+                else:
+                    self.kv_store.set(
+                        data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+                    )
                 if self.cipher:
                     for k in ["task", "code"]:
                         if k in value and value[k]:
@@ -439,7 +474,11 @@ class SomaFractalMemoryEnterprise:
                 raw_data = self.kv_store.get(data_key)
                 if not raw_data:
                     continue
-                memory_item = pickle.loads(raw_data)
+                # Use JSON for in-memory store, pickle for others
+                if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                    memory_item = json.loads(raw_data.decode())
+                else:
+                    memory_item = pickle.loads(raw_data)
                 access_count = memory_item.get("access_count", 0)
                 importance = memory_item.get("importance", 0)
                 decay_score = (
@@ -825,9 +864,12 @@ class SomaFractalMemoryEnterprise:
                         keys_to_remove = set(self.decayable_keys_by_level[i])
                         for key in keys_to_remove:
                             memory_item.pop(key, None)
-                self.kv_store.set(
-                    data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
-                )
+                if type(self.kv_store).__name__ == "InMemoryKeyValueStore":
+                    self.kv_store.set(data_key, json.dumps(memory_item).encode())
+                else:
+                    self.kv_store.set(
+                        data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
+                    )
             except Exception as e:
                 logger.warning(f"Error during run_decay_once for {meta_key}: {e}")
 
