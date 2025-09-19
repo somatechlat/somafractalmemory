@@ -1,7 +1,12 @@
 .PHONY: setup test lint api metrics cli
 
 setup:
-	python3 -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt && pip install -e .
+	python3 -m venv .venv && . .venv/bin/activate && \
+	pip install --upgrade pip && \
+	# Generate requirements.txt from YAML (simple format) then install
+	grep -E '^- ' requirements.yaml | sed 's/^- //' > requirements.txt || true && \
+	grep -E '^- ' api-requirements.yaml | sed 's/^- //' > api-requirements.txt || true && \
+	pip install -r requirements.txt && pip install -e .
 
 test:
 	. .venv/bin/activate && pytest -q

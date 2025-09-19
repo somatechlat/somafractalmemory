@@ -25,3 +25,20 @@ memory_enterprise:
   decayable_keys_by_level:
     - ["scratch", "temp_notes"]
     - ["low_importance"]
+  # Tunable decay/scoring weights (optional; override via SOMA_DECAY_* env vars)
+  # These control how the background decay prioritizes old/unused memories.
+  # SOMA_DECAY_AGE_WEIGHT: weight applied to age (hours)
+  # SOMA_DECAY_RECENCY_WEIGHT: weight applied to recency since last access (hours)
+  # SOMA_DECAY_ACCESS_WEIGHT: weight subtracted per access_count
+  # SOMA_DECAY_IMPORTANCE_WEIGHT: weight subtracted per importance value
+  # SOMA_DECAY_THRESHOLD: decay score threshold above which fields are pruned
+  decay_weights:
+    age_weight: 1.0
+    recency_weight: 1.0
+    access_weight: 0.5
+    importance_weight: 2.0
+    threshold: 2.0
+
+# Security: safe serialization defaults to JSON. Set SOMA_ALLOW_PICKLE=true only
+# if you explicitly need pickle compatibility and accept the security risk.
+SOMA_ALLOW_PICKLE: false

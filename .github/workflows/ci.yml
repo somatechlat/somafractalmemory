@@ -2,36 +2,101 @@ name: CI
 
 on:
   push:
+    branches: [ master ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - name: Install deps
+      - name: Install tools
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
-      - name: Run tests
-        run: pytest -q
-      - name: Lint (ruff)
+          pip install ruff black
+      - name: Run linters
         run: |
-          pip install ruff
           ruff check .
-      - name: Format check (black)
-        run: |
-          pip install black
           black --check .
-      - name: Security scan (bandit)
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Generate requirements from YAML
         run: |
-          pip install bandit
-          bandit -q -r somafractalmemory
-      - name: Type check
+          python scripts/generate_requirements.py requirements-min.yaml requirements-min.txt
+          python scripts/generate_requirements.py api-requirements-min.yaml api-requirements-min.txt
+      - name: Install dependencies
         run: |
-          pip install mypy
-          mypy somafractalmemory
+          python -m pip install --upgrade pip
+          pip install -r requirements-min.txt -r api-requirements-min.txt
+          pip install pytest
+      - name: Run tests
+        run: |
+          pytest -q
+
+  security:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install bandit
+        run: pip install bandit
+      - name: Run bandit
+        run: bandit -r somafractalmemory -f json -o bandit-report.json
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Generate requirements from YAML
+        run: |
+          python scripts/generate_requirements.py requirements-min.yaml requirements-min.txt
+          python scripts/generate_requirements.py api-requirements-min.yaml api-requirements-min.txt
+      - name: Build minimal Docker image
+        run: |
+          docker build -f Dockerfile.min -t somafractalmemory:minimal-ci .
+      - name: Run container
+        run: |
+          docker run -d --name sfa_test -p 5000:9595 somafractalmemory:minimal-ci
+          sleep 3
+      - name: Smoke test
+        run: |
+          ./scripts/ci_smoke_test.sh http://127.0.0.1:5000/health
+      - name: Tear down
+        run: |
+          docker ps -q --filter "name=sfa_test" | xargs -r docker kill

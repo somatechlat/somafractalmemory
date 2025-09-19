@@ -118,6 +118,46 @@ class InMemoryKeyValueStore(IKeyValueStore):
     def health_check(self) -> bool:
         return True
 
+    # Sorted-set (zset) helpers for eviction indexing
+    def zadd(self, key: str, mapping: Mapping[str, float]):
+        if not hasattr(self, "_zsets"):
+            self._zsets = defaultdict(dict)
+        for member, score in mapping.items():
+            self._zsets[key][member] = float(score)
+
+    def zrange(self, key: str, start: int, end: int, withscores: bool = False):
+        if not hasattr(self, "_zsets") or key not in self._zsets:
+            return []
+        items = sorted(self._zsets[key].items(), key=lambda kv: kv[1])
+        slice_items = items[start : end + 1]
+        if withscores:
+            return slice_items
+        return [m for m, _ in slice_items]
+
+    def zrem(self, key: str, *members: str):
+        if not hasattr(self, "_zsets") or key not in self._zsets:
+            return 0
+        removed = 0
+        for m in members:
+            if m in self._zsets[key]:
+                del self._zsets[key][m]
+                removed += 1
+        return removed
+
+    def zcard(self, key: str) -> int:
+        if not hasattr(self, "_zsets") or key not in self._zsets:
+            return 0
+        return len(self._zsets[key])
+
+    def zremrangebyrank(self, key: str, start: int, end: int):
+        if not hasattr(self, "_zsets") or key not in self._zsets:
+            return 0
+        items = sorted(self._zsets[key].items(), key=lambda kv: kv[1])
+        to_remove = items[start : end + 1]
+        for m, _ in to_remove:
+            del self._zsets[key][m]
+        return len(to_remove)
+
 
 class RedisKeyValueStore(IKeyValueStore):
     def lock(self, name: str, timeout: int = 10):
@@ -181,6 +221,23 @@ class RedisKeyValueStore(IKeyValueStore):
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
         self.client.hset(key, mapping=dict(mapping))
+
+    # Sorted-set helpers
+    def zadd(self, key: str, mapping: Mapping[str, float]):
+        # redis-py accepts mapping of member->score
+        self.client.zadd(key, mapping)
+
+    def zrange(self, key: str, start: int, end: int, withscores: bool = False):
+        return self.client.zrange(key, start, end, withscores=withscores)
+
+    def zrem(self, key: str, *members: str):
+        return self.client.zrem(key, *members)
+
+    def zcard(self, key: str) -> int:
+        return int(self.client.zcard(key))
+
+    def zremrangebyrank(self, key: str, start: int, end: int):
+        return self.client.zremrangebyrank(key, start, end)
 
 
 class QdrantVectorStore(IVectorStore):

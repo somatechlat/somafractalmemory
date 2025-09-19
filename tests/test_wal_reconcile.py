@@ -36,10 +36,8 @@ def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
     mem._reconcile_once()
 
     # WAL entries should be committed
-    import pickle
-
     for k in wal_keys:
         raw = mem.kv_store.get(k)
         if raw:
-            entry = pickle.loads(raw)
+            entry = mem._deserialize(raw)
             assert entry.get("status") == "committed"
