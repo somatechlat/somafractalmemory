@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Multi-stage Dockerfile to build and run SomaFractalMemory with VENV
+# Minimal Dockerfile for SomaFractalMemory - optimized for size
 FROM python:3.10-slim
 
 # Set environment variables
@@ -19,19 +19,16 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt /app/requirements.txt
 COPY api-requirements.txt /app/api-requirements.txt
 
-# Create and activate virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install Python dependencies
+# Install only essential Python dependencies
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt -r /app/api-requirements.txt
+    pip install --no-cache-dir -r /app/requirements.txt -r /app/api-requirements.txt && \
+    # Remove unnecessary packages to reduce size
+    pip uninstall -y torch torchvision torchaudio transformers && \
+    # Clean up pip cache
+    rm -rf /root/.cache/pip
 
 # Copy the application code
 COPY . /app
-
-# Install the package in development mode
-RUN pip install -e .
 
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser && \
