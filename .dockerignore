@@ -18,7 +18,6 @@ docs/
 examples/
 meta/
 *.log
-current_requirements.txt
 *.egg-info
 build/
 dist/
