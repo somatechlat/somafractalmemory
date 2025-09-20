@@ -3,7 +3,7 @@
 Thank you for your interest in contributing!
 
 ## How to contribute
-- Fork the repository and create your branch from `main`.
+- Fork the repository and create your branch from `master`.
 - Write clear, concise commit messages.
 - Add tests for new features and bug fixes.
 - Run `pytest` and ensure all tests pass before submitting a PR.
