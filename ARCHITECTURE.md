@@ -21,7 +21,7 @@
 ### 4. Enterprise & Distributed Features (Week 4)
 - Add support for distributed event streaming (Kafka/NATS/Redis Streams).
 - Integrate distributed vector DB and Redis Cluster.
-- Add monitoring/alerting (Prometheus, Grafana).
+- Add monitoring/alerting (Prometheus).
 - Implement multi-agent support (namespaces, agent IDs).
 
 ### 5. Advanced Agent Features & Community (Ongoing)

@@ -1,0 +1,137 @@
+{
+  "__inputs": [],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "9.0.0"
+    }
+  ],
+  "annotations": {"list": []},
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1695139200000,
+  "links": [],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Top Summary",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Uptime",
+      "id": 1,
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "options": {"orientation": "auto"},
+      "targets": [
+        {"expr": "(sum(up) / count(up)) * 100", "refId": "A"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Request Rate",
+      "id": 2,
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+      "targets": [{"expr": "sum(rate(http_requests_total[1m]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Latency (p50)",
+      "id": 3,
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+      "targets": [{"expr": "histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "WM Utilization",
+      "id": 4,
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
+      "targets": [{"expr": "avg(wm_utilization_percent)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Store Events",
+      "id": 5,
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
+      "targets": [{"expr": "increase(store_events_total[1h])", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Recall Success",
+      "id": 6,
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
+      "targets": [{"expr": "(sum(recall_success_total) / sum(recall_total)) * 100", "refId": "A"}]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "HTTP Requests per Endpoint",
+      "id": 10,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "targets": [{"expr": "sum by (endpoint) (rate(http_requests_total[5m]))", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency Distribution",
+      "id": 11,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "targets": [{"expr": "histogram_quantile(0.9, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A"}]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Salience Score (avg)",
+      "id": 20,
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 13},
+      "targets": [{"expr": "avg(salience_score)", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Recall Top-1 Similarity",
+      "id": 21,
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 13},
+      "targets": [{"expr": "max(recall_top1_similarity)", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Recall Margin (Top1-Top2)",
+      "id": 22,
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 13},
+      "targets": [{"expr": "avg(recall_top1_similarity - recall_top2_similarity)", "refId": "A"}]
+    },
+
+    {
+      "type": "text",
+      "title": "Memory Vibration View (Image)",
+      "id": 30,
+      "gridPos": {"h": 12, "w": 16, "x": 0, "y": 20},
+      "options": {"content": "<img src='https://lh3.googleusercontent.com/aida-public/AB6AXuAwnzyfkXDmU1xh8KOePV3da0blVGziXqU4UHpfhZnCiKlbhTfq5BCLJ0OYY-OeWI-I-AjKHgCszVsTNnUb8yR0moFX3mmzGrWabI4etcAYL7DT-Lz9npYQ2nuzsUPuP3fC-GNTut_R1NtzpApP7f6EypANLeOTgZWmxCLRnoRZxPDHeTBtm-DbDpfr85liROBa98z1oF_uZTiL8xADgOa6X5I_MODA0rPJdPTd544Ty44dLsPaOBs5riK1hfdJNGBW2P3A3smBwV0' style='width:100%;height:100%;object-fit:cover;'/>"}
+    },
+
+    {
+      "type": "table",
+      "title": "Alerts",
+      "id": 40,
+      "gridPos": {"h": 12, "w": 8, "x": 16, "y": 20},
+      "targets": [{"expr": "alerts_active_total", "refId": "A"}],
+      "options": {"showHeader": true}
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["soma", "memory", "enterprise"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m"]},
+  "timezone": "browser",
+  "title": "SomaBrain Dashboard",
+  "uid": "soma-brain-dashboard",
+  "version": 1
+}
