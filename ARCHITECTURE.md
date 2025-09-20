@@ -21,7 +21,7 @@
 ### 4. Enterprise & Distributed Features (Week 4)
 - Add support for distributed event streaming (Kafka/NATS/Redis Streams).
 - Integrate distributed vector DB and Redis Cluster.
-- Add monitoring/alerting (Prometheus, Grafana).
+- Add monitoring/alerting (Prometheus).
 - Implement multi-agent support (namespaces, agent IDs).
 
 ### 5. Advanced Agent Features & Community (Ongoing)
@@ -96,3 +96,13 @@
 ---
 
 *This document is a living architecture and action plan for the SomaFractalMemoryEnterprise agentic memory system. Update as the project evolves!*
+
+## Security & Model-Download Roadmap (short)
+
+- Secure-by-default: HF model downloads should be pinned via `SOMA_MODEL_REV`.
+- Allow unpinned downloads only when `SOMA_ALLOW_UNPINNED_HF=true` is explicitly set for developer convenience.
+- Gate pickle-based serialization behind `SOMA_ALLOW_PICKLE=true` and log a startup warning when enabled; prefer JSON or msgpack for production.
+- Replace broad `except:` usages with narrow exception types and parameterized logging to avoid masking failures while keeping fallbacks robust.
+- Re-run Bandit and static tools as part of CI; document any justified `# nosec` uses with a short rationale.
+
+This roadmap is implemented incrementally on the `feature/safety-eviction-enterprise` branch (local). See `docs/SECURITY_ROADMAP.md` for full details and rationale.

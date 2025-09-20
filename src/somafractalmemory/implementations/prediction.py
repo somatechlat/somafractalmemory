@@ -6,13 +6,11 @@ from somafractalmemory.interfaces.prediction import IPredictionProvider
 
 
 def _safe_requests_get(url: str, timeout: float = 5.0):
-    """Lazily import requests and perform a GET with a reasonable timeout; return None on failure/missing."""
     try:
         import requests  # type: ignore
 
         return requests.get(url, timeout=timeout)
     except Exception:
-        # Log could be added where appropriate; return None to indicate unhealthy.
         return None
 
 
@@ -29,7 +27,6 @@ class OllamaPredictionProvider(IPredictionProvider):
         self.host = host
 
     def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
-        # Placeholder for actual Ollama call
         predicted_outcome = "Predicted by Ollama."
         confidence = np.random.uniform(0.7, 0.99)
         return predicted_outcome, confidence
@@ -45,7 +42,6 @@ class ExternalPredictionProvider(IPredictionProvider):
         self.endpoint = endpoint
 
     def predict(self, memory_data: Dict[str, Any]) -> Tuple[str, float]:
-        # Placeholder for actual external API call
         predicted_outcome = "Predicted by External API."
         confidence = np.random.uniform(0.8, 0.99)
         return predicted_outcome, confidence

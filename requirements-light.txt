@@ -1,0 +1,15 @@
+pytest
+numpy
+redis>=4.0.0
+qdrant-client
+langfuse
+scikit-learn
+cryptography
+prometheus-client
+tenacity
+structlog
+dynaconf
+Pillow
+fakeredis>=2.0.0
+networkx
+# NOTE: transformers/torch/torchaudio intentionally excluded from light requirements

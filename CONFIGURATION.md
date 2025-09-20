@@ -22,6 +22,12 @@ This project uses Dynaconf and environment variables (prefix `SOMA_`) for config
   - `pruning_interval_seconds` (env: `SOMA_PRUNING_INTERVAL_SECONDS`): Periodic decay cadence
   - `decay_thresholds_seconds`: Time thresholds for field removal
   - `decayable_keys_by_level`: Keys to remove at each threshold
+  - Decay/scoring weights (envs: `SOMA_DECAY_AGE_WEIGHT`, `SOMA_DECAY_RECENCY_WEIGHT`, `SOMA_DECAY_ACCESS_WEIGHT`, `SOMA_DECAY_IMPORTANCE_WEIGHT`, `SOMA_DECAY_THRESHOLD`):
+    - `SOMA_DECAY_AGE_WEIGHT` (default 1.0): weight applied to age (in hours)
+    - `SOMA_DECAY_RECENCY_WEIGHT` (default 1.0): weight applied to recency since last access (in hours)
+    - `SOMA_DECAY_ACCESS_WEIGHT` (default 0.5): weight subtracted per access count
+    - `SOMA_DECAY_IMPORTANCE_WEIGHT` (default 2.0): weight subtracted per importance value
+    - `SOMA_DECAY_THRESHOLD` (default 2.0): decay score threshold above which non-critical fields are pruned
   - `encryption_key`: Optional key for sensitive fields (if cryptography installed). When set, `task` and `code` fields are encrypted on store and decrypted on retrieve.
   - `max_memory_size`: Upper bound on total memories; older, low-importance episodic items are pruned when exceeded
 
@@ -32,6 +38,12 @@ This project uses Dynaconf and environment variables (prefix `SOMA_`) for config
 
 - Model
   - `SOMA_MODEL_NAME`: HF model name (fallback embeddings used if transformers unavailable)
+
+## Serialization policy
+
+By default the system serializes memory payloads to JSON (safe). For compatibility with older deployments, a fallback to Python `pickle` is available but MUST be explicitly enabled via environment variable:
+
+- `SOMA_ALLOW_PICKLE` (default `false`): When set to `true`, serialized blobs may be written/read using `pickle`. Enabling this option has security implications — do not enable it for untrusted or network-exposed deployments. Prefer JSON for all production deployments.
 
 ## Precedence
 

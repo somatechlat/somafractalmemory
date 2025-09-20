@@ -1,0 +1,4 @@
+packages:
+  - fastapi
+  - uvicorn
+  - httpx

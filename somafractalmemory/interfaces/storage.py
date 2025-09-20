@@ -35,6 +35,27 @@ class IKeyValueStore(ABC):
     def health_check(self) -> bool:
         pass
 
+    # Sorted-set helpers for eviction/indexing
+    @abstractmethod
+    def zadd(self, key: str, mapping: Mapping[str, float]):
+        pass
+
+    @abstractmethod
+    def zrange(self, key: str, start: int, end: int, withscores: bool = False):
+        pass
+
+    @abstractmethod
+    def zrem(self, key: str, *members: str):
+        pass
+
+    @abstractmethod
+    def zcard(self, key: str) -> int:
+        pass
+
+    @abstractmethod
+    def zremrangebyrank(self, key: str, start: int, end: int):
+        pass
+
 
 class IVectorStore(ABC):
     @abstractmethod
