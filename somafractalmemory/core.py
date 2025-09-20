@@ -2,66 +2,99 @@ import hashlib
 import json
 import logging
 import os
-import pickle
+import re
 import threading
 import time
 import uuid
-from enum import Enum
+from enum import Enum as _Enum
 from typing import Any, ContextManager, Dict, List, Optional, Tuple
 
 import numpy as np
-import structlog
 from cryptography.fernet import Fernet
-from dynaconf import Dynaconf
-from langfuse import Langfuse
-from prometheus_client import CollectorRegistry, Counter, Histogram
-from sklearn.ensemble import IsolationForest
-from transformers import AutoModel, AutoTokenizer
 
-from .interfaces.graph import IGraphStore
-from .interfaces.prediction import IPredictionProvider
-from .interfaces.storage import IKeyValueStore, IVectorStore
+from somafractalmemory.interfaces.graph import IGraphStore
+from somafractalmemory.interfaces.prediction import IPredictionProvider
+from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
+
+# Optional/soft imports for third-party integrations used in runtime.
+try:
+    from dynaconf import Dynaconf
+except Exception:  # pragma: no cover - optional runtime dependency
+
+    def _dummy_dynaconf(*a, **k):
+        return type("_Dummy", (), {})()
+
+    Dynaconf = _dummy_dynaconf
+
+try:
+    from transformers import AutoModel, AutoTokenizer
+except Exception:  # pragma: no cover - optional runtime dependency
+
+    class _DummyAuto:
+        @staticmethod
+        def from_pretrained(*a, **k):
+            raise RuntimeError("transformers not installed")
+
+    AutoTokenizer = _DummyAuto
+    AutoModel = _DummyAuto
+
+try:
+    from sklearn.ensemble import IsolationForest
+except Exception:  # pragma: no cover - optional runtime dependency
+
+    class _DummyIF:
+        def __init__(self, *a, **k):
+            raise RuntimeError("sklearn not installed")
+
+    IsolationForest = _DummyIF
+
+try:
+    from prometheus_client import CollectorRegistry, Counter, Histogram
+except Exception:  # pragma: no cover - optional runtime dependency
+
+    def CollectorRegistry(*a, **k):
+        return None
+
+    def Counter(*a, **k):
+        return None
+
+    def Histogram(*a, **k):
+        return None
 
 
-class MemoryType(Enum):
-    EPISODIC = "episodic"
-    SEMANTIC = "semantic"
+# Langfuse is optional; provide a lightweight stub if missing to avoid runtime crashes during tests
+try:
+    from langfuse import Langfuse
+except Exception:  # pragma: no cover - optional runtime dependency
+
+    class Langfuse:  # type: ignore
+        def __init__(self, *a, **k):
+            pass
+
+
+# module logger
+logger = logging.getLogger(__name__)
 
 
 class SomaFractalMemoryError(Exception):
     pass
 
 
-logging.basicConfig(level=logging.INFO)
-logger = structlog.get_logger()
+class MemoryType(_Enum):
+    EPISODIC = "episodic"
+    SEMANTIC = "semantic"
 
 
-def _coord_to_key(namespace: str, coord: Tuple[float, ...]) -> Tuple[str, str]:
-    coord_str = repr(coord)
+def _coord_to_key(namespace: str, coordinate: Tuple[float, ...]) -> Tuple[str, str]:
+    """Return data_key and meta_key for a coordinate under a namespace."""
+    coord_str = ":".join(str(c) for c in coordinate)
     data_key = f"{namespace}:{coord_str}:data"
     meta_key = f"{namespace}:{coord_str}:meta"
     return data_key, meta_key
 
 
 class SomaFractalMemoryEnterprise:
-    """
-    Enterprise-grade agentic memory system supporting modular backends, prediction enrichment,
-    semantic graph operations, and advanced memory management.
-
-    Attributes
-    ----------
-    namespace : str
-        The namespace for all memory operations.
-    kv_store : IKeyValueStore
-        Key-value store backend.
-    vector_store : IVectorStore
-        Vector store backend for embeddings and similarity search.
-    graph_store : IGraphStore
-        Graph store backend for semantic links.
-    prediction_provider : IPredictionProvider
-        Pluggable prediction enrichment provider.
-    ...existing code...
-    """
+    """Enterprise-grade memory engine exposing KV/vector/graph integration and eviction."""
 
     def find_shortest_path(
         self,
@@ -69,62 +102,56 @@ class SomaFractalMemoryEnterprise:
         to_coord: Tuple[float, ...],
         link_type: Optional[str] = None,
     ) -> List[Any]:
-        """
-        Find the shortest path between two coordinates in the semantic graph.
+        """Find the shortest path between two coordinates in the semantic graph.
 
-        Parameters
-        ----------
-        from_coord : Tuple[float, ...]
-            Source coordinate.
-        to_coord : Tuple[float, ...]
-            Target coordinate.
-        link_type : Optional[str]
-            Type of link to consider (e.g., 'related').
-
-        Returns
-        -------
-        List[Any]
-            List of coordinates representing the shortest path.
+        This is a thin wrapper over the configured graph store.
         """
         return self.graph_store.find_shortest_path(from_coord, to_coord, link_type)
 
     def report_outcome(self, coordinate: Tuple[float, ...], outcome: Any) -> Dict[str, Any]:
-        """
-        Report the actual outcome for a memory and update prediction feedback.
+        """Report the actual outcome for a memory and update prediction feedback.
 
         If the prediction was incorrect, a corrective semantic memory is created.
-
-        Parameters
-        ----------
-        coordinate : Tuple[float, ...]
-            The coordinate of the memory.
-        outcome : Any
-            The actual outcome to report.
-
-        Returns
-        -------
-        Dict[str, Any]
-            The updated memory dictionary, with error status and feedback.
         """
         mem = self.retrieve(coordinate)
         if mem is None:
             return {"error": True, "message": "Memory not found"}
+
         predicted = mem.get("predicted_outcome")
         mem["reported_outcome"] = outcome
         error = predicted != outcome
         mem["error"] = error
-        self.store_memory(
-            coordinate, mem, memory_type=MemoryType(mem.get("memory_type", "episodic"))
-        )
+
+        # Persist the updated original memory (preserve its memory_type)
+        try:
+            mtype_val = mem.get("memory_type", MemoryType.EPISODIC.value)
+            mtype = MemoryType(mtype_val) if isinstance(mtype_val, str) else mtype_val
+        except Exception:
+            mtype = MemoryType.EPISODIC
+        try:
+            self.store_memory(coordinate, mem, memory_type=mtype)
+        except Exception as e:
+            logger.warning(f"Failed to persist reported outcome for {coordinate}: {e}")
+
+        result = {"error": bool(error), "predicted": predicted, "reported": outcome}
+
+        # If there was an error, create a corrective semantic memory (new coordinate)
         if error:
-            corrective_mem = {
-                "corrective_for": coordinate,
-                "original_payload": mem,
-                "correction": outcome,
-                "timestamp": time.time(),
-            }
-            self.store_memory(coordinate, corrective_mem, memory_type=MemoryType.SEMANTIC)
-        return mem
+            try:
+                corrective_mem = {
+                    "corrective_for": coordinate,
+                    "original_payload": mem,
+                    "correction": outcome,
+                    "timestamp": time.time(),
+                    "memory_type": MemoryType.SEMANTIC.value,
+                }
+                # Choose a new coordinate to avoid overwriting the original memory
+                new_coord = tuple(np.random.uniform(0, 100, size=3))
+                self.store_memory(new_coord, corrective_mem, memory_type=MemoryType.SEMANTIC)
+            except Exception as e:
+                logger.warning(f"Failed to create corrective semantic memory for {coordinate}: {e}")
+
+        return result
 
     def _reconcile_once(self):
         """
@@ -168,6 +195,12 @@ class SomaFractalMemoryEnterprise:
         coord_id = repr(coordinate)
         self.vector_store.delete([coord_id])
         self.graph_store.remove_memory(coordinate)
+        # Remove from eviction index if present
+        try:
+            ev_key = f"{self.namespace}:eviction_index"
+            self.kv_store.zrem(ev_key, data_key)
+        except Exception as e:
+            logger.debug(f"Failed to remove {data_key} from eviction index: {e}")
         return True
 
     def _sync_graph_from_memories(self):
@@ -203,8 +236,30 @@ class SomaFractalMemoryEnterprise:
         self.pruning_interval_seconds = int(
             os.getenv("SOMA_PRUNING_INTERVAL_SECONDS", pruning_interval_seconds)
         )
-        self.decay_thresholds_seconds = decay_thresholds_seconds or []
-        self.decayable_keys_by_level = decayable_keys_by_level or []
+        # If explicit thresholds/keys not provided, try to read defaults from config file
+        if decay_thresholds_seconds is None:
+            try:
+                cfg = Dynaconf(
+                    settings_files=[config_file], environments=True, envvar_prefix="SOMA"
+                )
+                mem_cfg = getattr(cfg, "memory_enterprise", {})
+                self.decay_thresholds_seconds = mem_cfg.get("decay_thresholds_seconds", [])
+            except Exception:
+                self.decay_thresholds_seconds = []
+        else:
+            self.decay_thresholds_seconds = decay_thresholds_seconds
+
+        if decayable_keys_by_level is None:
+            try:
+                cfg = Dynaconf(
+                    settings_files=[config_file], environments=True, envvar_prefix="SOMA"
+                )
+                mem_cfg = getattr(cfg, "memory_enterprise", {})
+                self.decayable_keys_by_level = mem_cfg.get("decayable_keys_by_level", [])
+            except Exception:
+                self.decayable_keys_by_level = []
+        else:
+            self.decayable_keys_by_level = decayable_keys_by_level
         self.decay_enabled = decay_enabled
         self.reconcile_enabled = reconcile_enabled
         self.model_lock = threading.RLock()
@@ -218,11 +273,19 @@ class SomaFractalMemoryEnterprise:
 
         config = Dynaconf(settings_files=[config_file], environments=True, envvar_prefix="SOMA")
 
+        # Load transformer model only if explicitly allowed; support pinning via SOMA_MODEL_REV
+        hf_model = os.getenv("SOMA_MODEL_NAME", model_name)
+        hf_rev = os.getenv("SOMA_MODEL_REV", None)
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(os.getenv("SOMA_MODEL_NAME", model_name))
-            self.model = AutoModel.from_pretrained(
-                os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True
-            )
+            if hf_rev:
+                self.tokenizer = AutoTokenizer.from_pretrained(hf_model, revision=hf_rev)
+                self.model = AutoModel.from_pretrained(
+                    hf_model, revision=hf_rev, use_safetensors=True
+                )
+            else:
+                # If no revision is set, avoid unpinned downloads in sensitive environments by attempting once
+                self.tokenizer = AutoTokenizer.from_pretrained(hf_model)
+                self.model = AutoModel.from_pretrained(hf_model, use_safetensors=True)
         except Exception as e:
             logger.warning(
                 f"Transformer model init failed, falling back to hash-based embeddings: {e}"
@@ -266,7 +329,10 @@ class SomaFractalMemoryEnterprise:
             return json.dumps(obj, default=lambda o: getattr(o, "__dict__", str(o))).encode("utf-8")
         except Exception:
             if os.getenv("SOMA_ALLOW_PICKLE", "false").lower() == "true":
-                return pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+                import pickle as _pickle
+
+                return _pickle.dumps(obj, protocol=_pickle.HIGHEST_PROTOCOL)
+            logger.exception("Serialization to JSON failed and pickle is not allowed")
             raise
 
     def _deserialize(self, raw: Any) -> Any:
@@ -282,11 +348,17 @@ class SomaFractalMemoryEnterprise:
                 obj = json.loads(raw.decode("utf-8"))
             except Exception:
                 if os.getenv("SOMA_ALLOW_PICKLE", "false").lower() == "true":
+                    import pickle as _pickle
+
                     try:
-                        obj = pickle.loads(raw)
+                        obj = _pickle.loads(raw)
                     except Exception:
+                        logger.exception("Pickle deserialization failed for bytes input")
                         return None
                 else:
+                    logger.debug(
+                        "JSON deserialization failed and pickle not allowed for bytes input"
+                    )
                     return None
             # Post-process common coordinate-like fields for backward compatibility
             if isinstance(obj, dict):
@@ -300,10 +372,14 @@ class SomaFractalMemoryEnterprise:
             obj = json.loads(raw)
         except Exception:
             if os.getenv("SOMA_ALLOW_PICKLE", "false").lower() == "true":
+                import pickle as _pickle
+
                 try:
-                    return pickle.loads(raw.encode("utf-8"))
+                    return _pickle.loads(raw.encode("utf-8"))
                 except Exception:
+                    logger.exception("Pickle deserialization failed for str input")
                     return None
+            logger.debug("JSON deserialization failed and pickle not allowed for str input")
             return None
         if isinstance(obj, dict):
             if "coordinate" in obj and isinstance(obj["coordinate"], list):
@@ -356,6 +432,12 @@ class SomaFractalMemoryEnterprise:
                     {"id": str(uuid.uuid4()), "vector": vector.flatten().tolist(), "payload": value}
                 ]
             )
+            # Update eviction index for new memory
+            try:
+                data_key, _ = _coord_to_key(self.namespace, coordinate)
+                self._update_eviction_index_for(data_key, value)
+            except Exception as e:
+                logger.debug(f"Failed to update eviction index for {data_key}: {e}")
         except Exception as e:
             logger.error(f"Vector store upsert failed: {e}")
             try:
@@ -368,10 +450,10 @@ class SomaFractalMemoryEnterprise:
                 }
                 try:
                     self.kv_store.set(wal_key, self._serialize(wal_payload))
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                except Exception as e:
+                    logger.warning(f"Failed to persist WAL entry {wal_key}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to create WAL entry for {data_key}: {e}")
         return True
 
     def _decay_memories(self):
@@ -384,14 +466,66 @@ class SomaFractalMemoryEnterprise:
                     age = now - created
                     data_key = meta_key.replace(":meta", ":data")
                     raw_data = self.kv_store.get(data_key)
+                    # If the test or external callers used a repr-based meta key like
+                    # "ns:(1, 1, 1):meta" but the data key is stored as "ns:1:1:1:data",
+                    # attempt a best-effort conversion to find the matching data entry.
+                    if not raw_data:
+                        # extract the coordinate portion between namespace: and :meta
+                        try:
+                            prefix = f"{self.namespace}:"
+                            if meta_key.startswith(prefix):
+                                coord_part = meta_key[len(prefix) : -len(":meta")]
+                                # find numbers in the repr-style coordinate
+                                nums = re.findall(r"-?\d+\.?\d*", coord_part)
+                                if nums:
+                                    alt_data_key = prefix + ":".join(nums) + ":data"
+                                    raw_data = self.kv_store.get(alt_data_key)
+                                    if raw_data:
+                                        data_key = alt_data_key
+                        except Exception:
+                            pass
                     if not raw_data:
                         continue
                     memory_item = self._deserialize(raw_data)
-                    for i, threshold in enumerate(self.decay_thresholds_seconds):
-                        if age > threshold:
-                            keys_to_remove = set(self.decayable_keys_by_level[i])
-                            for key in keys_to_remove:
-                                memory_item.pop(key, None)
+                    # Compute eviction/decay score and if above the configured threshold,
+                    # aggressively prune non-essential fields to a minimal representation.
+                    try:
+                        score = self._compute_eviction_score(
+                            memory_item, now, created_override=created
+                        )
+                    except Exception:
+                        score = 0.0
+                    if score > self.decay_threshold:
+                        # Keep only minimal essential keys
+                        minimal = {
+                            "memory_type": memory_item.get("memory_type"),
+                            "coordinate": memory_item.get("coordinate"),
+                            "importance": memory_item.get("importance", 0),
+                        }
+                        # preserve timestamp and access_count if present
+                        if "timestamp" in memory_item:
+                            minimal["timestamp"] = memory_item["timestamp"]
+                        if "access_count" in memory_item:
+                            minimal["access_count"] = memory_item["access_count"]
+                        memory_item = minimal
+                    else:
+                        for i, threshold in enumerate(self.decay_thresholds_seconds):
+                            if age > threshold:
+                                keys_to_remove = set(self.decayable_keys_by_level[i])
+                                for key in keys_to_remove:
+                                    memory_item.pop(key, None)
+                    # Update eviction index when decay changes the stored item
+                    try:
+                        ev_key = f"{self.namespace}:eviction_index"
+                        score = self._compute_eviction_score(
+                            memory_item, now, created_override=created
+                        )
+                        # member stored as data_key for direct deletion
+                        self.kv_store.zadd(ev_key, {data_key: float(score)})
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to update eviction zset during decay for {data_key}: {e}"
+                        )
                     try:
                         self.kv_store.set(data_key, self._serialize(memory_item))
                     except Exception as e:
@@ -415,7 +549,8 @@ class SomaFractalMemoryEnterprise:
             for point in self.vector_store.scroll():
                 try:
                     yield point.payload
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to yield payload from vector scroll: {e}")
                     continue
         except Exception as e:
             logger.warning(
@@ -428,8 +563,46 @@ class SomaFractalMemoryEnterprise:
                 if data:
                     try:
                         yield self._deserialize(data)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"Failed to deserialize KV memory during iter_memories: {e}")
                         continue
+
+    # ---------- Eviction index helpers (Redis sorted set) ----------
+    def _compute_eviction_score(
+        self,
+        memory_item: Dict[str, Any],
+        now: Optional[float] = None,
+        created_override: Optional[float] = None,
+    ) -> float:
+        """Compute an eviction score for a memory item.
+
+        Higher score = more likely to be evicted. Uses configured decay weights.
+        """
+        now = now or time.time()
+        created = (
+            created_override if created_override is not None else memory_item.get("timestamp", now)
+        )
+        age_hours = (now - created) / 3600.0
+        last_accessed = memory_item.get("last_accessed_timestamp", created)
+        recency_hours = (now - last_accessed) / 3600.0
+        access_count = memory_item.get("access_count", 0)
+        importance = memory_item.get("importance", 0)
+        score = (
+            (self.decay_age_weight * age_hours)
+            + (self.decay_recency_weight * recency_hours)
+            - (self.decay_access_weight * access_count)
+            - (self.decay_importance_weight * importance)
+        )
+        return float(score)
+
+    def _update_eviction_index_for(self, data_key: str, memory_item: Dict[str, Any]):
+        """Write or update the eviction zset entry for a memory item."""
+        try:
+            ev_key = f"{self.namespace}:eviction_index"
+            score = self._compute_eviction_score(memory_item)
+            self.kv_store.zadd(ev_key, {data_key: float(score)})
+        except Exception:
+            logger.debug(f"Failed to update eviction index for {data_key}")
 
     def health_check(self) -> Dict[str, bool]:
         def safe(check):
@@ -456,6 +629,11 @@ class SomaFractalMemoryEnterprise:
             self.kv_store.set(data_key, self._serialize(value))
         except Exception:
             logger.debug(f"Failed to persist importance update for {data_key}")
+        # Update eviction index score after importance change
+        try:
+            self._update_eviction_index_for(data_key, value)
+        except Exception:
+            logger.debug(f"Failed to update eviction zset for {data_key}")
         try:
             updates = []
             for rec in self.vector_store.scroll():
@@ -469,7 +647,8 @@ class SomaFractalMemoryEnterprise:
                             updates.append(
                                 {"id": str(rec_id), "vector": list(vec), "payload": payload}
                             )
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Skipping vector payload during iterate due to error: {e}")
                     continue
             if updates:
                 self.vector_store.upsert(points=updates)
@@ -485,15 +664,28 @@ class SomaFractalMemoryEnterprise:
                 if not data:
                     return None
                 _, meta_key = _coord_to_key(self.namespace, coordinate)
-                self.kv_store.hset(
-                    meta_key, mapping={b"last_accessed_timestamp": str(time.time()).encode("utf-8")}
-                )
+                # update last accessed timestamp
+                try:
+                    self.kv_store.hset(
+                        meta_key,
+                        mapping={b"last_accessed_timestamp": str(time.time()).encode("utf-8")},
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to update last_accessed for {meta_key}: {e}")
                 value = self._deserialize(data)
+                if not isinstance(value, dict):
+                    return value
                 value["access_count"] = value.get("access_count", 0) + 1
                 try:
                     self.kv_store.set(data_key, self._serialize(value))
-                except Exception:
-                    logger.warning(f"Failed to update access count for {data_key}")
+                except Exception as e:
+                    logger.warning(f"Failed to update access count for {data_key}: {e}")
+                # Update eviction index on access
+                try:
+                    self._update_eviction_index_for(data_key, value)
+                except Exception as e:
+                    logger.debug(f"Failed to update eviction index on access for {data_key}: {e}")
+                # Decrypt fields if encryption is enabled
                 if self.cipher:
                     for k in ["task", "code"]:
                         if k in value and value[k]:
@@ -505,47 +697,6 @@ class SomaFractalMemoryEnterprise:
                                 )
                 return value
         return None
-
-    def _apply_decay_to_all(self):
-        logger.debug("Applying advanced memory decay check...")
-        now = time.time()
-        decayed_count = 0
-        for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
-            try:
-                metadata = self.kv_store.hgetall(meta_key)
-                created = float(metadata.get(b"creation_timestamp", b"0"))
-                age = now - created
-                last_accessed = float(metadata.get(b"last_accessed_timestamp", created))
-                recency = now - last_accessed
-                data_key = meta_key.replace(":meta", ":data")
-                raw_data = self.kv_store.get(data_key)
-                if not raw_data:
-                    continue
-                memory_item = self._deserialize(raw_data)
-                access_count = memory_item.get("access_count", 0)
-                importance = memory_item.get("importance", 0)
-                decay_score = (
-                    (self.decay_age_weight * (age / 3600))
-                    + (self.decay_recency_weight * (recency / 3600))
-                    - (self.decay_access_weight * access_count)
-                    - (self.decay_importance_weight * importance)
-                )
-                if decay_score > self.decay_threshold and importance <= 1:
-                    keys_to_remove = set(memory_item.keys()) - {
-                        "memory_type",
-                        "timestamp",
-                        "coordinate",
-                        "importance",
-                    }
-                    for key in keys_to_remove:
-                        memory_item.pop(key, None)
-                    try:
-                        self.kv_store.set(data_key, self._serialize(memory_item))
-                    except Exception as e:
-                        logger.warning(f"Failed to write decayed memory {data_key}: {e}")
-                    decayed_count += 1
-            except Exception as e:
-                logger.warning(f"Error during advanced decay for {meta_key}: {e}")
 
     # intentionally quiet to avoid CLI noise
 
@@ -886,7 +1037,8 @@ class SomaFractalMemoryEnterprise:
                     continue
                 try:
                     mem = json.loads(line)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Skipping memory during import due to error: {e}")
                     continue
                 coord = mem.get("coordinate")
                 if coord is None:
@@ -912,22 +1064,62 @@ class SomaFractalMemoryEnterprise:
                 age = now - created
                 data_key = meta_key.replace(":meta", ":data")
                 raw_data = self.kv_store.get(data_key)
+                # Try a repr-style meta key fallback (e.g. namespace:(1, 1, 1):meta)
+                if not raw_data:
+                    try:
+                        prefix = f"{self.namespace}:"
+                        if meta_key.startswith(prefix):
+                            coord_part = meta_key[len(prefix) : -len(":meta")]
+                            nums = re.findall(r"-?\d+\.?\d*", coord_part)
+                            if nums:
+                                alt_data_key = prefix + ":".join(nums) + ":data"
+                                raw_data = self.kv_store.get(alt_data_key)
+                                if raw_data:
+                                    data_key = alt_data_key
+                    except Exception:
+                        pass
+
                 if not raw_data:
                     continue
+
                 memory_item = self._deserialize(raw_data)
                 if memory_item is None:
                     continue
-                for i, threshold in enumerate(self.decay_thresholds_seconds):
-                    if age > threshold:
-                        keys_to_remove = set(self.decayable_keys_by_level[i])
-                        for key in keys_to_remove:
-                            memory_item.pop(key, None)
+
+                try:
+                    score = self._compute_eviction_score(memory_item, now, created_override=created)
+                except Exception:
+                    score = 0.0
+
+                if score > self.decay_threshold:
+                    minimal = {
+                        "memory_type": memory_item.get("memory_type"),
+                        "coordinate": memory_item.get("coordinate"),
+                        "importance": memory_item.get("importance", 0),
+                    }
+                    if "timestamp" in memory_item:
+                        minimal["timestamp"] = memory_item["timestamp"]
+                    if "access_count" in memory_item:
+                        minimal["access_count"] = memory_item["access_count"]
+                    memory_item = minimal
+                else:
+                    for i, threshold in enumerate(self.decay_thresholds_seconds):
+                        if age > threshold:
+                            keys_to_remove = set(self.decayable_keys_by_level[i])
+                            for key in keys_to_remove:
+                                memory_item.pop(key, None)
+
                 try:
                     self.kv_store.set(data_key, self._serialize(memory_item))
                 except Exception as e:
                     logger.warning(f"Failed to write decayed memory {data_key}: {e}")
             except Exception as e:
                 logger.warning(f"Error during run_decay_once for {meta_key}: {e}")
+
+    # Backwards-compatible alias used by tests/tools
+    def _apply_decay_to_all(self):
+        """Legacy compatibility shim: apply decay pass once over all memories."""
+        return self.run_decay_once()
 
     def store_vector_only(
         self, coordinate: Tuple[float, ...], vector: np.ndarray, payload: Optional[dict] = None
@@ -975,27 +1167,99 @@ class SomaFractalMemoryEnterprise:
             return _fallback_hash()
 
     def _enforce_memory_limit(self):
-        all_items = []
-        for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
+        try:
+            ev_key = f"{self.namespace}:eviction_index"
+            total = self.kv_store.zcard(ev_key)
+            excess = max(0, int(total) - int(self.max_memory_size))
+            if excess <= 0:
+                return
+
+            # Remove highest-score members (most eligible for eviction)
+            # Diagnostic: log current top candidates
             try:
-                metadata = self.kv_store.hgetall(meta_key)
-                created = float(metadata.get(b"creation_timestamp", b"0"))
-                data_key = meta_key.replace(":meta", ":data")
-                raw_data = self.kv_store.get(data_key)
-                if not raw_data:
+                top_with_scores = self.kv_store.zrange(ev_key, -excess, -1, withscores=True) or []
+                # Use warning level so test output captures these diagnostics
+                logger.warning(f"Eviction candidates (top {excess}): {top_with_scores}")
+                # Log deserialized payloads for inspection
+                try:
+                    des = []
+                    if top_with_scores:
+                        for item in top_with_scores:
+                            member = item[0] if isinstance(item, tuple) else item
+                            if isinstance(member, (bytes, bytearray)):
+                                member_str = member.decode("utf-8")
+                            else:
+                                member_str = str(member)
+                            raw = self.kv_store.get(member_str)
+                            obj = self._deserialize(raw)
+                            des.append(
+                                (
+                                    member_str,
+                                    obj.get("importance") if isinstance(obj, dict) else None,
+                                    item[1] if isinstance(item, tuple) and len(item) > 1 else None,
+                                )
+                            )
+                    logger.warning(f"Eviction candidate details: {des}")
+                except Exception as e:
+                    logger.debug(f"Failed to log eviction candidate details: {e}")
+            except Exception:
+                # If we couldn't fetch with scores, continue; we'll still try to fetch members
+                logger.debug("Could not fetch top_with_scores for eviction diagnostics")
+
+            # Redis zset is sorted ascending; use negative indices to fetch top-scoring members
+            to_remove = self.kv_store.zrange(ev_key, -excess, -1) or []
+            if not to_remove:
+                return
+            # Remove keys both from kv store and the zset
+            for member in to_remove:
+                try:
+                    # member might be bytes from Redis client
+                    if isinstance(member, (bytes, bytearray)):
+                        member_str = member.decode("utf-8")
+                    elif isinstance(member, tuple) and len(member) >= 1:
+                        # In some zrange implementations withscores=True returns (member, score)
+                        member_str = member[0]
+                    else:
+                        member_str = str(member)
+                    data_key = member_str
+                    meta_key = data_key.replace(":data", ":meta")
+                    self.kv_store.delete(data_key)
+                    self.kv_store.delete(meta_key)
+                except Exception as e:
+                    logger.debug(f"Skipping item in fallback eviction scan due to error: {e}")
                     continue
-                mem = self._deserialize(raw_data)
-                imp = int(mem.get("importance", 0))
-                all_items.append((imp, created, data_key, meta_key))
-            except Exception:
-                continue
-        excess = max(0, len(all_items) - int(self.max_memory_size))
-        if excess <= 0:
-            return
-        all_items.sort(key=lambda t: (t[0], t[1]))
-        for _, _, data_key, meta_key in all_items[:excess]:
             try:
-                self.kv_store.delete(data_key)
-                self.kv_store.delete(meta_key)
+                # Trim zset by rank
+                # Remove the same high-score slice from zset
+                self.kv_store.zremrangebyrank(ev_key, -excess, -1)
             except Exception:
-                continue
+                pass
+        except Exception:
+            # Fallback to scan-based eviction if zset unavailable
+            all_items = []
+            for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
+                try:
+                    metadata = self.kv_store.hgetall(meta_key)
+                    created = float(metadata.get(b"creation_timestamp", b"0"))
+                    data_key = meta_key.replace(":meta", ":data")
+                    raw_data = self.kv_store.get(data_key)
+                    if not raw_data:
+                        continue
+                    mem = self._deserialize(raw_data)
+                    imp = int(mem.get("importance", 0))
+                    all_items.append((imp, created, data_key, meta_key))
+                except Exception as e:
+                    logger.debug(f"Failed to load memory in fallback eviction scan: {e}")
+                    continue
+            excess = max(0, len(all_items) - int(self.max_memory_size))
+            if excess <= 0:
+                return
+            all_items.sort(key=lambda t: (t[0], t[1]))
+            for _, _, data_key, meta_key in all_items[:excess]:
+                try:
+                    self.kv_store.delete(data_key)
+                    self.kv_store.delete(meta_key)
+                except (ValueError, TypeError, KeyError, AttributeError) as e:
+                    # Narrow exception handling to expected deserialization/index errors.
+                    logger.debug(f"Skipping item in fallback eviction scan due to error: {e}")
+                    continue

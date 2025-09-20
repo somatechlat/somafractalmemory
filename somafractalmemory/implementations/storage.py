@@ -129,7 +129,19 @@ class InMemoryKeyValueStore(IKeyValueStore):
         if not hasattr(self, "_zsets") or key not in self._zsets:
             return []
         items = sorted(self._zsets[key].items(), key=lambda kv: kv[1])
-        slice_items = items[start : end + 1]
+        L = len(items)
+        # Normalize negative indices to Python-style slicing that matches Redis semantics
+        s = start
+        e = end
+        if s < 0:
+            s = max(0, L + s)
+        if e < 0:
+            e = L + e
+        # If end is beyond range, clamp to last index
+        e = min(e, L - 1)
+        if s > e:
+            return []
+        slice_items = items[s : e + 1]
         if withscores:
             return slice_items
         return [m for m, _ in slice_items]
@@ -153,7 +165,17 @@ class InMemoryKeyValueStore(IKeyValueStore):
         if not hasattr(self, "_zsets") or key not in self._zsets:
             return 0
         items = sorted(self._zsets[key].items(), key=lambda kv: kv[1])
-        to_remove = items[start : end + 1]
+        L = len(items)
+        s = start
+        e = end
+        if s < 0:
+            s = max(0, L + s)
+        if e < 0:
+            e = L + e
+        e = min(e, L - 1)
+        if s > e:
+            return 0
+        to_remove = items[s : e + 1]
         for m, _ in to_remove:
             del self._zsets[key][m]
         return len(to_remove)

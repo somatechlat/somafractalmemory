@@ -15,7 +15,7 @@ lint:
 	. .venv/bin/activate && mypy somafractalmemory
 
 api:
-	. .venv/bin/activate && uvicorn examples.api:app --reload
+	. .venv/bin/activate && ./scripts/free_port.sh 9595 || true && uvicorn examples.api:app --host 0.0.0.0 --port 9595 --workers 1 --log-level info
 
 metrics:
 	. .venv/bin/activate && python examples/metrics_server.py

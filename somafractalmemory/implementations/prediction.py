@@ -5,13 +5,14 @@ import numpy as np
 from somafractalmemory.interfaces.prediction import IPredictionProvider
 
 
-def _safe_requests_get(url: str):
-    """Lazily import requests and perform a GET; return None on failure/missing."""
+def _safe_requests_get(url: str, timeout: float = 5.0):
+    """Lazily import requests and perform a GET with a reasonable timeout; return None on failure/missing."""
     try:
         import requests  # type: ignore
 
-        return requests.get(url)
+        return requests.get(url, timeout=timeout)
     except Exception:
+        # Log could be added where appropriate; return None to indicate unhealthy.
         return None
 
 

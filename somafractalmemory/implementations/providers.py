@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Tuple
 
 from transformers import AutoModel, AutoTokenizer
@@ -9,8 +10,11 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
     """An embedding provider that uses Hugging Face Transformers."""
 
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        # Allow optional pinning of the model revision via env var for reproducible builds
+        rev = os.getenv("SOMA_MODEL_REV")
+        kwargs = {"revision": rev} if rev else {}
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, **kwargs)
+        self.model = AutoModel.from_pretrained(model_name, **kwargs)
 
     def embed_text(self, text: str) -> List[float]:
         return self.embed_texts([text])[0]
