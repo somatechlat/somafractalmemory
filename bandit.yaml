@@ -1,0 +1,6 @@
+# Bandit configuration used by local CI runs to exclude test files
+exclude:
+  - tests/
+
+# Optionally, you can specify targets and other options here.
+# See: https://bandit.readthedocs.io/en/latest/config.html

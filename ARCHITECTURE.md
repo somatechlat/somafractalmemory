@@ -1,4 +1,3 @@
-
 # SomaFractalMemoryEnterprise: Modular Agentic Memory System
 
 ## 🛣️ Prioritized Roadmap
@@ -38,24 +37,30 @@
 +-------------------+         +-------------------+         +-------------------+
 |   Agent(s)        | <-----> |   Memory API      | <-----> |   Config Manager  |
 +-------------------+         +-------------------+         +-------------------+
-								   |        |        |
-								   |        |        |
-				+------------------+        |        +------------------+
-				|                           |                           |
+                                   |        |        |
+                                   |        |        |
+                +------------------+        |        +------------------+
+                |                           |                           |
 +---------------------------+   +-------------------------+   +-------------------------+
 |  Storage Module           |   |  Prediction Module      |   |  Semantic Graph Module  |
-|  (Dict/Redis/Cluster)     |   |  (None/Local/External)  |   |  (NetworkX/Neo4j/etc.) |
+|  (Dict/Redis/Cluster)    |   |  (None/Local/External)  |   |  (NetworkX/Neo4j/etc.) |
 +---------------------------+   +-------------------------+   +-------------------------+
-				|                           |                           |
-				+---------------------------+---------------------------+
-									|
-						+-----------------------------+
-						|   Observability/Monitoring  |
-						|   (Logging, Metrics, UI)    |
-						+-----------------------------+
+                |                           |                           |
+                +---------------------------+---------------------------+
+                                    |
+                        +-----------------------------+
+                        |   Observability/Monitoring  |
+                        |   (Logging, Metrics, UI)    |
+                        +-----------------------------+
 ```
 
----
++-------------------+   +-------------------+   +-------------------+
+|   FastAPI Server  | → |   openapi.json    | ← |   mkdocs site    |
++-------------------+   +-------------------+   +-------------------+
+
++-------------------+   +-------------------+
+|   Docker Compose  | → |   start_stack.sh  |
++-------------------+   +-------------------+
 
 ## Feature Matrix
 
@@ -70,6 +75,14 @@
 | High-Availability        |    ✖     |   (optional)  |     ✔      |
 | Monitoring/Alerting      |    ✖     |   (optional)  |     ✔      |
 | User Management/Security |    ✖     |      ✖        |     ✔      |
+
+---
+
+## Infrastructure (Docker Compose)
+- **docker-compose.yml** – runs Redis and Qdrant for local development.
+- **docker-compose.dev.yml** – adds Redpanda, Apicurio Registry, Postgres, and Qdrant for event‑driven and enterprise modes.
+- **scripts/start_stack.sh** – orchestrates which services to start based on the chosen `MemoryMode` (`development`, `evented_enterprise`, `cloud_managed`, `test`).
+- **OpenAPI generation** – `examples/api.py` creates `openapi.json` on FastAPI startup; `scripts/generate_openapi.py` can be run manually to dump the spec.
 
 ---
 

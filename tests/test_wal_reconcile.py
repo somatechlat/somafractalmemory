@@ -1,11 +1,10 @@
-import pytest
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
     mem: SomaFractalMemoryEnterprise = create_memory_system(
-        MemoryMode.LOCAL_AGENT,
+        MemoryMode.DEVELOPMENT,
         "wal_ns",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
     )
@@ -34,10 +33,12 @@ def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
     mem._reconcile_once()
 
     # WAL entries should be committed
-    import pickle
+    # WAL entries should be JSON-serialized (JSON-first serializer)
     for k in wal_keys:
         raw = mem.kv_store.get(k)
         if raw:
-            entry = pickle.loads(raw)
-            assert entry.get("status") == "committed"
+            # deserialize using the project's helper to ensure JSON-first parsing
+            from somafractalmemory.serialization import deserialize
 
+            entry = deserialize(raw)
+            assert entry.get("status") == "committed"

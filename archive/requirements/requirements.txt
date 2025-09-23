@@ -1,0 +1,9 @@
+"""Archived generated requirements.txt — original moved during cleanup.
+
+This file was a generated pip-style requirements file. The canonical
+source in this repository is the YAML manifest(s) (e.g. `requirements.yaml`,
+`requirements-min.yaml`) plus `scripts/generate_requirements.py` which
+converts YAML -> requirements.txt during CI/Docker builds.
+"""
+
+(empty)

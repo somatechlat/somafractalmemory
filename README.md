@@ -52,8 +52,8 @@ config = {
     },
 }
 
-# Initialize an ON_DEMAND memory system
-mem = create_memory_system(MemoryMode.ON_DEMAND, namespace="demo_ns", config=config)
+# Initialize a TEST memory system
+mem = create_memory_system(MemoryMode.TEST, namespace="demo_ns", config=config)
 
 # Store an episodic memory
 coord = (1.0, 2.0, 3.0)
@@ -82,17 +82,17 @@ pip install -e .
 # View CLI help
 soma -h
 
-# Store a memory
-soma --mode local_agent --namespace demo_ns store --coord 1,2,3 --payload '{"task":"write docs","importance":2}' --type episodic
+# Store a memory (use v2 canonical mode)
+soma --mode development --namespace demo_ns store --coord 1,2,3 --payload '{"task":"write docs","importance":2}' --type episodic
 
 # Recall memories
-soma --mode local_agent --namespace demo_ns recall --query "write documentation" --top-k 3
+soma --mode development --namespace demo_ns recall --query "write documentation" --top-k 3
 
 # Link memories
-soma --mode local_agent --namespace demo_ns link --from 1,2,3 --to 4,5,6 --type related
+soma --mode development --namespace demo_ns link --from 1,2,3 --to 4,5,6 --type related
 
 # View system stats
-soma --mode local_agent --namespace demo_ns stats
+soma --mode development --namespace demo_ns stats
 ```
 
 ## Vector Backend Configuration
@@ -102,13 +102,13 @@ Switch between in-memory and Qdrant-based vector storage:
 - **In-Memory (Default for ON_DEMAND)**: Ideal for prototyping.
 
 ```python
-mem = create_memory_system(MemoryMode.ON_DEMAND, "demo_ns", config={"redis": {"testing": True}})
+mem = create_memory_system(MemoryMode.TEST, "demo_ns", config={"redis": {"testing": True}})
 ```
 
 - **Qdrant (Default for LOCAL_AGENT/ENTERPRISE)**: Persistent storage.
 
 ```python
-mem = create_memory_system(MemoryMode.ON_DEMAND, "demo_ns", config={
+mem = create_memory_system(MemoryMode.TEST, "demo_ns", config={
     "redis": {"testing": True},
     "vector": {"backend": "qdrant"}
 })

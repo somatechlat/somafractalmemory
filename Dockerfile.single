@@ -1,0 +1,52 @@
+# Dockerfile.single – unified development and production image
+# Uses multi-stage build to keep the final image minimal.
+
+# ---------- Build stage ----------
+FROM python:3.10-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies (including optional dev tools)
+COPY requirements.txt api-requirements.txt /app/
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt -r api-requirements.txt
+
+# Copy source code
+COPY . /app
+
+# ---------- Runtime stage ----------
+FROM python:3.10-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Copy only the installed packages from builder (no build tools)
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /app /app
+
+# Copy the orchestration script into the runtime image
+COPY scripts/start_all.sh /app/start_all.sh
+# Ensure the script is executable
+RUN chmod +x /app/start_all.sh
+# Use the script as the container entrypoint to launch both FastAPI and consumers
+ENTRYPOINT ["/app/start_all.sh"]
+
+# Expose the default FastAPI port
+EXPOSE 9595
+
+# Healthcheck (optional, matches original Dockerfile)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:9595/health || exit 1
+
+# Default command – can be overridden at runtime.
+# For development you may use "uvicorn examples.api:app --host 0.0.0.0 --port 9595 --reload"
+# For production use the fast workers configuration.
+CMD ["uvicorn", "examples.api:app", "--host", "0.0.0.0", "--port", "9595", "--workers", "2", "--timeout-keep-alive", "30"]

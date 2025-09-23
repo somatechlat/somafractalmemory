@@ -5,13 +5,13 @@ Run:
   python examples/seed_and_query.py
 """
 
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def main():
     mem = create_memory_system(
-        MemoryMode.LOCAL_AGENT,
+        MemoryMode.DEVELOPMENT,
         "seed_ns",
         config={"redis": {"testing": True}, "qdrant": {"path": "./qdrant.db"}},
     )
@@ -33,4 +33,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

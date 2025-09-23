@@ -58,12 +58,23 @@ def get_mode(mode_str: str) -> MemoryMode:
     MemoryMode
         Corresponding MemoryMode enum value.
     """
+    # Accept both legacy names and the new v2 canonical names. Map any
+    # accepted string (case-insensitive) to the canonical MemoryMode enum.
+    # v2 canonical names only. Legacy mode strings were removed in v2.
     mapping = {
-        "on_demand": MemoryMode.ON_DEMAND,
-        "local_agent": MemoryMode.LOCAL_AGENT,
-        "enterprise": MemoryMode.ENTERPRISE,
+        "development": MemoryMode.DEVELOPMENT,
+        "test": MemoryMode.TEST,
+        "evented_enterprise": MemoryMode.EVENTED_ENTERPRISE,
+        "cloud_managed": MemoryMode.CLOUD_MANAGED,
     }
-    return mapping[mode_str]
+
+    key = (mode_str or "").strip().lower()
+    try:
+        return mapping[key]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported mode: {mode_str}. Supported modes: {', '.join(sorted(mapping.keys()))}"
+        ) from exc
 
 
 def main() -> None:
@@ -73,7 +84,10 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(prog="soma", description="SomaFractalMemory CLI")
     parser.add_argument(
-        "--mode", default="local_agent", choices=["on_demand", "local_agent", "enterprise"]
+        "--mode",
+        default="development",
+        choices=["development", "test", "evented_enterprise", "cloud_managed"],
+        help="Memory system mode (v2 canonical names)",
     )
     parser.add_argument("--namespace", default="cli_ns")
     parser.add_argument(

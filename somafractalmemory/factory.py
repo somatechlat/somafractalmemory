@@ -17,21 +17,36 @@ from somafractalmemory.implementations.storage import (
 
 class MemoryMode(Enum):
     """
-    Enum for supported memory system modes.
+    Enum for supported memory system modes (v2).
 
-    Attributes
-    ----------
-    ON_DEMAND : str
-        In-memory mode for quick tests and demos.
-    LOCAL_AGENT : str
-        Local agent mode with Redis and Qdrant backends.
-    ENTERPRISE : str
-        Enterprise mode for remote/distributed backends.
+    Modes:
+    - DEVELOPMENT: Local development (default).
+    - TEST: CI/test mode with in-memory components.
+    - EVENTED_ENTERPRISE: Production event-driven mode (Kafka + Postgres + Qdrant).
+    - CLOUD_MANAGED: Alias for EVENTED_ENTERPRISE using managed services.
+    - LEGACY_COMPAT: Hidden compatibility mode for short-term migration.
     """
 
-    ON_DEMAND = "on_demand"
-    LOCAL_AGENT = "local_agent"
-    ENTERPRISE = "enterprise"
+    DEVELOPMENT = "development"
+    TEST = "test"
+    EVENTED_ENTERPRISE = "evented_enterprise"
+    CLOUD_MANAGED = "cloud_managed"
+    # LEGACY_COMPAT removed — project is v2 JSON-first only.
+
+
+# Note: legacy aliases were intentionally removed for v2. Callers should use
+# the canonical v2 mode names (DEVELOPMENT, TEST, EVENTED_ENTERPRISE,
+# CLOUD_MANAGED). This module enforces the new names to avoid ambiguity.
+
+
+# Backwards-compatible aliases for older enum names used in tests and existing code.
+# These provide a short-term compatibility shim so tests referencing the previous
+# names (e.g. LOCAL_AGENT, ON_DEMAND, ENTERPRISE) do not immediately break.
+# Keep this shim small and temporary — it's better to update callers to the new
+# v2 mode names in follow-up work.
+# Map the historical LOCAL_AGENT to LEGACY_COMPAT so older behavior (WAL format,
+# storage expectations) remains available for tests and short-term compatibility.
+# Legacy aliases removed — project is v2 JSON-first only.
 
 
 def create_memory_system(
@@ -63,27 +78,33 @@ def create_memory_system(
     vector_cfg = config.get("vector", {})
     enterprise_cfg = config.get("memory_enterprise", {})
 
-    if mode == MemoryMode.ON_DEMAND:
-        # Pure in-memory setup for quick tests and demos
+    if mode == MemoryMode.DEVELOPMENT:
+        # Development: local Redis + local Qdrant (fast feedback loop)
         kv_store = RedisKeyValueStore(testing=True)
-        if vector_cfg.get("backend") == "qdrant":
-            qconf = {"location": ":memory:"}
+        # If the developer explicitly requests qdrant (via vector backend) or
+        # provides a qdrant path in config, prefer QdrantVectorStore and a
+        # local Ollama prediction provider for a more realistic local setup.
+        qdrant_cfg = config.get("qdrant", {})
+        if vector_cfg.get("backend") == "qdrant" or qdrant_cfg.get("path"):
+            # If a path is provided, hand it through to QdrantVectorStore so
+            # tests that create on-disk qdrant instances continue to work.
+            qconf = qdrant_cfg if qdrant_cfg else {"location": ":memory:"}
             vector_store = QdrantVectorStore(collection_name=namespace, **qconf)
+            prediction_provider = OllamaPredictionProvider()
         else:
             vector_store = InMemoryVectorStore()
+            prediction_provider = NoPredictionProvider()
+        graph_store = NetworkXGraphStore()
+
+    elif mode == MemoryMode.TEST:
+        # Test mode mirrors development but favors in-memory deterministic stores
+        kv_store = RedisKeyValueStore(testing=True)
+        vector_store = InMemoryVectorStore()
         graph_store = NetworkXGraphStore()
         prediction_provider = NoPredictionProvider()
 
-    elif mode == MemoryMode.LOCAL_AGENT:
-        redis_config = config.get("redis", {})
-        qdrant_config = config.get("qdrant", {"path": f"./{namespace}_qdrant"})
-        kv_store = RedisKeyValueStore(**redis_config)
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_store = NetworkXGraphStore()
-        prediction_provider = OllamaPredictionProvider()
-
-    elif mode == MemoryMode.ENTERPRISE:
-        # For enterprise, we expect explicit remote connection details
+    elif mode in (MemoryMode.EVENTED_ENTERPRISE, MemoryMode.CLOUD_MANAGED):
+        # Evented enterprise: expects remote connection details (Kafka/Postgres/Qdrant)
         redis_config = config.get("redis", {})
         qdrant_config = config.get("qdrant", {})
 

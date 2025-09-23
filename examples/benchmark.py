@@ -11,28 +11,28 @@ import string
 import time
 from statistics import mean
 
-from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
 def rand_text(k: int = 16) -> str:
-    return ''.join(random.choices(string.ascii_lowercase + string.digits + ' ', k=k))
+    return "".join(random.choices(string.ascii_lowercase + string.digits + " ", k=k))
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--n', type=int, default=1000, help='Number of items to store')
-    ap.add_argument('--dim', type=int, default=256, help='Vector dimension (fallback)')
-    ap.add_argument('--namespace', default='bench_ns')
+    ap.add_argument("--n", type=int, default=1000, help="Number of items to store")
+    ap.add_argument("--dim", type=int, default=256, help="Vector dimension (fallback)")
+    ap.add_argument("--namespace", default="bench_ns")
     args = ap.parse_args()
 
     mem = create_memory_system(
-        MemoryMode.LOCAL_AGENT,
+        MemoryMode.DEVELOPMENT,
         args.namespace,
         config={
-            'redis': {'testing': True},
-            'qdrant': {'path': './qdrant.db'},
-            'memory_enterprise': {'vector_dim': args.dim},
+            "redis": {"testing": True},
+            "qdrant": {"path": "./qdrant.db"},
+            "memory_enterprise": {"vector_dim": args.dim},
         },
     )
 
@@ -40,7 +40,7 @@ def main():
     start = time.perf_counter()
     for i in range(args.n):
         coord = (float(i % 100), float((i // 100) % 100), float(i % 7))
-        payload = {'task': rand_text(24), 'importance': i % 5}
+        payload = {"task": rand_text(24), "importance": i % 5}
         mem.store_memory(coord, payload, memory_type=MemoryType.EPISODIC)
     store_time = time.perf_counter() - start
 
@@ -52,16 +52,17 @@ def main():
         _ = mem.recall(q, top_k=5)
         latencies.append(time.perf_counter() - t0)
 
-    print({
-        'stored': args.n,
-        'store_seconds': round(store_time, 4),
-        'store_per_sec': round(args.n / store_time if store_time else float('inf'), 2),
-        'recall_count': len(queries),
-        'recall_avg_ms': round(mean(latencies) * 1000, 2) if latencies else 0.0,
-        'vector_dim': args.dim,
-    })
+    print(
+        {
+            "stored": args.n,
+            "store_seconds": round(store_time, 4),
+            "store_per_sec": round(args.n / store_time if store_time else float("inf"), 2),
+            "recall_count": len(queries),
+            "recall_avg_ms": round(mean(latencies) * 1000, 2) if latencies else 0.0,
+            "vector_dim": args.dim,
+        }
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

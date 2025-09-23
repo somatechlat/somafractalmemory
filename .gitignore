@@ -54,3 +54,13 @@ qdrant.db/
 
 # --- Notebooks ---
 .ipynb_checkpoints/
+
+# --- Generated docs/site ---
+site/
+
+# --- Node / JS ---
+node_modules/
+
+# --- Misc generated ---
+README_MINIMAL.md
+docs/README.md

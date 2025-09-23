@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  redpanda:
+    # Updated to official public Redpanda image.
+    image: redpandadata/redpanda:latest
+    command: ["redpanda", "start", "--overprovisioned", "--node-id", "0", "--check=false"]
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    environment:
+      - "REDPANDA_AUTO_CREATE_TOPICS=true"
+
+  apicurio:
+    image: apicurio/apicurio-registry-mem:2.1.2.Final
+    ports:
+      - "8080:8080"
+    environment:
+      - "QUARKUS_PROFILE=dev"
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: soma
+      POSTGRES_DB: soma
+    # Changed host port to avoid conflict with local Postgres instances.
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  pgdata:
+  qdrant_data:
+
+# Notes:
+# - This compose file is minimal and intended for local development/prototyping.
+# - For production use, prefer Strimzi or managed Redpanda/Kafka.

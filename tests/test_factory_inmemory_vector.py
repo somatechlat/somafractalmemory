@@ -1,11 +1,11 @@
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.implementations.storage import InMemoryVectorStore
 from somafractalmemory.core import MemoryType
+from somafractalmemory.factory import MemoryMode, create_memory_system
+from somafractalmemory.implementations.storage import InMemoryVectorStore
 
 
 def test_on_demand_inmemory_vector_toggle(tmp_path):
     mem = create_memory_system(
-        MemoryMode.ON_DEMAND,
+        MemoryMode.TEST,
         "od_mem",
         config={
             "vector": {"backend": "inmemory"},

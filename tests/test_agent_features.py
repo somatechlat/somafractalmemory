@@ -10,7 +10,7 @@ def mem(tmp_path) -> SomaFractalMemoryEnterprise:
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
         "redis": {"testing": True},
     }
-    return create_memory_system(MemoryMode.LOCAL_AGENT, "agent_features_ns", config=config)
+    return create_memory_system(MemoryMode.DEVELOPMENT, "agent_features_ns", config=config)
 
 
 def test_set_importance_and_get_important(mem: SomaFractalMemoryEnterprise):
@@ -29,14 +29,16 @@ def test_consolidate_memories_creates_semantic(mem: SomaFractalMemoryEnterprise)
     mem.store_memory(c, {"task": "event"}, memory_type=MemoryType.EPISODIC)
     mem.consolidate_memories(window_seconds=3600)
     semantics = mem.retrieve_memories(MemoryType.SEMANTIC)
-    assert any(m.get("consolidated_from") == c for m in semantics)
+    # consolidated_from may be stored as a JSON list (round-tripped), so
+    # normalize to a tuple for comparison with the original coordinate tuple.
+    assert any(tuple(m.get("consolidated_from")) == c for m in semantics)
 
 
 def test_share_memory_with(tmp_path):
     cfg1 = {"qdrant": {"path": str(tmp_path / "q1.db")}, "redis": {"testing": True}}
     cfg2 = {"qdrant": {"path": str(tmp_path / "q2.db")}, "redis": {"testing": True}}
-    m1 = create_memory_system(MemoryMode.LOCAL_AGENT, "ns1", config=cfg1)
-    m2 = create_memory_system(MemoryMode.LOCAL_AGENT, "ns2", config=cfg2)
+    m1 = create_memory_system(MemoryMode.DEVELOPMENT, "ns1", config=cfg1)
+    m2 = create_memory_system(MemoryMode.DEVELOPMENT, "ns2", config=cfg2)
     c = (9.9, 9.9, 9.9)
     m1.store_memory(c, {"fact": "shared"}, memory_type=MemoryType.SEMANTIC)
     m1.share_memory_with(m2)

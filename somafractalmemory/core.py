@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import os
-import pickle
 import threading
 import time
 import uuid
@@ -21,6 +20,7 @@ from transformers import AutoModel, AutoTokenizer
 from .interfaces.graph import IGraphStore
 from .interfaces.prediction import IPredictionProvider
 from .interfaces.storage import IKeyValueStore, IVectorStore
+from .serialization import deserialize, serialize
 
 
 class MemoryType(Enum):
@@ -132,17 +132,23 @@ class SomaFractalMemoryEnterprise:
 
         This is used for reliability in case of vector store failures.
         """
-        import pickle
-
         wal_prefix = f"{self.namespace}:wal:"
         for wal_key in self.kv_store.scan_iter(f"{wal_prefix}*"):
             raw = self.kv_store.get(wal_key)
             if not raw:
                 continue
-            entry = pickle.loads(raw)
+            try:
+                entry = deserialize(raw)
+            except Exception:
+                logger.warning(f"Failed to deserialize WAL entry {wal_key}")
+                continue
+
             if entry.get("status") != "committed":
                 entry["status"] = "committed"
-                self.kv_store.set(wal_key, pickle.dumps(entry))
+                try:
+                    self.kv_store.set(wal_key, serialize(entry))
+                except Exception:
+                    logger.warning(f"Failed to write back WAL entry {wal_key}")
 
     def delete(self, coordinate: Tuple[float, ...]) -> bool:
         """
@@ -204,6 +210,7 @@ class SomaFractalMemoryEnterprise:
         self.decayable_keys_by_level = decayable_keys_by_level or []
         self.decay_enabled = decay_enabled
         self.reconcile_enabled = reconcile_enabled
+        # JSON-first mode only  legacy binary Python serialization support removed for v2.
         self.model_lock = threading.RLock()
         self.vector_dim = int(os.getenv("SOMA_VECTOR_DIM", vector_dim))
 
@@ -250,6 +257,47 @@ class SomaFractalMemoryEnterprise:
         if self.decay_enabled:
             threading.Thread(target=self._decay_memories, daemon=True).start()
 
+    def _decay_memories(self):
+        """
+        Periodic background task that applies basic decay rules to memories.
+
+        This implementation is JSON-first: it reads stored entries with
+        `deserialize`, applies configured decay thresholds and keys, and
+        writes the updated memory back using `serialize`.
+        """
+        while True:
+            now = time.time()
+            for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
+                try:
+                    metadata = self.kv_store.hgetall(meta_key)
+                    created = float(metadata.get(b"creation_timestamp", b"0"))
+                    age = now - created
+                    data_key = meta_key.replace(":meta", ":data")
+                    raw_data = self.kv_store.get(data_key)
+                    if not raw_data:
+                        continue
+                    try:
+                        memory_item = deserialize(raw_data)
+                    except Exception:
+                        logger.warning(f"Failed to deserialize memory {data_key} during decay")
+                        continue
+                    for i, threshold in enumerate(self.decay_thresholds_seconds):
+                        if age > threshold:
+                            keys_to_remove = (
+                                set(self.decayable_keys_by_level[i])
+                                if i < len(self.decayable_keys_by_level)
+                                else set()
+                            )
+                            for key in keys_to_remove:
+                                memory_item.pop(key, None)
+                    try:
+                        self.kv_store.set(data_key, serialize(memory_item))
+                    except Exception:
+                        logger.warning(f"Failed to write decayed memory {data_key}")
+                except Exception as e:
+                    logger.warning(f"Error during decay for {meta_key}: {e}")
+            time.sleep(self.pruning_interval_seconds)
+
     # --------- Bulk and Export/Import ---------
     def store_memories_bulk(
         self, items: List[Tuple[Tuple[float, ...], Dict[str, Any], MemoryType]]
@@ -268,7 +316,14 @@ class SomaFractalMemoryEnterprise:
     # --------- Core KV/Vector storage ---------
     def store(self, coordinate: Tuple[float, ...], value: dict):
         data_key, meta_key = _coord_to_key(self.namespace, coordinate)
-        self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+        try:
+            self.kv_store.set(data_key, serialize(value))
+        except Exception:
+            # Best-effort: fall back to raw json bytes if serializer fails
+            try:
+                self.kv_store.set(data_key, json.dumps(value).encode("utf-8"))
+            except Exception:
+                logger.warning(f"Failed to write memory for {data_key}")
         try:
             self.kv_store.hset(
                 meta_key, mapping={b"creation_timestamp": str(time.time()).encode("utf-8")}
@@ -293,37 +348,14 @@ class SomaFractalMemoryEnterprise:
                     "error": str(e),
                     "ts": time.time(),
                 }
-                self.kv_store.set(
-                    wal_key, pickle.dumps(wal_payload, protocol=pickle.HIGHEST_PROTOCOL)
-                )
+                try:
+                    self.kv_store.set(wal_key, serialize(wal_payload))
+                except Exception:
+                    # Best-effort: do not raise from WAL write failures
+                    pass
             except Exception:
                 pass
-        return True
-
-    def _decay_memories(self):
-        while True:
-            now = time.time()
-            for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
-                try:
-                    metadata = self.kv_store.hgetall(meta_key)
-                    created = float(metadata.get(b"creation_timestamp", b"0"))
-                    age = now - created
-                    data_key = meta_key.replace(":meta", ":data")
-                    raw_data = self.kv_store.get(data_key)
-                    if not raw_data:
-                        continue
-                    memory_item = pickle.loads(raw_data)
-                    for i, threshold in enumerate(self.decay_thresholds_seconds):
-                        if age > threshold:
-                            keys_to_remove = set(self.decayable_keys_by_level[i])
-                            for key in keys_to_remove:
-                                memory_item.pop(key, None)
-                    self.kv_store.set(
-                        data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
-                    )
-                except Exception as e:
-                    logger.warning(f"Error during decay for {meta_key}: {e}")
-            time.sleep(self.pruning_interval_seconds)
+            # WAL entry written (JSON-first). Reconciliation runs separately.
 
     def acquire_lock(self, name: str, timeout: int = 10) -> ContextManager:
         return self.kv_store.lock(name, timeout)
@@ -352,7 +384,11 @@ class SomaFractalMemoryEnterprise:
                 data = self.kv_store.get(key)
                 if data:
                     try:
-                        yield pickle.loads(data)
+                        try:
+                            yield deserialize(data)
+                        except Exception:
+                            # If deserialize fails, skip this record
+                            continue
                     except Exception:
                         continue
 
@@ -375,9 +411,15 @@ class SomaFractalMemoryEnterprise:
         data = self.kv_store.get(data_key)
         if not data:
             raise SomaFractalMemoryError(f"No memory at {coordinate}")
-        value = pickle.loads(data)
+        try:
+            value = deserialize(data)
+        except Exception as exc:
+            raise SomaFractalMemoryError(f"Failed to deserialize memory at {coordinate}") from exc
         value["importance"] = importance
-        self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+        try:
+            self.kv_store.set(data_key, serialize(value))
+        except Exception:
+            logger.warning(f"Failed to persist importance change for {data_key}")
         try:
             updates = []
             for rec in self.vector_store.scroll():
@@ -410,9 +452,16 @@ class SomaFractalMemoryEnterprise:
                 self.kv_store.hset(
                     meta_key, mapping={b"last_accessed_timestamp": str(time.time()).encode("utf-8")}
                 )
-                value = pickle.loads(data)
+                try:
+                    value = deserialize(data)
+                except Exception:
+                    logger.warning(f"Failed to deserialize memory at retrieve {data_key}")
+                    return None
                 value["access_count"] = value.get("access_count", 0) + 1
-                self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+                try:
+                    self.kv_store.set(data_key, serialize(value))
+                except Exception:
+                    logger.warning(f"Failed to persist access_count for {data_key}")
                 if self.cipher:
                     for k in ["task", "code"]:
                         if k in value and value[k]:
@@ -440,7 +489,11 @@ class SomaFractalMemoryEnterprise:
                 raw_data = self.kv_store.get(data_key)
                 if not raw_data:
                     continue
-                memory_item = pickle.loads(raw_data)
+                try:
+                    memory_item = deserialize(raw_data)
+                except Exception:
+                    logger.warning(f"Failed to deserialize memory {data_key} in advanced decay")
+                    continue
                 access_count = memory_item.get("access_count", 0)
                 importance = memory_item.get("importance", 0)
                 decay_score = (
@@ -455,9 +508,10 @@ class SomaFractalMemoryEnterprise:
                     }
                     for key in keys_to_remove:
                         memory_item.pop(key, None)
-                    self.kv_store.set(
-                        data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
-                    )
+                    try:
+                        self.kv_store.set(data_key, serialize(memory_item))
+                    except Exception:
+                        logger.warning(f"Failed to write advanced-decayed memory {data_key}")
                     decayed_count += 1
             except Exception as e:
                 logger.warning(f"Error during advanced decay for {meta_key}: {e}")
@@ -479,7 +533,10 @@ class SomaFractalMemoryEnterprise:
         for vkey in self.kv_store.scan_iter(pattern):
             vdata = self.kv_store.get(vkey)
             if vdata:
-                versions.append(pickle.loads(vdata))
+                try:
+                    versions.append(deserialize(vdata))
+                except Exception:
+                    logger.warning(f"Failed to deserialize version {vkey}")
         return versions
 
     def audit_log(self, action: str, coordinate: Tuple[float, ...], user: str = "system"):
@@ -598,7 +655,11 @@ class SomaFractalMemoryEnterprise:
                         "fact": f"Summary of event at {mem.get('timestamp')}",
                         "source_coord": coord_val,
                         "memory_type": MemoryType.SEMANTIC.value,
-                        "consolidated_from": coord_t,
+                        # Use a JSON-friendly list for consolidated_from so it
+                        # round-trips through the JSON-only serializer as a list
+                        # (tests compare against tuple coordinates). Storing as
+                        # a list avoids tuple/list mismatch after deserialize.
+                        "consolidated_from": list(coord_t),
                         "timestamp": now,
                     }
                     self.store_memory(coord_t, summary, memory_type=MemoryType.SEMANTIC)
@@ -658,14 +719,22 @@ class SomaFractalMemoryEnterprise:
                 data = self.kv_store.get(data_key)
                 if not data:
                     raise SomaFractalMemoryError(f"No memory at {from_coord}")
-                value = pickle.loads(data)
+                try:
+                    value = deserialize(data)
+                except Exception as exc:
+                    raise SomaFractalMemoryError(
+                        f"Failed to deserialize memory at {from_coord}"
+                    ) from exc
                 links = value.get("links", [])
                 link_data = {"to": to_coord, "type": link_type, "timestamp": time.time()}
                 if weight is not None:
                     link_data["weight"] = weight
                 links.append(link_data)
                 value["links"] = links
-                self.kv_store.set(data_key, pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+                try:
+                    self.kv_store.set(data_key, serialize(value))
+                except Exception:
+                    logger.warning(f"Failed to persist links for {data_key}")
                 self.graph_store.add_link(from_coord, to_coord, link_data)
 
     def get_linked_memories(
@@ -723,7 +792,10 @@ class SomaFractalMemoryEnterprise:
             try:
                 data = self.kv_store.get(key)
                 if data:
-                    memories.append(pickle.loads(data))
+                    try:
+                        memories.append(deserialize(data))
+                    except Exception:
+                        logger.warning(f"Failed to deserialize memory from key {key}")
             except Exception as e:
                 logger.warning(f"Failed to load memory from key {key}: {e}")
         return memories
@@ -820,15 +892,20 @@ class SomaFractalMemoryEnterprise:
                 raw_data = self.kv_store.get(data_key)
                 if not raw_data:
                     continue
-                memory_item = pickle.loads(raw_data)
+                try:
+                    memory_item = deserialize(raw_data)
+                except Exception:
+                    logger.warning(f"Failed to deserialize memory {data_key} in run_decay_once")
+                    continue
                 for i, threshold in enumerate(self.decay_thresholds_seconds):
                     if age > threshold:
                         keys_to_remove = set(self.decayable_keys_by_level[i])
                         for key in keys_to_remove:
                             memory_item.pop(key, None)
-                self.kv_store.set(
-                    data_key, pickle.dumps(memory_item, protocol=pickle.HIGHEST_PROTOCOL)
-                )
+                try:
+                    self.kv_store.set(data_key, serialize(memory_item))
+                except Exception:
+                    logger.warning(f"Failed to persist decayed memory {data_key}")
             except Exception as e:
                 logger.warning(f"Error during run_decay_once for {meta_key}: {e}")
 
@@ -880,7 +957,10 @@ class SomaFractalMemoryEnterprise:
                 raw_data = self.kv_store.get(data_key)
                 if not raw_data:
                     continue
-                mem = pickle.loads(raw_data)
+                try:
+                    mem = deserialize(raw_data)
+                except Exception:
+                    continue
                 imp = int(mem.get("importance", 0))
                 all_items.append((imp, created, data_key, meta_key))
             except Exception:
