@@ -26,15 +26,22 @@ def _get_client():
 
 
 def _ensure_collection(client: QdrantClient):
-    """Create the collection if it does not exist, with appropriate vector params."""
-    # Qdrant client will raise if collection exists; use try/except
+    """Create the collection if it does not exist, using the modern Qdrant API.
+
+    The previous implementation used ``client.recreate_collection`` which is
+    deprecated. We now check ``collection_exists`` and only create the collection
+    when it is missing.
+    """
     try:
-        client.get_collection(_QDRANT_COLLECTION)
-    except Exception:
-        client.recreate_collection(
-            collection_name=_QDRANT_COLLECTION,
-            vectors_config=VectorParams(size=_VECTOR_DIM, distance=Distance.COSINE),
-        )
+        if not client.collection_exists(collection_name=_QDRANT_COLLECTION):
+            client.create_collection(
+                collection_name=_QDRANT_COLLECTION,
+                vectors_config=VectorParams(size=_VECTOR_DIM, distance=Distance.COSINE),
+            )
+    except Exception as e:
+        # Log the error but allow the client to continue; the calling code will
+        # handle any further failures.
+        logger.error(f"Failed to ensure Qdrant collection {_QDRANT_COLLECTION}: {e}")
 
 
 def _embed(payload: Dict) -> list[float]:
