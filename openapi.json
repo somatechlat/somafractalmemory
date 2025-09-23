@@ -1,250 +1,1240 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.1.0",
   "info": {
     "title": "SomaFractalMemory API",
-    "version": "1.0.0",
-    "description": "OpenAPI schema for the example FastAPI service exposing SomaFractalMemoryEnterprise."
+    "version": "0.1.0"
   },
   "paths": {
     "/store": {
       "post": {
-        "tags": ["memories"],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/StoreRequest" } }
+        "tags": [
+          "memories"
+        ],
+        "summary": "Wrapper",
+        "operationId": "wrapper_store_post",
+        "parameters": [
+          {
+            "name": "args",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "title": "Args"
+            }
+          },
+          {
+            "name": "kwargs",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "title": "Kwargs"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
-        },
+        ],
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } }
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/recall": {
       "post": {
-        "tags": ["memories"],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/RecallRequest" } }
+        "tags": [
+          "memories"
+        ],
+        "summary": "Wrapper",
+        "operationId": "wrapper_recall_post",
+        "parameters": [
+          {
+            "name": "args",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "title": "Args"
+            }
+          },
+          {
+            "name": "kwargs",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "title": "Kwargs"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
-        },
+        ],
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchesResponse" } } } }
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/recall_batch": {
       "post": {
-        "tags": ["memories"],
+        "tags": [
+          "memories"
+        ],
+        "summary": "Recall Batch",
+        "operationId": "recall_batch_recall_batch_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/RecallBatchRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallBatchRequest"
+              }
+            }
           }
         },
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchesResponse" } } } }
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Stats",
+        "operationId": "stats_stats_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/neighbors": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "summary": "Neighbors",
+        "operationId": "neighbors_neighbors_get",
+        "parameters": [
+          {
+            "name": "coord",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Coord"
+            }
+          },
+          {
+            "name": "link_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link Type"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NeighborsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/link": {
+      "post": {
+        "tags": [
+          "graph"
+        ],
+        "summary": "Link",
+        "operationId": "link_link_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shortest_path": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "summary": "Shortest Path",
+        "operationId": "shortest_path_shortest_path_get",
+        "parameters": [
+          {
+            "name": "frm",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Frm"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "To"
+            }
+          },
+          {
+            "name": "link_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link Type"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/store_bulk": {
+      "post": {
+        "tags": [
+          "memories"
+        ],
+        "summary": "Store Bulk",
+        "operationId": "store_bulk_store_bulk_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreBulkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreBulkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/recall_with_scores": {
       "post": {
-        "tags": ["memories"],
+        "tags": [
+          "memories"
+        ],
+        "summary": "Recall With Scores",
+        "operationId": "recall_with_scores_recall_with_scores_post",
         "parameters": [
-          {"name": "query", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "top_k", "in": "query", "required": false, "schema": {"type": "integer", "default": 5}},
-          {"name": "type", "in": "query", "required": false, "schema": {"type": "string", "enum": ["episodic", "semantic"]}}
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "top_k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "title": "Top K"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScoresResponse" } } } }
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/recall_with_context": {
       "post": {
-        "tags": ["memories"],
+        "tags": [
+          "memories"
+        ],
+        "summary": "Recall With Context",
+        "operationId": "recall_with_context_recall_with_context_post",
         "parameters": [
-          {"name": "query", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "top_k", "in": "query", "required": false, "schema": {"type": "integer", "default": 5}},
-          {"name": "type", "in": "query", "required": false, "schema": {"type": "string", "enum": ["episodic", "semantic"]}}
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "top_k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "title": "Top K"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "properties": {"context": {"type": "object"}}, "required": ["context"] } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Context"
+              }
+            }
+          }
         },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResultsResponse" } } } } }
-      }
-    },
-    "/store_bulk": {
-      "post": {
-        "tags": ["memories"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StoreBulkRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StoreBulkResponse" } } } } }
-      }
-    },
-    "/link": {
-      "post": {
-        "tags": ["graph"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } } }
-      }
-    },
-    "/neighbors": {
-      "get": {
-        "tags": ["graph"],
-        "parameters": [
-          {"name": "coord", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "link_type", "in": "query", "required": false, "schema": {"type": "string"}},
-          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer"}}
-        ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NeighborsResponse" } } } } }
-      }
-    },
-    "/shortest_path": {
-      "get": {
-        "tags": ["graph"],
-        "parameters": [
-          {"name": "frm", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "to", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "link_type", "in": "query", "required": false, "schema": {"type": "string"}}
-        ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PathResponse" } } } } }
-      }
-    },
-    "/export_memories": {
-      "post": {
-        "tags": ["admin"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportMemoriesRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportMemoriesResponse" } } } } }
-      }
-    },
-    "/import_memories": {
-      "post": {
-        "tags": ["admin"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ImportMemoriesRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ImportMemoriesResponse" } } } } }
-      }
-    },
-    "/delete_many": {
-      "post": {
-        "tags": ["admin"],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteManyRequest" } } } },
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteManyResponse" } } } } }
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/range": {
       "get": {
-        "tags": ["memories"],
-        "parameters": [
-          {"name": "min", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "max", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "type", "in": "query", "required": false, "schema": {"type": "string", "enum": ["episodic", "semantic"]}}
+        "tags": [
+          "memories"
         ],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": {"coords": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}} } } } } }
+        "summary": "Range Search",
+        "operationId": "range_search_range_get",
+        "parameters": [
+          {
+            "name": "min",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Min"
+            }
+          },
+          {
+            "name": "max",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Max"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "title": "Response Range Search Range Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/stats": {
+    "/healthz": {
       "get": {
-        "tags": ["system"],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatsResponse" } } } } }
+        "summary": "Healthz",
+        "description": "Liveness probe \u2013 checks basic health of all stores and prediction provider.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/health": {
+    "/readyz": {
       "get": {
-        "tags": ["system"],
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } } }
+        "summary": "Readyz",
+        "description": "Readiness probe \u2013 same checks for now; can be extended with more strict criteria later.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
   "components": {
     "schemas": {
-      "StoreRequest": {
-        "type": "object",
+      "BatchesResponse": {
         "properties": {
-          "coord": {"type": "string"},
-          "payload": {"type": "object"},
-          "type": {"type": "string", "enum": ["episodic", "semantic"]}
-        },
-        "required": ["coord", "payload"]
-      },
-      "RecallRequest": {
-        "type": "object",
-        "properties": {
-          "query": {"type": "string"},
-          "top_k": {"type": "integer", "default": 5},
-          "type": {"type": "string", "nullable": true, "enum": ["episodic", "semantic"]},
-          "filters": {"type": "object"}
-        },
-        "required": ["query"]
-      },
-      "RecallBatchRequest": {
-        "type": "object",
-        "properties": {
-          "queries": {"type": "array", "items": {"type": "string"}},
-          "top_k": {"type": "integer", "default": 5},
-          "type": {"type": "string", "nullable": true, "enum": ["episodic", "semantic"]},
-          "filters": {"type": "object"}
-        },
-        "required": ["queries"]
-      },
-      "StoreBulkRequest": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
+          "batches": {
             "items": {
-              "type": "object",
-              "properties": {
-                "coord": {"type": "string"},
-                "payload": {"type": "object"},
-                "type": {"type": "string", "enum": ["episodic", "semantic"]}
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
               },
-              "required": ["coord", "payload"]
-            }
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Batches"
           }
         },
-        "required": ["items"]
+        "type": "object",
+        "required": [
+          "batches"
+        ],
+        "title": "BatchesResponse"
+      },
+      "BulkItem": {
+        "properties": {
+          "coord": {
+            "type": "string",
+            "title": "Coord"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "episodic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coord",
+          "payload"
+        ],
+        "title": "BulkItem"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "kv_store": {
+            "type": "boolean",
+            "title": "Kv Store"
+          },
+          "vector_store": {
+            "type": "boolean",
+            "title": "Vector Store"
+          },
+          "graph_store": {
+            "type": "boolean",
+            "title": "Graph Store"
+          },
+          "prediction_provider": {
+            "type": "boolean",
+            "title": "Prediction Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kv_store",
+          "vector_store",
+          "graph_store",
+          "prediction_provider"
+        ],
+        "title": "HealthResponse"
       },
       "LinkRequest": {
-        "type": "object",
         "properties": {
-          "from_coord": {"type": "string"},
-          "to_coord": {"type": "string"},
-          "type": {"type": "string"},
-          "weight": {"type": "number"}
+          "from_coord": {
+            "type": "string",
+            "title": "From Coord"
+          },
+          "to_coord": {
+            "type": "string",
+            "title": "To Coord"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "related"
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight",
+            "default": 1.0
+          }
         },
-        "required": ["from_coord", "to_coord"]
-      },
-      "ExportMemoriesRequest": {
         "type": "object",
-        "properties": {"path": {"type": "string"}},
-        "required": ["path"]
+        "required": [
+          "from_coord",
+          "to_coord"
+        ],
+        "title": "LinkRequest"
       },
-      "ImportMemoriesRequest": {
+      "MatchesResponse": {
+        "properties": {
+          "matches": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Matches"
+          }
+        },
         "type": "object",
-        "properties": {"path": {"type": "string"}, "replace": {"type": "boolean", "default": false}},
-        "required": ["path"]
+        "required": [
+          "matches"
+        ],
+        "title": "MatchesResponse"
       },
-      "DeleteManyRequest": {
+      "NeighborsResponse": {
+        "properties": {
+          "neighbors": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Neighbors"
+          }
+        },
         "type": "object",
-        "properties": {"coords": {"type": "array", "items": {"type": "string"}}},
-        "required": ["coords"]
+        "required": [
+          "neighbors"
+        ],
+        "title": "NeighborsResponse"
       },
-      "OkResponse": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
-      "MatchesResponse": {"type": "object", "properties": {"matches": {"type": "array", "items": {"type": "object"}}}, "required": ["matches"]},
-      "BatchesResponse": {"type": "object", "properties": {"batches": {"type": "array", "items": {"type": "array", "items": {"type": "object"}}}}, "required": ["batches"]},
-      "ScoreItem": {"type": "object", "properties": {"payload": {"type": "object"}, "score": {"type": "number", "nullable": true}}, "required": ["payload"]},
-      "ScoresResponse": {"type": "object", "properties": {"results": {"type": "array", "items": {"$ref": "#/components/schemas/ScoreItem"}}}, "required": ["results"]},
-      "ResultsResponse": {"type": "object", "properties": {"results": {"type": "array", "items": {"type": "object"}}}, "required": ["results"]},
-      "NeighborsResponse": {"type": "object", "properties": {"neighbors": {"type": "array", "items": {"type": "array", "items": [{"type": "array", "items": {"type": "number"}}, {"type": "object"}]}}}, "required": ["neighbors"]},
-      "PathResponse": {"type": "object", "properties": {"path": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}}, "required": ["path"]},
-      "ExportMemoriesResponse": {"type": "object", "properties": {"exported": {"type": "integer"}}, "required": ["exported"]},
-      "ImportMemoriesResponse": {"type": "object", "properties": {"imported": {"type": "integer"}}, "required": ["imported"]},
-      "DeleteManyResponse": {"type": "object", "properties": {"deleted": {"type": "integer"}}, "required": ["deleted"]},
-      "StoreBulkResponse": {"type": "object", "properties": {"stored": {"type": "integer"}}, "required": ["stored"]},
-      "StatsResponse": {"type": "object", "properties": {"total_memories": {"type": "integer"}, "episodic": {"type": "integer"}, "semantic": {"type": "integer"}}, "required": ["total_memories", "episodic", "semantic"]},
-      "HealthResponse": {"type": "object", "properties": {"kv_store": {"type": "boolean"}, "vector_store": {"type": "boolean"}, "graph_store": {"type": "boolean"}, "prediction_provider": {"type": "boolean"}}, "required": ["kv_store", "vector_store", "graph_store", "prediction_provider"]}
+      "OkResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "OkResponse"
+      },
+      "PathResponse": {
+        "properties": {
+          "path": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "PathResponse"
+      },
+      "RecallBatchRequest": {
+        "properties": {
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Queries"
+          },
+          "top_k": {
+            "type": "integer",
+            "title": "Top K",
+            "default": 5
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queries"
+        ],
+        "title": "RecallBatchRequest"
+      },
+      "ResultsResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "ResultsResponse"
+      },
+      "ScoreItem": {
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payload"
+        ],
+        "title": "ScoreItem"
+      },
+      "ScoresResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreItem"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "ScoresResponse"
+      },
+      "StatsResponse": {
+        "properties": {
+          "total_memories": {
+            "type": "integer",
+            "title": "Total Memories"
+          },
+          "episodic": {
+            "type": "integer",
+            "title": "Episodic"
+          },
+          "semantic": {
+            "type": "integer",
+            "title": "Semantic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_memories",
+          "episodic",
+          "semantic"
+        ],
+        "title": "StatsResponse"
+      },
+      "StoreBulkRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BulkItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "StoreBulkRequest"
+      },
+      "StoreBulkResponse": {
+        "properties": {
+          "stored": {
+            "type": "integer",
+            "title": "Stored"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stored"
+        ],
+        "title": "StoreBulkResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
     }
   }
 }

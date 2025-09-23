@@ -1,13 +1,16 @@
-version: '3.8'
 services:
   redis:
+    env_file: .env
     image: redis:7
     container_name: soma_redis
-    ports:
-      - "6379:6379"
+    # Enable AOF persistence (append‑only file) for absolute durability.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
 
   qdrant:
+    env_file: .env
     image: qdrant/qdrant:latest
     container_name: soma_qdrant
     ports:
@@ -16,5 +19,100 @@ services:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
+  # PostgreSQL service – minimal image for development/testing.
+  postgres:
+    env_file: .env
+    image: postgres:15-alpine   # lightweight official image
+    container_name: soma_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: somamemory
+      # Convenience env var that the Python code can read directly.
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # -----------------------------------------------------------------
+  # FastAPI server – runs the selected memory mode (DEVELOPMENT, TEST, EVENTED_ENTERPRISE, CLOUD_MANAGED)
+  # Uses the Dockerfile in the repository to build the image.
+  # All configuration is passed via environment variables; defaults match the
+  # development‑friendly settings already used in the code base.
+  api:
+    env_file: .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_api
+    ports:
+      - "9595:9595"
+    environment:
+      # Choose the memory mode (development|test|evented_enterprise|cloud_managed)
+      MEMORY_MODE: development
+      # Redis connection (host is the service name defined below)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # PostgreSQL – optional, used when MEMORY_MODE requires it.
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5433/somamemory
+      # Qdrant vector store
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      # Kafka / Redpanda broker – used in EVENTED_ENTERPRISE / CLOUD_MANAGED modes.
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      # Toggle event publishing (true/false). In TEST mode this is forced off.
+      EVENTING_ENABLED: "true"
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - redpanda
+    restart: unless-stopped
+
+  # -----------------------------------------------------------------
+  # Consumer – reads memory.events from Kafka/Redpanda and updates Postgres & Qdrant.
+  consumer:
+    env_file: .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_consumer
+    command: ["python", "scripts/run_consumers.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_MEMORY_EVENTS_TOPIC: memory.events
+      KAFKA_CONSUMER_GROUP: soma-consumer-group
+      # The same connection settings the API uses.
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5433/somamemory
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - redpanda
+    restart: unless-stopped
+
+  # -----------------------------------------------------------------
+  # Redpanda – lightweight Kafka‑compatible broker. Persists logs to a volume.
+  redpanda:
+    env_file: .env
+    image: redpandadata/redpanda:latest
+    container_name: soma_redpanda
+    command: ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "1G", "--reserve-memory", "0M", "--advertise-kafka-addr", "redpanda:9092", "--advertise-rpc-addr", "redpanda:33145"]
+    ports:
+      - "9092:9092"   # Kafka API for producers/consumers
+      - "9644:9644"   # Optional admin UI (exposed for debugging)
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:
+  postgres_data:
+  redis_data:
+  redpanda_data:

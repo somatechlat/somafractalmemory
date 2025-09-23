@@ -1,0 +1,7 @@
+# Helm chart for SomaFractalMemory
+apiVersion: v2
+name: somafractalmemory
+description: A Helm chart for deploying the SomaFractalMemory enterprise service
+type: application
+version: 0.1.0
+appVersion: "2.0"

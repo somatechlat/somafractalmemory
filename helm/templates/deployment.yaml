@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "somafractalmemory.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: "{{ $value }}"
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probe.path }}
+              port: {{ .Values.probe.port }}
+            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probe.path }}
+              port: {{ .Values.probe.port }}
+            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}

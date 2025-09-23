@@ -2,7 +2,7 @@
 set -e
 
 # Start FastAPI server in background
-uvicorn examples.api:app --host 0.0.0.0 --port 9595 &
+uvicorn examples.enterprise_api:app --host 0.0.0.0 --port 9595 &
 # Start the consumer script in background
 python scripts/run_consumers.py &
 

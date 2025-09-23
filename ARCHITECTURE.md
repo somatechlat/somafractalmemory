@@ -1,3 +1,7 @@
+# ARCHIVED
+
+This file is no longer maintained. Please refer to the up‑to‑date architecture documentation in **docs/ARCHITECTURE.md**.
+
 # SomaFractalMemoryEnterprise: Modular Agentic Memory System
 
 ## 🛣️ Prioritized Roadmap

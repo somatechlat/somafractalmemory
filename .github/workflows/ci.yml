@@ -19,8 +19,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .
-      - name: Run tests
+      - name: Run tests (unit)
         run: pytest -q
+      - name: Run integration test for PostgresRedisHybridStore
+        # This runs after unit tests; testcontainers will spin up Docker containers.
+        run: pytest -q tests/test_postgres_redis_hybrid_store.py
+      # Ensure Docker is available for testcontainers (GitHub runners already have Docker, but we expose it explicitly)
+      - name: Verify Docker availability
+        run: docker version
       - name: Lint (ruff)
         run: |
           pip install ruff

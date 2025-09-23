@@ -1,0 +1,34 @@
+# Default values for somafractalmemory Helm chart
+# These values can be overridden via --set or a custom values file.
+
+replicaCount: 1
+
+image:
+  repository: somatechlat/somafractalmemory
+  tag: "2.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources: {}
+
+# Environment configuration
+env:
+  POSTGRES_URL: "postgresql://postgres:5432/somafractalmemory"
+  REDIS_URL: "redis://redis:6379/0"
+  QDRANT_URL: "http://qdrant:6333"
+  # Add other env vars as needed
+
+# Optional Redis cache toggle
+redis:
+  enabled: true
+
+# Liveness / readiness probe configuration
+probe:
+  path: /healthz
+  port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 2

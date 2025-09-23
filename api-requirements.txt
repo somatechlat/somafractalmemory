@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 httpx
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi

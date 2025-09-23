@@ -1,6 +1,8 @@
+# Standard library imports
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Mapping, Optional
 
+# Local application imports (alphabetical)
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.prediction import (
@@ -10,9 +12,91 @@ from somafractalmemory.implementations.prediction import (
 )
 from somafractalmemory.implementations.storage import (
     InMemoryVectorStore,
+    PostgresKeyValueStore,
     QdrantVectorStore,
     RedisKeyValueStore,
 )
+from somafractalmemory.interfaces.storage import IKeyValueStore
+
+
+class PostgresRedisHybridStore(IKeyValueStore):
+    """Combine a PostgresKeyValueStore (canonical) with a RedisKeyValueStore.
+
+    * ``set`` writes to both stores.
+    * ``get`` tries Redis first (cache hit) and falls back to Postgres.
+    * ``delete`` removes from both.
+    * ``scan_iter`` merges keys from both stores, deduplicating.
+    * ``hgetall`` / ``hset`` prefer Postgres, but also keep Redis in sync.
+    * ``lock`` uses Redis if available, otherwise falls back to the Postgres
+      store's simple in‑process lock.
+    * ``health_check`` requires both backends to be healthy.
+    """
+
+    def __init__(
+        self, pg_store: PostgresKeyValueStore, redis_store: RedisKeyValueStore | None = None
+    ):
+        self.pg_store = pg_store
+        self.redis_store = redis_store
+
+    # ----- Basic KV operations ------------------------------------------------
+    def set(self, key: str, value: bytes):
+        # Write to Postgres (canonical) first; then cache in Redis if present.
+        self.pg_store.set(key, value)
+        if self.redis_store:
+            self.redis_store.set(key, value)
+
+    def get(self, key: str) -> Optional[bytes]:
+        # Try Redis cache first for speed.
+        if self.redis_store:
+            cached = self.redis_store.get(key)
+            if cached is not None:
+                return cached
+        # Fallback to Postgres.
+        return self.pg_store.get(key)
+
+    def delete(self, key: str):
+        self.pg_store.delete(key)
+        if self.redis_store:
+            self.redis_store.delete(key)
+
+    # ----- Iteration & hash helpers ------------------------------------------
+    def scan_iter(self, pattern: str) -> Iterator[str]:
+        seen: set[str] = set()
+        for k in self.pg_store.scan_iter(pattern):
+            seen.add(k)
+            yield k
+        if self.redis_store:
+            for k in self.redis_store.scan_iter(pattern):
+                if k not in seen:
+                    seen.add(k)
+                    yield k
+
+    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+        # Prefer Postgres (authoritative) but fall back to Redis.
+        pg_val = self.pg_store.hgetall(key)
+        if pg_val:
+            return pg_val
+        if self.redis_store:
+            return self.redis_store.hgetall(key)
+        return {}
+
+    def hset(self, key: str, mapping: Mapping[bytes, bytes]):
+        # Write to both stores to keep cache in sync.
+        self.pg_store.hset(key, mapping)
+        if self.redis_store:
+            self.redis_store.hset(key, mapping)
+
+    # ----- Lock & health ------------------------------------------------------
+    def lock(self, name: str, timeout: int = 10):
+        if self.redis_store:
+            return self.redis_store.lock(name, timeout)
+        return self.pg_store.lock(name, timeout)
+
+    def health_check(self) -> bool:
+        ok = self.pg_store.health_check()
+        if self.redis_store:
+            ok = ok and self.redis_store.health_check()
+        return ok
 
 
 class MemoryMode(Enum):
@@ -78,16 +162,38 @@ def create_memory_system(
     vector_cfg = config.get("vector", {})
     enterprise_cfg = config.get("memory_enterprise", {})
 
+    # ------------------------------------------------------------
+    # Development mode – local development with optional Redis cache.
+    # ------------------------------------------------------------
     if mode == MemoryMode.DEVELOPMENT:
-        # Development: local Redis + local Qdrant (fast feedback loop)
-        kv_store = RedisKeyValueStore(testing=True)
-        # If the developer explicitly requests qdrant (via vector backend) or
-        # provides a qdrant path in config, prefer QdrantVectorStore and a
-        # local Ollama prediction provider for a more realistic local setup.
+        # Redis configuration (may include testing flag)
+        redis_cfg = config.get("redis", {})
+        redis_enabled = redis_cfg.get("enabled", True)
+        redis_store = RedisKeyValueStore(**redis_cfg) if redis_cfg and redis_enabled else None
+
+        # PostgreSQL configuration – optional. If a URL is provided we create a Postgres store,
+        # otherwise we fall back to using the Redis store directly (or an in‑memory stub).
+        postgres_cfg = config.get("postgres", {})
+        pg_url = postgres_cfg.get("url")
+        if pg_url:
+            pg_store = PostgresKeyValueStore(url=pg_url)
+        else:
+            pg_store = None
+
+        # Combine stores only when both are present; otherwise use the available one.
+        if pg_store and redis_store:
+            kv_store = PostgresRedisHybridStore(pg_store=pg_store, redis_store=redis_store)
+        elif redis_store:
+            kv_store = redis_store
+        elif pg_store:
+            kv_store = pg_store
+        else:
+            # As a last resort use an in‑memory KV store (Redis in testing mode).
+            kv_store = RedisKeyValueStore(testing=True)
+
+        # Vector store selection (Qdrant or in‑memory)
         qdrant_cfg = config.get("qdrant", {})
         if vector_cfg.get("backend") == "qdrant" or qdrant_cfg.get("path"):
-            # If a path is provided, hand it through to QdrantVectorStore so
-            # tests that create on-disk qdrant instances continue to work.
             qconf = qdrant_cfg if qdrant_cfg else {"location": ":memory:"}
             vector_store = QdrantVectorStore(collection_name=namespace, **qconf)
             prediction_provider = OllamaPredictionProvider()
@@ -96,42 +202,64 @@ def create_memory_system(
             prediction_provider = NoPredictionProvider()
         graph_store = NetworkXGraphStore()
 
+        # Event‑publishing flag – default to True.
+        eventing_enabled = config.get("eventing", {}).get("enabled", True)
+
+    # ------------------------------------------------------------
+    # Test mode – deterministic in‑memory stores.
+    # ------------------------------------------------------------
     elif mode == MemoryMode.TEST:
-        # Test mode mirrors development but favors in-memory deterministic stores
         kv_store = RedisKeyValueStore(testing=True)
         vector_store = InMemoryVectorStore()
         graph_store = NetworkXGraphStore()
         prediction_provider = NoPredictionProvider()
+        # Event‑publishing not relevant in test mode; default to False to avoid accidental Kafka use.
+        eventing_enabled = False
 
+    # ------------------------------------------------------------
+    # Evented enterprise / cloud managed – production configuration.
+    # ------------------------------------------------------------
     elif mode in (MemoryMode.EVENTED_ENTERPRISE, MemoryMode.CLOUD_MANAGED):
-        # Evented enterprise: expects remote connection details (Kafka/Postgres/Qdrant)
-        redis_config = config.get("redis", {})
+        # Evented enterprise / cloud managed – production configuration.
+        redis_cfg = config.get("redis", {})
         qdrant_config = config.get("qdrant", {})
 
-        # Ensure path is not passed if other connection details are present
+        # Ensure path is not passed if other connection details are present for Qdrant
         if "url" in qdrant_config or "host" in qdrant_config or "location" in qdrant_config:
             qdrant_config.pop("path", None)
 
-        kv_store = RedisKeyValueStore(**redis_config)
+        # Use Redis for KV store (as per tests) – real client if host/port provided, else testing fake.
+        # Determine if a Postgres URL is supplied – if so, build a hybrid store (Postgres primary, Redis cache).
+        postgres_cfg = config.get("postgres", {})
+        if postgres_cfg.get("url"):
+            # Create concrete Postgres and Redis stores.
+            pg_store = PostgresKeyValueStore(url=postgres_cfg["url"])
+            redis_store = (
+                RedisKeyValueStore(**redis_cfg) if redis_cfg else RedisKeyValueStore(testing=True)
+            )
+            kv_store = PostgresRedisHybridStore(pg_store=pg_store, redis_store=redis_store)
+        else:
+            # No Postgres configured – fall back to Redis only (or a testing fake).
+            kv_store = (
+                RedisKeyValueStore(**redis_cfg) if redis_cfg else RedisKeyValueStore(testing=True)
+            )
         vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_store = NetworkXGraphStore()  # Swap for a remote graph DB in prod
-
-        ext_pred_cfg = config.get("external_prediction")
-        if (
-            isinstance(ext_pred_cfg, dict)
-            and ext_pred_cfg.get("api_key")
-            and ext_pred_cfg.get("endpoint")
-        ):
+        graph_store = NetworkXGraphStore()
+        # Determine prediction provider: external if config provided, else NoPredictionProvider.
+        external_cfg = config.get("external_prediction", {})
+        if external_cfg.get("api_key") and external_cfg.get("endpoint"):
             prediction_provider = ExternalPredictionProvider(
-                api_key=ext_pred_cfg["api_key"], endpoint=ext_pred_cfg["endpoint"]
+                api_key=external_cfg["api_key"], endpoint=external_cfg["endpoint"]
             )
         else:
-            prediction_provider = OllamaPredictionProvider()
+            prediction_provider = NoPredictionProvider()
+        # Event‑publishing flag for production
+        eventing_enabled = config.get("eventing", {}).get("enabled", True)
 
     else:
         raise ValueError(f"Unsupported memory mode: {mode}")
 
-    return SomaFractalMemoryEnterprise(
+    memory = SomaFractalMemoryEnterprise(
         namespace=namespace,
         kv_store=kv_store,
         vector_store=vector_store,
@@ -144,3 +272,6 @@ def create_memory_system(
         decay_enabled=enterprise_cfg.get("decay_enabled", True),
         reconcile_enabled=enterprise_cfg.get("reconcile_enabled", True),
     )
+    # Expose the event‑publishing toggle on the memory instance.
+    memory.eventing_enabled = eventing_enabled
+    return memory

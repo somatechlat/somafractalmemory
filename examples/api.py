@@ -6,14 +6,19 @@ Run (after installing fastapi and uvicorn):
   uvicorn examples.api:app --reload
 """
 
-# Clean up and organize imports
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
@@ -24,7 +29,13 @@ def parse_coord(text: str) -> Tuple[float, ...]:
     return tuple(float(p) for p in parts)
 
 
+# Set up a basic tracer provider with console exporter
+trace.set_tracer_provider(TracerProvider())
+trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+
 app = FastAPI(title="SomaFractalMemory API")
+# Instrument the FastAPI app for tracing
+FastAPIInstrumentor().instrument_app(app)
 
 
 # Generate a static OpenAPI JSON file on startup so docs can reference it.
@@ -37,12 +48,21 @@ def _write_openapi() -> None:
     root = pathlib.Path(__file__).resolve().parents[1]
     (root / "openapi.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
     print("✅ openapi.json generated at", root / "openapi.json")
+    # Inform that metrics endpoint is ready
+    print("🚀 Metrics endpoint available at /metrics")
 
 
 mem = create_memory_system(
     MemoryMode.DEVELOPMENT,
     "api_ns",
-    config={"redis": {"testing": True}, "qdrant": {"path": "./qdrant.db"}},
+    config={
+        "redis": {"testing": True},
+        "vector": {"backend": "qdrant"},
+        "qdrant": {
+            "host": os.getenv("QDRANT_HOST", "qdrant"),
+            "port": int(os.getenv("QDRANT_PORT", "6333")),
+        },
+    },
 )
 
 # Simple auth + rate limit stubs
@@ -292,40 +312,6 @@ def neighbors(
 
 
 @app.post(
-    "/export_memories",
-    response_model=ExportMemoriesResponse,
-    tags=["admin"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/export_memories"))],
-)
-def export_memories(req: ExportMemoriesRequest) -> ExportMemoriesResponse:
-    n = mem.export_memories(req.path)
-    return ExportMemoriesResponse(exported=n)
-
-
-@app.post(
-    "/import_memories",
-    response_model=ImportMemoriesResponse,
-    tags=["admin"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/import_memories"))],
-)
-def import_memories(req: ImportMemoriesRequest) -> ImportMemoriesResponse:
-    n = mem.import_memories(req.path, replace=req.replace)
-    return ImportMemoriesResponse(imported=n)
-
-
-@app.post(
-    "/delete_many",
-    response_model=DeleteManyResponse,
-    tags=["admin"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/delete_many"))],
-)
-def delete_many(req: DeleteManyRequest) -> DeleteManyResponse:
-    coords = [parse_coord(s) for s in req.coords]
-    n = mem.delete_many(coords)
-    return DeleteManyResponse(deleted=n)
-
-
-@app.post(
     "/link",
     response_model=OkResponse,
     tags=["graph"],
@@ -434,3 +420,50 @@ def range_search(min: str, max: str, type: str | None = None):
 def metrics() -> Response:
     """Expose Prometheus metrics for the FastAPI server."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# Root endpoint that points users to the metrics URL
+@app.get("/", include_in_schema=False)
+def root() -> dict:
+    return {"message": "SomaFractalMemory API is running", "metrics": "/metrics"}
+
+
+# ------------------------------------------------------------
+# 404 Not Found metrics
+# ------------------------------------------------------------
+HTTP_404_REQUESTS = Counter(
+    "http_404_requests_total",
+    "Total number of HTTP 404 (Not Found) responses",
+)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        HTTP_404_REQUESTS.inc()
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    # For other errors, let FastAPI handle them
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+# Health and readiness endpoints
+@app.get("/healthz", response_model=HealthResponse)
+def healthz():
+    """Liveness probe – checks basic health of all stores and prediction provider."""
+    return HealthResponse(
+        kv_store=mem.kv_store.health_check(),
+        vector_store=mem.vector_store.health_check(),
+        graph_store=mem.graph_store.health_check(),
+        prediction_provider=mem.prediction_provider.health_check(),
+    )
+
+
+@app.get("/readyz", response_model=HealthResponse)
+def readyz():
+    """Readiness probe – same checks for now; can be extended with more strict criteria later."""
+    return HealthResponse(
+        kv_store=mem.kv_store.health_check(),
+        vector_store=mem.vector_store.health_check(),
+        graph_store=mem.graph_store.health_check(),
+        prediction_provider=mem.prediction_provider.health_check(),
+    )

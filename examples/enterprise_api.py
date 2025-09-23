@@ -11,7 +11,12 @@ Ensure those services are running, or set config overrides in the `config` dict 
 import os
 from typing import Any, Dict, Optional, Tuple
 
+# Third‑party imports (alphabetical)
 from fastapi import FastAPI
+from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from pydantic import BaseModel
 
 from somafractalmemory.core import MemoryType
@@ -25,13 +30,25 @@ def parse_coord(text: str) -> Tuple[float, ...]:
 
 app = FastAPI(title="SomaFractalMemory Enterprise API")
 
+# OpenTelemetry tracer setup
+trace.set_tracer_provider(TracerProvider())
+trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+# Instrument FastAPI for automatic request tracing
+FastAPIInstrumentor().instrument_app(app)
+
 # Default enterprise config: leave Redis and Qdrant settings empty to use client defaults
 # If you want to override host/port, set the values here or use environment variables.
 _testing_mode = os.getenv("SOMA_ENTERPRISE_TESTING", "0").lower() in ("1", "true", "yes")
 
 if _testing_mode:
-    # Use in-memory Qdrant and FakeRedis for a local testable ENTERPRISE-style server
-    config: Dict[str, Any] = {"redis": {"testing": True}, "qdrant": {"location": ":memory:"}}
+    # Use in‑memory Qdrant and FakeRedis for a local testable ENTERPRISE‑style server
+    # Hybrid Postgres + Redis for testing – assumes a local Postgres instance is reachable.
+    # Adjust the URL as needed for your environment.
+    config: Dict[str, Any] = {
+        "redis": {"testing": True},
+        "postgres": {"url": "postgresql://postgres:postgres@localhost:5432/somamemory"},
+        "qdrant": {"path": ":memory:"},
+    }
 else:
     config: Dict[str, Any] = {"redis": {}, "qdrant": {}}
 

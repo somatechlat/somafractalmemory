@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from somafractalmemory.interfaces.graph import IGraphStore
 
@@ -26,10 +26,13 @@ class Neo4jGraphStore(IGraphStore):
             MERGE (n:Memory {coordinate: $coord})
             SET n += $props
             """,
-            coord=list(coordinate), props=memory_data,
+            coord=list(coordinate),
+            props=memory_data,
         )
 
-    def add_link(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]):
+    def add_link(
+        self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]
+    ):
         self._run(
             """
             MERGE (a:Memory {coordinate: $from})
@@ -37,10 +40,20 @@ class Neo4jGraphStore(IGraphStore):
             MERGE (a)-[r:LINK {type: $type}]->(b)
             SET r += $props
             """,
-            from=list(from_coord), to=list(to_coord), type=link_data.get("type"), props=link_data,
+            **{
+                "from": list(from_coord),
+                "to": list(to_coord),
+                "type": link_data.get("type"),
+                "props": link_data,
+            },
         )
 
-    def get_neighbors(self, coordinate: Tuple[float, ...], link_type: Optional[str] = None, limit: Optional[int] = None) -> List[Tuple[Any, Dict[str, Any]]]:
+    def get_neighbors(
+        self,
+        coordinate: Tuple[float, ...],
+        link_type: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Tuple[Any, Dict[str, Any]]]:
         if link_type:
             query = "MATCH (a:Memory {coordinate:$coord})-[r:LINK {type:$type}]->(b) RETURN b.coordinate AS c, r AS r LIMIT $limit"
             params = {"coord": list(coordinate), "type": link_type, "limit": limit or 100}
@@ -50,10 +63,15 @@ class Neo4jGraphStore(IGraphStore):
         res = self._run(query, **params)
         out: List[Tuple[Any, Dict[str, Any]]] = []
         for rec in res:
-            out.append((tuple(rec["c"]), dict(rec["r"])) )
+            out.append((tuple(rec["c"]), dict(rec["r"])))
         return out
 
-    def find_shortest_path(self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_type: Optional[str] = None) -> List[Any]:
+    def find_shortest_path(
+        self,
+        from_coord: Tuple[float, ...],
+        to_coord: Tuple[float, ...],
+        link_type: Optional[str] = None,
+    ) -> List[Any]:
         # Basic unweighted shortest path using variable length traversal; for weighted paths, use GDS offline
         if link_type:
             query = (
@@ -95,4 +113,3 @@ class Neo4jGraphStore(IGraphStore):
             return True
         except Exception:
             return False
-

@@ -1,124 +1,91 @@
-# SomaFractalMemory
+# SOMA FRAC T AL MEMORY
 
-A powerful and flexible Python library for managing advanced fractal memory systems, designed to handle complex memory storage, retrieval, and linking with support for both in-memory and persistent vector backends.
+[![Documentation](https://img.shields.io/badge/docs‑latest-blue.svg)](docs/index.md)
+
+A powerful and flexible Python library for managing advanced fractal memory systems, designed to handle complex memory storage, retrieval, and linking with support for both in‑memory and persistent vector backends.
 
 ## Overview
 
-SomaFractalMemory is a cutting-edge Python package that provides a robust framework for building and interacting with fractal memory algorithms. It supports episodic and semantic memory types, hybrid search capabilities, and semantic graph traversal, making it ideal for applications requiring sophisticated memory management, such as AI agents, knowledge graphs, and data-intensive systems. The library integrates seamlessly with Redis for caching, Qdrant for vector storage, and Prometheus for observability, offering both in-memory and persistent storage options.
-
-## Key Features
-
-- **Flexible Memory Modes**: Choose between `ON_DEMAND` (in-memory vectors for prototyping), `LOCAL_AGENT` (Qdrant-based persistence), or `ENTERPRISE` (tunable for high-performance use cases).
-- **Hybrid Search**: Perform efficient memory recall with vector-based similarity searches, customizable via `top_k` and memory type filters.
-- **Semantic Graph Traversal**: Link memories and navigate relationships using shortest-path algorithms.
-- **Observability**: Built-in Prometheus metrics and Langfuse integration for monitoring and tracing.
-- **CLI and HTTP API**: Intuitive command-line interface and a FastAPI-based HTTP service for easy integration.
-- **Configurability**: Fine-tune memory pruning, decay thresholds, and vector dimensions via Dynaconf or environment variables.
-- **Audit Logging**: Structured JSONL logs for tracking store, recall, and delete operations.
-
-## Installation
-
-Install the package via pip:
-
-```bash
-pip install somafractalmemory
-```
-
-For development, clone the repository and install in editable mode:
-
-```bash
-git clone https://github.com/somatechlat/somafractalmemory.git
-cd somafractalmemory
-pip install -e .
-```
+SomaFractalMemory provides a robust framework for building and interacting with fractal memory algorithms. It supports episodic and semantic memory types, hybrid search capabilities, and semantic graph traversal, making it ideal for AI agents, knowledge graphs, and data‑intensive systems. The library integrates seamlessly with Redis for caching, Qdrant for vector storage, and Prometheus for observability, offering both in‑memory and persistent storage options.
 
 ## Quickstart
-
-Get started with a simple in-memory setup using FakeRedis for testing:
 
 ```python
 from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
 
-# Configure a lightweight memory system
+# Minimal in‑memory test configuration
 config = {
-    "redis": {"testing": True},  # Use FakeRedis for testing
-    "qdrant": {"path": "./qdrant.db"},  # Local Qdrant storage
-    "memory_enterprise": {
-        "vector_dim": 768,  # Vector dimension for embeddings
-        "pruning_interval_seconds": 60,  # Prune stale memories
-        "decay_thresholds_seconds": [30, 300],  # Memory decay intervals
-        "decayable_keys_by_level": [["scratch"], ["low_importance"]],  # Decay rules
-    },
+    "redis": {"testing": True},
+    "qdrant": {"path": "./qdrant.db"},
 }
 
-# Initialize a TEST memory system
-mem = create_memory_system(MemoryMode.TEST, namespace="demo_ns", config=config)
-
-# Store an episodic memory
+mem = create_memory_system(MemoryMode.TEST, "demo_ns", config=config)
 coord = (1.0, 2.0, 3.0)
-mem.store_memory(coord, {"task": "write documentation", "importance": 2}, memory_type=MemoryType.EPISODIC)
-
-# Recall memories using a query
-matches = mem.recall("write documentation", top_k=3)
-print(matches[0])  # View the top match
-
-# Link memories and find relationships
-coord2 = (4.0, 5.0, 6.0)
-mem.store_memory(coord2, {"fact": "docs published"}, memory_type=MemoryType.SEMANTIC)
-mem.link_memories(coord, coord2, link_type="related")
-path = mem.find_shortest_path(coord, coord2)
-print(path)  # Display the traversal path
+mem.store_memory(coord, {"task": "write docs", "importance": 2}, MemoryType.EPISODIC)
+print(mem.recall("write docs"))
 ```
 
-## Command-Line Interface (CLI)
+For a full guide, see the consolidated documentation:
+- **Index / Overview** – `docs/index.md`
+- **Public API** – `docs/api.md`
+- **Configuration reference** – `docs/configuration.md`
+- **Architecture diagram** – `docs/architecture.md`
 
-The library includes a powerful CLI for managing memories:
+## Command‑Line Interface (CLI)
 
 ```bash
 # Install in editable mode for CLI access
 pip install -e .
 
-# View CLI help
+# Show help
 soma -h
-
-# Store a memory (use v2 canonical mode)
-soma --mode development --namespace demo_ns store --coord 1,2,3 --payload '{"task":"write docs","importance":2}' --type episodic
-
-# Recall memories
-soma --mode development --namespace demo_ns recall --query "write documentation" --top-k 3
-
-# Link memories
-soma --mode development --namespace demo_ns link --from 1,2,3 --to 4,5,6 --type related
-
-# View system stats
-soma --mode development --namespace demo_ns stats
 ```
 
-## Vector Backend Configuration
+The CLI mirrors the Python API and supports store, recall, linking, and stats commands. See `docs/README.md` for detailed usage.
 
-Switch between in-memory and Qdrant-based vector storage:
+## Observability & Event Publishing
 
-- **In-Memory (Default for ON_DEMAND)**: Ideal for prototyping.
+- **Prometheus metrics** are exposed via the built‑in counters and histograms.
+- **OpenTelemetry** automatically traces PostgreSQL and Qdrant calls.
+- **Kafka events** are emitted after each successful `store_memory` when `eventing.enabled` is true (see `docs/CONFIGURATION.md`).
 
-```python
-mem = create_memory_system(MemoryMode.TEST, "demo_ns", config={"redis": {"testing": True}})
+## Docker Compose Setup
+
+The project can be run locally using Docker Compose. All services (Redis, Qdrant, PostgreSQL, Redpanda, FastAPI API, and the consumer) are defined in `docker-compose.yml` and use **named volumes** for persistent storage.
+
+### 1. Prepare the environment file
+Create a copy of the example and adjust values if needed:
+```bash
+cp .env.example .env   # edit .env as required (e.g., MEMORY_MODE)
 ```
+The `.env` file is automatically loaded by Docker Compose because the compose file now contains `env_file: .env`.
 
-- **Qdrant (Default for LOCAL_AGENT/ENTERPRISE)**: Persistent storage.
-
-```python
-mem = create_memory_system(MemoryMode.TEST, "demo_ns", config={
-    "redis": {"testing": True},
-    "vector": {"backend": "qdrant"}
-})
+### 2. Build the images
+```bash
+docker compose build
 ```
+If the build succeeds you will see each service being built, e.g., `api` and `consumer` from the repository's `Dockerfile`.
 
-## Observability
+### 3. Start the stack
+```bash
+docker compose up -d
+```
+All services will start in the background. The FastAPI server is exposed on **http://localhost:9595**.
 
-### Prometheus Metrics
+### 4. Dynamic configuration
+* **CLI helper** – Run the provided script to change configuration from the terminal:
+```bash
+./configure.sh MEMORY_MODE=evented_enterprise
+```
+The script updates `.env` and runs `docker compose up -d --build api` to apply the change without affecting other services.
 
-Monitor store and recall operations with Prometheus:
+### 5. Stop the stack
+```bash
+docker compose down
+```
+The named volumes (`redis_data`, `qdrant_storage`, `postgres_data`, `redpanda_data`) keep their data, so you can restart later without data loss.
 
-```python
-from prometheus_client import start_http
+---
+
+For more detailed architecture information see the up‑to‑date documentation in `docs/ARCHITECTURE.md`.

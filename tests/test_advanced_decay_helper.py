@@ -1,9 +1,9 @@
 import time
 
-from somafractalmemory.core import SomaFractalMemoryEnterprise, MemoryType, _coord_to_key
-from somafractalmemory.implementations.storage import RedisKeyValueStore, InMemoryVectorStore
+from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise, _coord_to_key
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.prediction import NoPredictionProvider
+from somafractalmemory.implementations.storage import InMemoryVectorStore, RedisKeyValueStore
 
 
 def test_advanced_decay_removes_non_essential_fields():
@@ -25,10 +25,13 @@ def test_advanced_decay_removes_non_essential_fields():
     data_key, meta_key = _coord_to_key(mem.namespace, c)
     now = time.time()
     very_old = now - (3600 * 24 * 30)
-    kv.hset(meta_key, mapping={
-        b"creation_timestamp": str(very_old).encode("utf-8"),
-        b"last_accessed_timestamp": str(very_old).encode("utf-8"),
-    })
+    kv.hset(
+        meta_key,
+        mapping={
+            b"creation_timestamp": str(very_old).encode("utf-8"),
+            b"last_accessed_timestamp": str(very_old).encode("utf-8"),
+        },
+    )
 
     mem._apply_decay_to_all()
     out = mem.retrieve(c)

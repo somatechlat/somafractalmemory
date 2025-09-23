@@ -777,6 +777,15 @@ class SomaFractalMemoryEnterprise:
             self._enforce_memory_limit()
         except Exception as e:
             logger.debug(f"Memory limit enforcement failed: {e}")
+        # Phase 2: publish a memory‑created event if eventing is enabled
+        if getattr(self, "eventing_enabled", True):
+            try:
+                from .eventing.producer import build_memory_event, produce_event
+
+                event = build_memory_event(self.namespace, value)
+                produce_event(event)
+            except Exception as ev_err:
+                logger.warning(f"Failed to publish memory event: {ev_err}")
         return result
 
     def retrieve_memories(self, memory_type: Optional[MemoryType] = None) -> List[Dict[str, Any]]:

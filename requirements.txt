@@ -15,3 +15,6 @@ fakeredis>=2.0.0
 networkx
 psycopg2-binary
 aiokafka
+confluent-kafka
+
+testcontainers

@@ -13,9 +13,14 @@ consumer health can be monitored.
 """
 
 import asyncio
-import json
 import logging
 import os
+import ssl
+import sys
+
+# Ensure the repository root (project root) is on the import path when the script is executed
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from typing import Any, Dict
 
 from aiokafka import AIOKafkaConsumer
@@ -70,9 +75,18 @@ async def consume() -> None:
         TOPIC,
         bootstrap_servers=BROKER_URL,
         group_id=GROUP_ID,
-        enable_auto_commit=True,
-        auto_offset_reset="earliest",
-        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        enable_auto_commit=False,
+        # TLS/SSL configuration
+        security_protocol=os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
+        ssl_context=(
+            ssl.create_default_context(cafile=os.getenv("KAFKA_SSL_CA_LOCATION"))
+            if os.getenv("KAFKA_SSL_CA_LOCATION")
+            else None
+        ),
+        # SASL configuration (plain mechanism as example)
+        sasl_mechanism=os.getenv("KAFKA_SASL_MECHANISM"),
+        sasl_plain_username=os.getenv("KAFKA_SASL_USERNAME"),
+        sasl_plain_password=os.getenv("KAFKA_SASL_PASSWORD"),
     )
     await consumer.start()
     try:
