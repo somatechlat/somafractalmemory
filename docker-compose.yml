@@ -111,6 +111,27 @@ services:
       - redpanda_data:/var/lib/redpanda/data
     restart: unless-stopped
 
+  # Development API – runs the FastAPI server in DEVELOPMENT mode without any auth checks.
+  dev_api:
+    env_file: .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_dev_api
+    ports:
+      - "9597:9595"   # expose on a different host port (host 9597 → container 9595)
+    environment:
+      MEMORY_MODE: development   # the factory will pick Development mode
+      # No auth configuration – the FastAPI app does not enforce authentication.
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - redpanda
+    restart: unless-stopped
+    # When you run `docker compose up` Docker will reuse any already‑running containers for redis, qdrant, postgres, redpanda.
+    # Use the flags `--no-pull --no-build` if you want to be sure it does not pull new images or rebuild.
+
 volumes:
   qdrant_storage:
   postgres_data:
