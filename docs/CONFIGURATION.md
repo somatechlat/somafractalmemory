@@ -47,6 +47,11 @@ This document enumerates all configuration options used by **SomaFractalMemory**
 ### API throttling
 - `SOMA_RATE_LIMIT_MAX` – Maximum requests per minute per endpoint (default `1000`). Increase for load tests.
 
+### Uvicorn tuning
+- `UVICORN_WORKERS` – Number of worker processes (default `4` in container builds).
+- `UVICORN_TIMEOUT_GRACEFUL` – Graceful shutdown timeout in seconds (default `60`).
+- `UVICORN_TIMEOUT_KEEP_ALIVE` – Override keep-alive timeout (defaults to `30`).
+
 | `KAFKA_SASL_PASSWORD` | *(empty)* | SASL password. |
 
 | `KAFKA_MEMORY_EVENTS_TOPIC` | `memory.events` | Kafka topic name for memory events. |### Redis

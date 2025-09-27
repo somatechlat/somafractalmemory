@@ -97,6 +97,10 @@ docker compose down -v
 
 > ℹ️ **Tracing in development:** The FastAPI example enables the OTLP exporter by default. In pure dev setups without a collector, set `OTEL_TRACES_EXPORTER=none` in `.env` (or point it at your collector) to avoid noisy connection errors.
 
+Performance tuning knobs:
+- `SOMA_RATE_LIMIT_MAX` (default `5000`) governs per-endpoint rate limiting.
+- `UVICORN_WORKERS` (default `4`) and `UVICORN_TIMEOUT_GRACEFUL` (default `60`) can be set in `.env`, Docker Compose, or Helm to scale request throughput.
+
 ---
 
 ## ☸️ Kubernetes Deployment

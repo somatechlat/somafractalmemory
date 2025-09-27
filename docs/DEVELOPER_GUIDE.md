@@ -138,6 +138,10 @@ helm install sfm ./helm \
 ```
 The chart provisions Postgres, Redis, Qdrant, and Redpanda alongside the API and consumer. Customize behaviour with `values.yaml` (e.g., disable persistence or supply external service endpoints). Tear everything down via `helm uninstall sfm`.
 
+### Performance knobs
+- `SOMA_RATE_LIMIT_MAX` (default `5000`) controls per-endpoint throttling.
+- `UVICORN_WORKERS` and `UVICORN_TIMEOUT_GRACEFUL` let you scale request throughput—set them in `.env` or pass via Helm/Docker Compose.
+
 ---
 
 ## API Usage

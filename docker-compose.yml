@@ -52,7 +52,9 @@ services:
     environment:
       # Choose the memory mode (development|test|evented_enterprise|cloud_managed)
       MEMORY_MODE: development
-      SOMA_RATE_LIMIT_MAX: "1000"
+      SOMA_RATE_LIMIT_MAX: "5000"
+      UVICORN_WORKERS: "4"
+      UVICORN_TIMEOUT_GRACEFUL: "60"
       # Redis connection (host is the service name defined below)
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -116,7 +118,7 @@ services:
       - "8888:9595"
     environment:
       MEMORY_MODE: evented_enterprise
-      SOMA_RATE_LIMIT_MAX: "1000"
+      SOMA_RATE_LIMIT_MAX: "5000"
     depends_on:
       - redis
       - qdrant

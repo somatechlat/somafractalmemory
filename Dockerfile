@@ -16,9 +16,11 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r /app/requirements
 
 COPY . /app
 
+RUN chmod +x /app/scripts/docker-entrypoint.sh
+
 EXPOSE 9595
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:9595/healthz || exit 1
 
-# Default command (can be changed as needed)
-CMD ["uvicorn", "examples.api:app", "--host", "0.0.0.0", "--port", "9595", "--workers", "2", "--timeout-keep-alive", "30"]
+# Default command (API entrypoint) – can be overridden by docker compose for consumer etc.
+CMD ["/app/scripts/docker-entrypoint.sh"]

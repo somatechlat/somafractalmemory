@@ -103,6 +103,10 @@ Important values:
 
 Remove the release with `helm uninstall sfm` when the cluster tests are complete.
 
+### Performance tuning
+- `SOMA_RATE_LIMIT_MAX` defaults to **5000** requests per minute per endpoint; raise or lower it via `.env`/Helm.
+- `UVICORN_WORKERS` (default **4**) and `UVICORN_TIMEOUT_GRACEFUL` (default **60**) control API concurrency; set them in `.env` before launching Docker/Helm.
+
 ## Full Workflow
 1. **Create env file**: `cp .env.example .env` and edit if needed.
 2. **Build images**: `docker compose build` (already done).

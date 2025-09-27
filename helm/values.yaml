@@ -22,7 +22,9 @@ env:
   QDRANT_URL: "http://somafractalmemory-qdrant:6333"
   KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-redpanda:9092"
   EVENTING_ENABLED: "true"
-  SOMA_RATE_LIMIT_MAX: "1000"
+  SOMA_RATE_LIMIT_MAX: "5000"
+  UVICORN_WORKERS: "4"
+  UVICORN_TIMEOUT_GRACEFUL: "60"
 
 # Liveness / readiness probe configuration
 probe:
@@ -50,6 +52,7 @@ consumer:
     KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-redpanda:9092"
     KAFKA_MEMORY_EVENTS_TOPIC: "memory.events"
     KAFKA_CONSUMER_GROUP: "soma-consumer-group"
+    SOMA_RATE_LIMIT_MAX: "5000"
 
 # Redis cache
 redis:
