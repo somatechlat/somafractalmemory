@@ -129,6 +129,15 @@ docker compose up -d test_api
 ```
 Stop it with `docker compose rm -sf test_api` when you’re done.
 
+### Kubernetes stack
+Use Helm to spin up the full production-like stack inside a cluster:
+```bash
+helm install sfm ./helm \
+  --set image.repository="somatechlat/somafractalmemory" \
+  --set image.tag="2.0"
+```
+The chart provisions Postgres, Redis, Qdrant, and Redpanda alongside the API and consumer. Customize behaviour with `values.yaml` (e.g., disable persistence or supply external service endpoints). Tear everything down via `helm uninstall sfm`.
+
 ---
 
 ## API Usage

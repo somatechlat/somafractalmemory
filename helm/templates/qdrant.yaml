@@ -1,0 +1,66 @@
+{{- if .Values.qdrant.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-qdrant
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.qdrant.port }}
+      targetPort: {{ .Values.qdrant.port }}
+      name: qdrant
+  selector:
+    {{- include "somafractalmemory.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-qdrant
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "somafractalmemory.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: qdrant
+  template:
+    metadata:
+      labels:
+        {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: {{ .Values.qdrant.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.qdrant.port }}
+          volumeMounts:
+            - name: qdrant-storage
+              mountPath: /qdrant/storage
+          resources:
+            {{- toYaml .Values.qdrant.resources | nindent 12 }}
+      volumes:
+        - name: qdrant-storage
+{{- if .Values.qdrant.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "somafractalmemory.fullname" . }}-qdrant-storage
+{{- else }}
+          emptyDir: {}
+{{- end }}
+{{- if .Values.qdrant.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-qdrant-storage
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.qdrant.persistence.size }}
+{{- end }}
+{{- end }}

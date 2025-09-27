@@ -1,0 +1,67 @@
+{{- if .Values.redpanda.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-redpanda
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.redpanda.port }}
+      targetPort: {{ .Values.redpanda.port }}
+      name: kafka
+    - port: 9644
+      targetPort: 9644
+      name: admin
+  selector:
+    {{- include "somafractalmemory.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redpanda
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-redpanda
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "somafractalmemory.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redpanda
+  template:
+    metadata:
+      labels:
+        {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: {{ .Values.redpanda.image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - redpanda
+            - start
+            - "--overprovisioned"
+            - "--smp"
+            - "1"
+            - "--memory"
+            - "1G"
+            - "--reserve-memory"
+            - "0M"
+            - "--advertise-kafka-addr"
+            - "{{ include "somafractalmemory.fullname" . }}-redpanda:{{ .Values.redpanda.port }}"
+            - "--advertise-rpc-addr"
+            - "{{ include "somafractalmemory.fullname" . }}-redpanda:33145"
+          ports:
+            - containerPort: {{ .Values.redpanda.port }}
+            - containerPort: 9644
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+          resources:
+            {{- toYaml .Values.redpanda.resources | nindent 12 }}
+      volumes:
+        - name: data
+          emptyDir: {}
+{{- end }}

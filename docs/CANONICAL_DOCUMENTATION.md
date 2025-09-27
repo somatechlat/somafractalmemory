@@ -86,6 +86,23 @@ docker compose up -d test_api
 ```
 This exposes the API on `http://localhost:8888` while reusing the same backends.
 
+### Kubernetes deployment
+Deploy the full stack (API, consumer, Postgres, Redis, Qdrant, Redpanda) using Helm:
+
+```bash
+helm install sfm ./helm \
+  --set image.repository="somatechlat/somafractalmemory" \
+  --set image.tag="2.0"
+```
+
+Important values:
+- `env` – tweak URLs/feature flags for the API.
+- `consumer.enabled` – disable if you only need the API surface.
+- `postgres`, `redis`, `qdrant`, `redpanda` – control in-cluster backing services (toggle persistence or override images).
+- `probe` – adjust `/healthz` readiness/liveness checks as needed.
+
+Remove the release with `helm uninstall sfm` when the cluster tests are complete.
+
 ## Full Workflow
 1. **Create env file**: `cp .env.example .env` and edit if needed.
 2. **Build images**: `docker compose build` (already done).

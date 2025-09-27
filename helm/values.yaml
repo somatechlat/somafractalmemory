@@ -1,8 +1,9 @@
 # Default values for somafractalmemory Helm chart
-# These values can be overridden via --set or a custom values file.
+# Override via --set or a custom values file.
 
 replicaCount: 1
 
+# API container image
 image:
   repository: somatechlat/somafractalmemory
   tag: "2.0"
@@ -10,25 +11,79 @@ image:
 
 service:
   type: ClusterIP
-  port: 8000
+  port: 9595
 
 resources: {}
 
-# Environment configuration
+# Environment configuration for the API pod
 env:
-  POSTGRES_URL: "postgresql://postgres:5432/somafractalmemory"
-  REDIS_URL: "redis://redis:6379/0"
-  QDRANT_URL: "http://qdrant:6333"
-  # Add other env vars as needed
-
-# Optional Redis cache toggle
-redis:
-  enabled: true
+  POSTGRES_URL: "postgresql://postgres:postgres@somafractalmemory-postgres:5432/somamemory"
+  REDIS_URL: "redis://somafractalmemory-redis:6379/0"
+  QDRANT_URL: "http://somafractalmemory-qdrant:6333"
+  KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-redpanda:9092"
+  EVENTING_ENABLED: "true"
+  SOMA_RATE_LIMIT_MAX: "1000"
 
 # Liveness / readiness probe configuration
 probe:
   path: /healthz
-  port: 8000
+  port: 9595
   initialDelaySeconds: 10
   periodSeconds: 10
   timeoutSeconds: 2
+
+# Background consumer service
+consumer:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: somatechlat/somafractalmemory
+    tag: "2.0"
+    pullPolicy: IfNotPresent
+  resources: {}
+  env:
+    POSTGRES_URL: "postgresql://postgres:postgres@somafractalmemory-postgres:5432/somamemory"
+    REDIS_HOST: "somafractalmemory-redis"
+    REDIS_PORT: "6379"
+    QDRANT_HOST: "somafractalmemory-qdrant"
+    QDRANT_PORT: "6333"
+    KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-redpanda:9092"
+    KAFKA_MEMORY_EVENTS_TOPIC: "memory.events"
+    KAFKA_CONSUMER_GROUP: "soma-consumer-group"
+
+# Redis cache
+redis:
+  enabled: true
+  image: redis:7
+  port: 6379
+  resources: {}
+
+# PostgreSQL configuration
+postgres:
+  enabled: true
+  image: postgres:15-alpine
+  port: 5432
+  username: postgres
+  password: postgres
+  database: somamemory
+  persistence:
+    enabled: false
+    size: 5Gi
+  resources: {}
+
+# Qdrant vector store
+qdrant:
+  enabled: true
+  image: qdrant/qdrant:latest
+  port: 6333
+  persistence:
+    enabled: false
+    size: 5Gi
+  resources: {}
+
+# Redpanda (Kafka-compatible broker)
+redpanda:
+  enabled: true
+  image: redpandadata/redpanda:latest
+  port: 9092
+  resources: {}

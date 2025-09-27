@@ -99,6 +99,29 @@ docker compose down -v
 
 ---
 
+## ☸️ Kubernetes Deployment
+Helm assets for a full SFM stack (API, consumer, Postgres, Redis, Qdrant, Redpanda) live in the `helm/` directory.
+
+```bash
+# Package configuration (override image if desired)
+helm install sfm ./helm \
+  --set image.repository="somatechlat/somafractalmemory" \
+  --set image.tag="2.0"
+
+# When finished
+helm uninstall sfm
+```
+
+Key settings:
+- `env.*` controls API environment variables (defaults wire the pods together).
+- `consumer.enabled` toggles the background worker.
+- `postgres`, `qdrant`, `redpanda`, `redis` sections manage dependent services (toggle persistence or supply your own endpoints).
+- `test_api` is not deployed in Kubernetes; use `docker compose up -d test_api` locally if you need the sandbox.
+
+See `docs/CANONICAL_DOCUMENTATION.md` for a walkthrough of all values.
+
+---
+
 ## 📡 API Endpoints
 | Method | Path | Purpose |
 |--------|------|---------|
