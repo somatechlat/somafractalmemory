@@ -52,6 +52,7 @@ services:
     environment:
       # Choose the memory mode (development|test|evented_enterprise|cloud_managed)
       MEMORY_MODE: development
+      SOMA_RATE_LIMIT_MAX: "1000"
       # Redis connection (host is the service name defined below)
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -96,6 +97,32 @@ services:
       - postgres
       - redpanda
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # -----------------------------------------------------------------
+  # Test API – dedicated sandbox instance exposed on host port 8888.
+  test_api:
+    env_file: .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_test_api
+    ports:
+      - "8888:9595"
+    environment:
+      MEMORY_MODE: evented_enterprise
+      SOMA_RATE_LIMIT_MAX: "1000"
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - redpanda
+    restart: unless-stopped
 
   # -----------------------------------------------------------------
   # Redpanda – lightweight Kafka‑compatible broker. Persists logs to a volume.
@@ -110,27 +137,6 @@ services:
     volumes:
       - redpanda_data:/var/lib/redpanda/data
     restart: unless-stopped
-
-  # Development API – runs the FastAPI server in DEVELOPMENT mode without any auth checks.
-  dev_api:
-    env_file: .env
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: soma_dev_api
-    ports:
-      - "9597:9595"   # expose on a different host port (host 9597 → container 9595)
-    environment:
-      MEMORY_MODE: development   # the factory will pick Development mode
-      # No auth configuration – the FastAPI app does not enforce authentication.
-    depends_on:
-      - redis
-      - qdrant
-      - postgres
-      - redpanda
-    restart: unless-stopped
-    # When you run `docker compose up` Docker will reuse any already‑running containers for redis, qdrant, postgres, redpanda.
-    # Use the flags `--no-pull --no-build` if you want to be sure it does not pull new images or rebuild.
 
 volumes:
   qdrant_storage:

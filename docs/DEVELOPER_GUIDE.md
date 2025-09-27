@@ -82,7 +82,7 @@ All containers will start and attach to a shared Docker network, allowing them t
 ```bash
 docker compose ps
 ```
-You should see six services (`soma_redis`, `soma_qdrant`, `soma_postgres`, `soma_redpanda`, `soma_api`, `soma_consumer`) with **Status: Up**.
+You should see the backing services (`soma_redis`, `soma_qdrant`, `soma_postgres`, `soma_redpanda`) plus the API / consumer containers with **Status: Up**.
 
 ---
 
@@ -114,12 +114,20 @@ The API is now reachable at **http://localhost:9595**.
 
 ---
 
-## CLI Helper (`configure.sh`)
-A tiny bash script lives at the repository root:
+## Managing the stack
+Use the helper script to start the full suite of services for development parity:
 ```bash
-./configure.sh MEMORY_MODE=evented_enterprise
+./scripts/start_stack.sh evented_enterprise
+docker compose up -d api consumer
 ```
-It updates the corresponding key in `.env` and then runs the same Docker command that the web UI uses, i.e. it restarts only the `api` service.  This is handy when you are already working in a terminal and don’t want to open a browser.
+Edit `.env` as needed (for example to change `MEMORY_MODE`) and rerun the commands above so the containers restart with the new configuration.
+
+### Optional sandbox API
+For stress tests, start the sandbox instance on port 8888:
+```bash
+docker compose up -d test_api
+```
+Stop it with `docker compose rm -sf test_api` when you’re done.
 
 ---
 
@@ -165,13 +173,15 @@ Be aware that this permanently deletes all stored memories.
 - The Redis service no longer publishes a host port. It is reachable only inside the Docker network via the service name `redis`.
 
 **Q: After changing a variable the API does not reflect the new value.**
-- Use the admin UI or `configure.sh` to edit `.env`; both automatically restart the API container.
-- If you edited `.env` manually, run `docker compose up -d --build api` to apply the change.
+- Edit `.env`, then rerun `./scripts/start_stack.sh evented_enterprise` followed by `docker compose up -d api dev_api consumer` so the containers pick up the new values.
 
 **Q: How do I add a new service (e.g., a custom vector store)?**
 - Add the service definition to `docker-compose.yml`.
 - Add a corresponding entry in `.env.example`.
 - Extend `factory.create_memory_system` to recognise a new mode or configuration block.
+
+### Tracing in development
+OpenTelemetry tracing is enabled by default. Provide `OTEL_EXPORTER_OTLP_ENDPOINT` if you run a collector, or disable it locally with `OTEL_TRACES_EXPORTER=none` to avoid connection errors in the logs.
 
 ---
 

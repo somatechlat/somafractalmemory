@@ -20,9 +20,7 @@ This repository implements a modular agentic memory system with multiple back‑
    - Services: `redis`, `qdrant`, `postgres`, `redpanda`, `api`, `consumer`.
    - All services load the same `.env` via `env_file: .env` entries.
 4. Access the API at `http://localhost:9595`.
-5. Use the admin UI (`/admin`) or the `configure.sh` script to change configuration on‑the‑fly.
-- ### Web UI (`/admin`)
-- The FastAPI service exposes an admin endpoint at `http://localhost:9595/admin`. It presents a simple HTML form allowing you to edit the `.env` values (e.g., switch `MEMORY_MODE`). Submitting the form writes the new values to `.env` and restarts the `api` container automatically.
+5. To change configuration, edit `.env` and re-run the stack commands listed below.
 
 ## Configuration
 Environment variables control the memory mode and connections. Key variables:
@@ -70,22 +68,34 @@ The file `/.env.example` provides a template; copy it to `.env` before starting 
 
 ## Dynamic Configuration
 
-### CLI Helper (`configure.sh`)
-A small Bash script `configure.sh` is provided to modify the `.env` from the command line and restart the API without affecting other services:
+### Running the full stack
+Launch the backing services that mirror production:
 
 ```bash
-./configure.sh MEMORY_MODE=evented_enterprise
+./scripts/start_stack.sh evented_enterprise
+docker compose up -d api consumer
 ```
-The script updates the variable in `.env` and runs:
-`docker compose up -d --build api`
+
+When `.env` changes (for example, switching `MEMORY_MODE`), re-run the commands above so the containers pick up the new environment.
+
+### Optional sandbox API
+For load testing without touching the primary instance, start the sandbox server:
+
+```bash
+docker compose up -d test_api
+```
+This exposes the API on `http://localhost:8888` while reusing the same backends.
 
 ## Full Workflow
 1. **Create env file**: `cp .env.example .env` and edit if needed.
 2. **Build images**: `docker compose build` (already done).
 3. **Start stack**: `docker compose up -d`.
 4. **Access API**: `http://localhost:9595`.
-5. **Change mode**: Use the admin UI or `configure.sh` to switch `MEMORY_MODE`.
+5. **Change mode**: Edit `.env` (e.g. update `MEMORY_MODE`), then rerun the stack commands so containers restart with the new values.
 6. **Stop stack**: `docker compose down`.
+
+### Tracing / OTLP exporter
+The FastAPI example enables OpenTelemetry tracing. Provide a collector URL via `OTEL_EXPORTER_OTLP_ENDPOINT`, or disable traces in development by setting `OTEL_TRACES_EXPORTER=none` in `.env`.
 
 ## Cleaning Up
 All persistent data is stored in Docker named volumes (`redis_data`, `qdrant_storage`, `postgres_data`, `redpanda_data`). They survive container restarts. To wipe all data, run:

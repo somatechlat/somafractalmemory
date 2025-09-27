@@ -40,6 +40,13 @@ This document enumerates all configuration options used by **SomaFractalMemory**
 
 | `KAFKA_SASL_USERNAME` | *(empty)* | SASL username. |## Detailed Sub‑sections
 
+### Observability helpers
+- `OTEL_TRACES_EXPORTER` – Defaults to `otlp`. Set to `none` when no collector is available in development.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` – HTTP(s) endpoint for the OTLP exporter when traces are enabled.
+
+### API throttling
+- `SOMA_RATE_LIMIT_MAX` – Maximum requests per minute per endpoint (default `1000`). Increase for load tests.
+
 | `KAFKA_SASL_PASSWORD` | *(empty)* | SASL password. |
 
 | `KAFKA_MEMORY_EVENTS_TOPIC` | `memory.events` | Kafka topic name for memory events. |### Redis

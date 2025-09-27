@@ -76,11 +76,16 @@ The API will be reachable at **http://localhost:9595**.
 ---
 
 ## 🚀 Running & Dynamic Configuration
-* **CLI helper** – `configure.sh` updates ```.env``` and restarts only the API container:
+* **Full stack (dev parity)** – Start Redis, Postgres, Qdrant, and Redpanda with the provided helper:
 ```bash
-./configure.sh MEMORY_MODE=evented_enterprise
+./scripts/start_stack.sh evented_enterprise
 ```
-* **Hot‑reload** – The API watches for changes to ```.env``` and reloads on restart.
+  Then launch the API and consumer containers:
+```bash
+docker compose up -d api consumer
+```
+* **Sandbox API (optional)** – `docker compose up -d test_api` exposes a second instance on `http://localhost:8888` for load or forensic testing.
+* **Env changes** – Edit `.env` (e.g. switch `MEMORY_MODE`) and re-run the commands above. The API reads values on startup.
 * **Stopping** – Preserve data with named volumes:
 ```bash
 docker compose down   # keep volumes
@@ -90,12 +95,15 @@ docker compose down   # keep volumes
 docker compose down -v
 ```
 
+> ℹ️ **Tracing in development:** The FastAPI example enables the OTLP exporter by default. In pure dev setups without a collector, set `OTEL_TRACES_EXPORTER=none` in `.env` (or point it at your collector) to avoid noisy connection errors.
+
 ---
 
 ## 📡 API Endpoints
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/store` | Store a memory (coordinates + payload). Returns an ID.
+| `POST` | `/remember` | Convenience wrapper that lets the server choose coordinates (optional input coord).
 | `GET`  | `/recall` | Retrieve the most relevant memory for a text query or vector.
 | `POST` | `/recall_batch` | Recall multiple memories in a single request.
 | `POST` | `/store_bulk` | Store many memories at once (efficient for ingestion).
@@ -165,7 +173,7 @@ score = α * (1 - cosine) + (1 - α) * (distance / max_distance)
 
 ## 📈 Monitoring & Observability
 * **Prometheus metrics** – Exported at `/metrics`.  Includes counters for store/recall calls, latency histograms, and a custom 404 counter.
-* **OpenTelemetry** – Traces are automatically created for PostgreSQL and Qdrant calls (if the OpenTelemetry exporter is configured).
+* **OpenTelemetry** – Traces are automatically created for PostgreSQL and Qdrant calls. Provide an OTLP endpoint via `OTEL_EXPORTER_OTLP_ENDPOINT`, or set `OTEL_TRACES_EXPORTER=none` when you do not have a collector running.
 
 ---
 

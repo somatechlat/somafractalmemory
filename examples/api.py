@@ -6,8 +6,10 @@ Run (after installing fastapi and uvicorn):
   uvicorn examples.api:app --reload
 """
 
+import inspect
 import os
 import time
+from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
@@ -82,7 +84,7 @@ def auth_dep(authorization: str | None = Header(default=None)):
 def rate_limit_dep(path: str):
     # Allow up to 60 requests per minute per path
     window = 60.0
-    max_reqs = 60
+    max_reqs = int(os.getenv("SOMA_RATE_LIMIT_MAX", "1000"))
     key = (path, "global")
     now = time.time()
     bucket = _RATE.setdefault(key, [])
@@ -125,6 +127,12 @@ class LinkRequest(BaseModel):
     to_coord: str
     type: str = "related"
     weight: float = 1.0
+
+
+class RememberRequest(BaseModel):
+    payload: Dict[str, Any]
+    coord: Optional[str] = None
+    type: Optional[str] = "episodic"
 
 
 class BulkItem(BaseModel):
@@ -224,11 +232,13 @@ API_LATENCY = Histogram(
 # Helper decorator to instrument endpoints
 def instrument(endpoint_name: str, method: str):
     def decorator(func):
+        @wraps(func)
         async def wrapper(*args, **kwargs):
             API_REQUESTS.labels(endpoint=endpoint_name, method=method).inc()
             with API_LATENCY.labels(endpoint=endpoint_name, method=method).time():
                 return await func(*args, **kwargs)
 
+        wrapper.__signature__ = inspect.signature(func)
         return wrapper
 
     return decorator
@@ -265,6 +275,20 @@ async def recall(req: RecallRequest) -> MatchesResponse:
     else:
         res = mem.recall(req.query, top_k=req.top_k, memory_type=mtype)
     return MatchesResponse(matches=res)
+
+
+@app.post(
+    "/remember",
+    response_model=OkResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/remember"))],
+)
+@instrument(endpoint_name="remember", method="POST")
+async def remember(req: RememberRequest) -> OkResponse:
+    mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
+    coordinate = parse_coord(req.coord) if req.coord else None
+    mem.remember(req.payload, coordinate=coordinate, memory_type=mtype)
+    return OkResponse(ok=True)
 
 
 @app.post(
