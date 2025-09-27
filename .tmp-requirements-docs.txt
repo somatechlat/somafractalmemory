@@ -1,7 +1,0 @@
-mkdocs==1.5.2
-mkdocs-material==9.0.0
-mkdocstrings[python]==0.20.0
-pymdown-extensions
-redoc==0.2.3
-vale==2.21.0
-markdownlint-cli
