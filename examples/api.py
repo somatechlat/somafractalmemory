@@ -11,6 +11,7 @@ import os
 import time
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -29,6 +30,101 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 def parse_coord(text: str) -> Tuple[float, ...]:
     parts = [p.strip() for p in text.split(",") if p.strip()]
     return tuple(float(p) for p in parts)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _redis_config() -> Dict[str, Any]:
+    cfg: Dict[str, Any] = {}
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        parsed = urlparse(redis_url)
+        if parsed.hostname:
+            cfg["host"] = parsed.hostname
+        if parsed.port:
+            cfg["port"] = parsed.port
+        if parsed.path:
+            path = parsed.path.lstrip("/")
+            if path.isdigit():
+                cfg["db"] = int(path)
+    redis_host = os.getenv("REDIS_HOST")
+    if redis_host:
+        cfg["host"] = redis_host
+    redis_port = os.getenv("REDIS_PORT")
+    if redis_port:
+        try:
+            cfg["port"] = int(redis_port)
+        except ValueError:
+            pass
+    redis_db = os.getenv("REDIS_DB")
+    if redis_db:
+        try:
+            cfg["db"] = int(redis_db)
+        except ValueError:
+            pass
+    cfg.setdefault("host", os.getenv("REDIS_FALLBACK_HOST", "redis"))
+    cfg.setdefault("port", int(os.getenv("REDIS_FALLBACK_PORT", "6379")))
+    cfg.setdefault("db", int(os.getenv("REDIS_FALLBACK_DB", "0")))
+    return cfg
+
+
+def _postgres_config() -> Dict[str, Any]:
+    url = os.getenv("POSTGRES_URL")
+    if url:
+        return {"url": url}
+    host = os.getenv("POSTGRES_HOST")
+    if host:
+        port = os.getenv("POSTGRES_PORT", "5432")
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "postgres")
+        database = os.getenv("POSTGRES_DB", "somamemory")
+        return {"url": f"postgresql://{user}:{password}@{host}:{port}/{database}"}
+    # Local fallback for ad-hoc testing
+    return {"url": "postgresql://postgres:postgres@localhost:5432/somamemory"}
+
+
+def _qdrant_config() -> Dict[str, Any]:
+    url = os.getenv("QDRANT_URL")
+    if url:
+        return {"url": url}
+    host = os.getenv("QDRANT_HOST", "qdrant")
+    port = int(os.getenv("QDRANT_PORT", "6333"))
+    return {"host": host, "port": port}
+
+
+def _build_config(mode: MemoryMode) -> Dict[str, Any]:
+    if mode in (MemoryMode.EVENTED_ENTERPRISE, MemoryMode.CLOUD_MANAGED):
+        return {
+            "redis": _redis_config(),
+            "postgres": _postgres_config(),
+            "qdrant": _qdrant_config(),
+            "eventing": {"enabled": _env_bool("EVENTING_ENABLED", True)},
+        }
+
+    if mode == MemoryMode.DEVELOPMENT:
+        use_testing = _env_bool("REDIS_TESTING", True)
+        redis_cfg: Dict[str, Any]
+        if use_testing:
+            redis_cfg = {"testing": True}
+        else:
+            redis_cfg = _redis_config()
+        config = {
+            "redis": redis_cfg,
+            "vector": {"backend": "qdrant"},
+            "qdrant": _qdrant_config(),
+        }
+        postgres_url = os.getenv("POSTGRES_URL")
+        if postgres_url:
+            config["postgres"] = {"url": postgres_url}
+        return config
+
+    # TEST mode and other callers rely on factory defaults
+    return {}
 
 
 # Set up a basic tracer provider with console exporter
@@ -54,18 +150,15 @@ def _write_openapi() -> None:
     print("🚀 Metrics endpoint available at /metrics")
 
 
-mem = create_memory_system(
-    MemoryMode.DEVELOPMENT,
-    "api_ns",
-    config={
-        "redis": {"testing": True},
-        "vector": {"backend": "qdrant"},
-        "qdrant": {
-            "host": os.getenv("QDRANT_HOST", "qdrant"),
-            "port": int(os.getenv("QDRANT_PORT", "6333")),
-        },
-    },
-)
+_mode_env = os.getenv("MEMORY_MODE", MemoryMode.EVENTED_ENTERPRISE.value).strip().lower()
+try:
+    memory_mode = MemoryMode(_mode_env)
+except ValueError:
+    print(f"⚠️ Unsupported MEMORY_MODE '{_mode_env}', defaulting to evented_enterprise")
+    memory_mode = MemoryMode.EVENTED_ENTERPRISE
+
+memory_namespace = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+mem = create_memory_system(memory_mode, memory_namespace, config=_build_config(memory_mode))
 
 # Simple auth + rate limit stubs
 API_TOKEN = os.getenv("SOMA_API_TOKEN")
@@ -213,7 +306,6 @@ class HealthResponse(BaseModel):
     kv_store: bool
     vector_store: bool
     graph_store: bool
-    prediction_provider: bool
 
 
 # Prometheus metrics for API operations
@@ -473,12 +565,11 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 # Health and readiness endpoints
 @app.get("/healthz", response_model=HealthResponse)
 def healthz():
-    """Liveness probe – checks basic health of all stores and prediction provider."""
+    """Liveness probe – checks basic health of all stores."""
     return HealthResponse(
         kv_store=mem.kv_store.health_check(),
         vector_store=mem.vector_store.health_check(),
         graph_store=mem.graph_store.health_check(),
-        prediction_provider=mem.prediction_provider.health_check(),
     )
 
 
@@ -489,5 +580,4 @@ def readyz():
         kv_store=mem.kv_store.health_check(),
         vector_store=mem.vector_store.health_check(),
         graph_store=mem.graph_store.health_check(),
-        prediction_provider=mem.prediction_provider.health_check(),
     )

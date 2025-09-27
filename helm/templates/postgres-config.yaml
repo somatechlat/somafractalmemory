@@ -1,0 +1,22 @@
+# ConfigMap with PostgreSQL tuning parameters generated from pgtune (2 GB RAM, OLTP, 100 connections)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-postgres-config
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+
+data:
+  postgresql.conf: |
+    # Auto‑generated tuning parameters (pgtune)
+    max_connections = 100
+    shared_buffers = 512MB
+    work_mem = 4MB
+    maintenance_work_mem = 64MB
+    effective_cache_size = 1536MB
+    # Additional sensible defaults
+    synchronous_commit = on
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    random_page_cost = 1.1
+    effective_io_concurrency = 200

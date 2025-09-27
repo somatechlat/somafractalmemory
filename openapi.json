@@ -831,7 +831,7 @@
     "/healthz": {
       "get": {
         "summary": "Healthz",
-        "description": "Liveness probe \u2013 checks basic health of all stores and prediction provider.",
+        "description": "Liveness probe \u2013 checks basic health of all stores.",
         "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
@@ -939,18 +939,13 @@
           "graph_store": {
             "type": "boolean",
             "title": "Graph Store"
-          },
-          "prediction_provider": {
-            "type": "boolean",
-            "title": "Prediction Provider"
           }
         },
         "type": "object",
         "required": [
           "kv_store",
           "vector_store",
-          "graph_store",
-          "prediction_provider"
+          "graph_store"
         ],
         "title": "HealthResponse"
       },

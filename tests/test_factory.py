@@ -2,11 +2,6 @@ from unittest.mock import MagicMock, patch
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
-from somafractalmemory.implementations.prediction import (
-    ExternalPredictionProvider,
-    NoPredictionProvider,
-    OllamaPredictionProvider,
-)
 from somafractalmemory.implementations.storage import (
     InMemoryVectorStore,
     QdrantVectorStore,
@@ -17,7 +12,7 @@ from somafractalmemory.implementations.storage import (
 def test_create_on_demand_mode():
     memory = create_memory_system(MemoryMode.TEST, "test_on_demand")
     assert isinstance(memory, SomaFractalMemoryEnterprise)
-    assert isinstance(memory.prediction_provider, NoPredictionProvider)
+    assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
     assert memory.kv_store.client.__class__.__name__ == "FakeRedis"
     # Default now uses in-memory vector store; can be forced to Qdrant via config
@@ -31,7 +26,7 @@ def test_create_local_agent_mode(tmp_path):
     }
     memory = create_memory_system(MemoryMode.DEVELOPMENT, "test_local_agent", config=config)
     assert isinstance(memory, SomaFractalMemoryEnterprise)
-    assert isinstance(memory.prediction_provider, OllamaPredictionProvider)
+    assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
     assert memory.kv_store.client.__class__.__name__ == "FakeRedis"
     assert isinstance(memory.vector_store, QdrantVectorStore)
@@ -42,11 +37,10 @@ def test_create_enterprise_mode(tmp_path):
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
         "redis": {"testing": True},  # Use fakeredis for enterprise test
-        "external_prediction": {"api_key": "test_key", "endpoint": "http://test.com"},
     }
     memory = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_enterprise", config=config)
     assert isinstance(memory, SomaFractalMemoryEnterprise)
-    assert isinstance(memory.prediction_provider, ExternalPredictionProvider)
+    assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
     assert memory.kv_store.client.__class__.__name__ == "FakeRedis"
 

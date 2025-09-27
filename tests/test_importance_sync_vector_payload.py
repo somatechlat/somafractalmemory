@@ -1,6 +1,5 @@
 from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
-from somafractalmemory.implementations.prediction import NoPredictionProvider
 from somafractalmemory.implementations.storage import InMemoryVectorStore, RedisKeyValueStore
 
 
@@ -12,7 +11,6 @@ def test_set_importance_syncs_vector_payload():
         kv_store=kv,
         vector_store=vec,
         graph_store=NetworkXGraphStore(),
-        prediction_provider=NoPredictionProvider(),
         decay_enabled=False,
         reconcile_enabled=False,
     )

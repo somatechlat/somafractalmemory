@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Dict
 
 import psycopg2
@@ -57,6 +58,24 @@ def process_message(record: Dict) -> bool:
 
     conn = _get_connection()
     try:
+        # Normalize timestamp: accept numeric epoch or ISO8601 string
+        ts_val = record["timestamp"]
+        try:
+            ts_float = float(ts_val)
+        except Exception:
+            # Attempt to parse ISO8601 (handle 'Z' suffix)
+            if isinstance(ts_val, str):
+                try:
+                    if ts_val.endswith("Z"):
+                        ts_val = ts_val[:-1] + "+00:00"
+                    dt = datetime.fromisoformat(ts_val)
+                    ts_float = dt.replace(tzinfo=dt.tzinfo or timezone.utc).timestamp()
+                except Exception:
+                    # Last resort: use current time
+                    ts_float = datetime.now(timezone.utc).timestamp()
+            else:
+                ts_float = datetime.now(timezone.utc).timestamp()
+
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -74,7 +93,7 @@ def process_message(record: Dict) -> bool:
                     record["event_id"],
                     record["namespace"],
                     record["type"],
-                    float(record["timestamp"]),
+                    ts_float,
                     Json(record["payload"]),
                 ),
             )

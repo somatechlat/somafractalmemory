@@ -18,3 +18,5 @@ aiokafka
 confluent-kafka
 
 testcontainers
+
+jsonschema

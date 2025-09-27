@@ -1,8 +1,8 @@
-from typing import Any, Dict, List, Tuple
+from typing import List
 
 from transformers import AutoModel, AutoTokenizer
 
-from somafractalmemory.interfaces.providers import IEmbeddingProvider, IPredictionProvider
+from somafractalmemory.interfaces.providers import IEmbeddingProvider
 
 
 class TransformersEmbeddingProvider(IEmbeddingProvider):
@@ -24,11 +24,3 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
         # Perform pooling
         embeddings = outputs.last_hidden_state.mean(dim=1)
         return embeddings.cpu().numpy().tolist()
-
-
-class StubPredictionProvider(IPredictionProvider):
-    """A stub implementation of the prediction provider for testing."""
-
-    def generate_prediction(self, data: Dict[str, Any]) -> Tuple[str, float]:
-        """Returns a dummy prediction."""
-        return "This is a dummy prediction.", 0.9

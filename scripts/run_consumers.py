@@ -116,6 +116,8 @@ def main() -> None:
     # Expose Prometheus metrics endpoint
     start_http_server(METRICS_PORT)
     log.info("Prometheus metrics exposed on http://localhost:%s/metrics", METRICS_PORT)
+    # Log broker URL for debugging
+    log.info("BROKER_URL=%s", BROKER_URL)
     # Run the consumer loop
     asyncio.run(consume())
 

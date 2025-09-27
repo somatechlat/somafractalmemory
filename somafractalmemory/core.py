@@ -38,7 +38,6 @@ except ImportError:  # pragma: no cover
 
 
 from .interfaces.graph import IGraphStore
-from .interfaces.prediction import IPredictionProvider
 from .interfaces.storage import IKeyValueStore, IVectorStore
 from .serialization import deserialize, serialize
 
@@ -65,8 +64,8 @@ def _coord_to_key(namespace: str, coord: Tuple[float, ...]) -> Tuple[str, str]:
 
 class SomaFractalMemoryEnterprise:
     """
-    Enterprise-grade agentic memory system supporting modular backends, prediction enrichment,
-    semantic graph operations, and advanced memory management.
+    Enterprise-grade agentic memory system supporting modular backends, semantic graph operations,
+    and advanced memory management.
 
     Attributes
     ----------
@@ -78,8 +77,6 @@ class SomaFractalMemoryEnterprise:
         Vector store backend for embeddings and similarity search.
     graph_store : IGraphStore
         Graph store backend for semantic links.
-    prediction_provider : IPredictionProvider
-        Pluggable prediction enrichment provider.
     """
 
     def find_shortest_path(
@@ -109,9 +106,10 @@ class SomaFractalMemoryEnterprise:
 
     def report_outcome(self, coordinate: Tuple[float, ...], outcome: Any) -> Dict[str, Any]:
         """
-        Report the actual outcome for a memory and update prediction feedback.
+        Report the actual outcome for a memory and update any stored prediction feedback.
 
-        If the prediction was incorrect, a corrective semantic memory is created.
+        If a predicted outcome was recorded and differs from the reported outcome, a corrective
+        semantic memory is created.
 
         Parameters
         ----------
@@ -130,7 +128,9 @@ class SomaFractalMemoryEnterprise:
             return {"error": True, "message": "Memory not found"}
         predicted = mem.get("predicted_outcome")
         mem["reported_outcome"] = outcome
-        error = predicted != outcome
+        error = False
+        if predicted is not None:
+            error = predicted != outcome
         mem["error"] = error
         self.store_memory(
             coordinate, mem, memory_type=MemoryType(mem.get("memory_type", "episodic"))
@@ -204,7 +204,6 @@ class SomaFractalMemoryEnterprise:
         kv_store: IKeyValueStore,
         vector_store: IVectorStore,
         graph_store: IGraphStore,
-        prediction_provider: IPredictionProvider,
         model_name: str = "microsoft/codebert-base",
         vector_dim: int = 768,
         encryption_key: Optional[bytes] = None,
@@ -220,7 +219,6 @@ class SomaFractalMemoryEnterprise:
         self.kv_store = kv_store
         self.vector_store = vector_store
         self.graph_store = graph_store
-        self.prediction_provider = prediction_provider
         self.max_memory_size = int(os.getenv("SOMA_MAX_MEMORY_SIZE", max_memory_size))
         self.pruning_interval_seconds = int(
             os.getenv("SOMA_PRUNING_INTERVAL_SECONDS", pruning_interval_seconds)
@@ -422,7 +420,6 @@ class SomaFractalMemoryEnterprise:
             "kv_store": safe(self.kv_store.health_check),
             "vector_store": safe(self.vector_store.health_check),
             "graph_store": safe(self.graph_store.health_check),
-            "prediction_provider": safe(self.prediction_provider.health_check),
         }
 
     def set_importance(self, coordinate: Tuple[float, ...], importance: int = 1):
@@ -783,13 +780,6 @@ class SomaFractalMemoryEnterprise:
         if memory_type == MemoryType.EPISODIC:
             value["timestamp"] = value.get("timestamp", time.time())
         value["coordinate"] = list(coord_t)
-        try:
-            pred, conf = self.prediction_provider.predict(value)
-            if pred:
-                value["predicted_outcome"] = pred
-                value["predicted_confidence"] = conf
-        except Exception as e:
-            logger.debug(f"Prediction enrichment failed: {e}")
         result = self.store(coord_t, value)
         self.graph_store.add_memory(coord_t, value)
         try:

@@ -35,33 +35,64 @@ spec:
         {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: redpanda
     spec:
+      securityContext:
+        runAsUser: 0
+        fsGroup: 0
+      initContainers:
+        - name: redpanda-init-config
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - "/bin/sh"
+            - "-c"
+          args:
+            - |
+              cat > /config/redpanda.yaml <<'YAML'
+              redpanda:
+                data_directory: /var/lib/redpanda/data
+                seed_servers: []
+                kafka_api:
+                  - address: 0.0.0.0
+                    port: 9092
+                advertised_kafka_api:
+                  address: {{ include "somafractalmemory.fullname" . }}-redpanda.soma.svc.cluster.local
+                  port: 9092
+                rpc_server:
+                  address: 0.0.0.0
+                  port: 33145
+                advertised_rpc_api:
+                  address: {{ include "somafractalmemory.fullname" . }}-redpanda.soma.svc.cluster.local
+                  port: 33145
+                admin:
+                  - address: 0.0.0.0
+                    port: 9644
+                developer_mode: true
+                auto_create_topics_enabled: true
+              rpk:
+                enable_usage_stats: true
+                overprovisioned: true
+              YAML
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: redpanda
           image: {{ .Values.redpanda.image }}
-          imagePullPolicy: IfNotPresent
-          command:
-            - redpanda
-            - start
-            - "--overprovisioned"
-            - "--smp"
-            - "1"
-            - "--memory"
-            - "1G"
-            - "--reserve-memory"
-            - "0M"
-            - "--advertise-kafka-addr"
-            - "{{ include "somafractalmemory.fullname" . }}-redpanda:{{ .Values.redpanda.port }}"
-            - "--advertise-rpc-addr"
-            - "{{ include "somafractalmemory.fullname" . }}-redpanda:33145"
+          # Force pulling the image so nodes don't continue to use cached 'latest'
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.redpanda.port }}
             - containerPort: 9644
           volumeMounts:
             - name: data
               mountPath: /var/lib/redpanda/data
+            - name: config
+              mountPath: /etc/redpanda
           resources:
             {{- toYaml .Values.redpanda.resources | nindent 12 }}
       volumes:
         - name: data
+          emptyDir: {}
+        - name: config
           emptyDir: {}
 {{- end }}

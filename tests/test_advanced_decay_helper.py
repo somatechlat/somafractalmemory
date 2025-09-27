@@ -2,7 +2,6 @@ import time
 
 from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise, _coord_to_key
 from somafractalmemory.implementations.graph import NetworkXGraphStore
-from somafractalmemory.implementations.prediction import NoPredictionProvider
 from somafractalmemory.implementations.storage import InMemoryVectorStore, RedisKeyValueStore
 
 
@@ -13,7 +12,6 @@ def test_advanced_decay_removes_non_essential_fields():
         kv_store=kv,
         vector_store=InMemoryVectorStore(),
         graph_store=NetworkXGraphStore(),
-        prediction_provider=NoPredictionProvider(),
         decay_enabled=False,
         reconcile_enabled=False,
     )

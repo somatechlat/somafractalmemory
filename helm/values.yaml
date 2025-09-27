@@ -11,28 +11,41 @@ image:
 
 service:
   type: ClusterIP
-  port: 9595
+  port: 9595  # reverted to original value
 
-resources: {}
+resources:
+  requests:
+    cpu: "300m"
+    memory: "256Mi"
+  limits:
+    cpu: "1200m"
+    memory: "512Mi"
 
 # Environment configuration for the API pod
 env:
-  POSTGRES_URL: "postgresql://postgres:postgres@somafractalmemory-postgres:5432/somamemory"
-  REDIS_URL: "redis://somafractalmemory-redis:6379/0"
-  QDRANT_URL: "http://somafractalmemory-qdrant:6333"
-  KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-redpanda:9092"
+  MEMORY_MODE: "evented_enterprise"
+  SOMA_MEMORY_NAMESPACE: "api_ns"
+  # Service names include the release prefix (soma-memory)
+  POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory"
+  REDIS_URL: "redis://soma-memory-somafractalmemory-redis:6379/0"
+  QDRANT_URL: "http://soma-memory-somafractalmemory-qdrant:6333"
+  KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
   EVENTING_ENABLED: "true"
+  UVICORN_PORT: "9595"  # reverted to original value
   SOMA_RATE_LIMIT_MAX: "5000"
   UVICORN_WORKERS: "4"
   UVICORN_TIMEOUT_GRACEFUL: "60"
+  POSTGRES_POOL_SIZE: "15"          # increased DB connection pool
+  SKIP_SCHEMA_VALIDATION: "true"     # disable jsonschema validation for trusted internal calls
+  VECTOR_INDEX_ASYNC: "true"         # move Qdrant upserts to background worker
 
 # Liveness / readiness probe configuration
 probe:
   path: /healthz
-  port: 9595
-  initialDelaySeconds: 10
+  port: 9595  # reverted to match UVICORN port
+  initialDelaySeconds: 20   # increased to avoid early probe failures
   periodSeconds: 10
-  timeoutSeconds: 2
+  timeoutSeconds: 5         # longer timeout for probes
 
 # Background consumer service
 consumer:
@@ -44,12 +57,13 @@ consumer:
     pullPolicy: IfNotPresent
   resources: {}
   env:
-    POSTGRES_URL: "postgresql://postgres:postgres@somafractalmemory-postgres:5432/somamemory"
-    REDIS_HOST: "somafractalmemory-redis"
+    # Service names include the release prefix (soma-memory) and chart name (somafractalmemory)
+    POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory"
+    REDIS_HOST: "soma-memory-somafractalmemory-redis"
     REDIS_PORT: "6379"
-    QDRANT_HOST: "somafractalmemory-qdrant"
+    QDRANT_HOST: "soma-memory-somafractalmemory-qdrant"
     QDRANT_PORT: "6333"
-    KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-redpanda:9092"
+    KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
     KAFKA_MEMORY_EVENTS_TOPIC: "memory.events"
     KAFKA_CONSUMER_GROUP: "soma-consumer-group"
     SOMA_RATE_LIMIT_MAX: "5000"
@@ -72,7 +86,16 @@ postgres:
   persistence:
     enabled: false
     size: 5Gi
-  resources: {}
+  # Recommended PostgreSQL tuning (pgtune for ~2 GB RAM, OLTP workload, 100 connections)
+  # shared_buffers=512MB, work_mem=4MB, maintenance_work_mem=64MB, effective_cache_size=1536MB
+  # These are applied via the container's memory limits; the DB will auto‑scale within that budget.
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
 
 # Qdrant vector store
 qdrant:
@@ -87,6 +110,12 @@ qdrant:
 # Redpanda (Kafka-compatible broker)
 redpanda:
   enabled: true
-  image: redpandadata/redpanda:latest
+  # Use a pinned Redpanda image known to work with the advertised CLI flags
+  # (matches the testcontainers default in the repo). This avoids breaking
+  # changes introduced in some `latest` tags.
+  image: docker.redpanda.com/redpandadata/redpanda:v23.1.13
   port: 9092
   resources: {}
+
+# Name identifier for the Soma Fractal Memory cluster (used for labeling, metrics, etc.)
+clusterName: "soma-fractal-memory"

@@ -1,203 +1,127 @@
-# SomaFractalMemory – Developer & User Guide
+# SomaFractalMemory – Developer Guide
+
+This guide is aimed at contributors working directly with the codebase. It complements the canonical operations document with day-to-day workflows, pointers to key modules, and troubleshooting tips grounded in the current implementation.
+
+---
 
 ## Table of Contents
-- [Project Overview](#project-overview)
-- [Architecture Overview](#architecture-overview)
-- [Docker Compose Setup](#docker-compose-setup)
-- [Environment Configuration (`.env`)](#environment-configuration-env)
-- [Running the Stack (Development Mode)](#running-the-stack-development-mode)
-- [CLI Helper (`configure.sh`)](#cli-helper-configuresh)
-- [API Usage](#api-usage)
-- [Testing](#testing)
-- [Cleaning Up & Data Persistence](#cleaning-up--data-persistence)
-- [FAQ & Troubleshooting](#faq--troubleshooting)
+- [Project Layout](#project-layout)
+- [Bootstrapping a Dev Environment](#bootstrapping-a-dev-environment)
+- [Running Services](#running-services)
+- [CLI & API Usage](#cli--api-usage)
+- [Testing & Static Analysis](#testing--static-analysis)
+- [Cleaning Up](#cleaning-up)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## Project Overview
-`SomaFractalMemory` is a modular, agent‑centric memory system written in Python. It provides:
-- **Hybrid storage**: Redis (cache), PostgreSQL (canonical KV), Qdrant (vector similarity).
-- **Event streaming** via Redpanda (Kafka‑compatible) for enterprise‑grade pipelines.
-- **FastAPI** HTTP API exposing store/recall, graph operations, and admin functionality.
-- **Dynamic configuration** – switch between `development`, `test`, `evented_enterprise`, and `cloud_managed` modes without losing data.
-
-The repository contains:
-- Core library (`somafractalmemory/`)
-- Example FastAPI app (`examples/api.py`)
-- Docker configuration (`docker-compose.yml`, `Dockerfile`)
-- Documentation (`docs/`)
-- Test suite (`tests/`)
+## Project Layout
+| Path | Purpose |
+|------|---------|
+| `somafractalmemory/` | Core library (factory, enterprise class, interfaces, implementations, CLI). |
+| `examples/api.py` | FastAPI example used for local runs and OpenAPI generation. |
+| `eventing/` | Kafka event producer and schema definition. |
+| `workers/` | Consumers that reconcile events into Postgres/Qdrant. |
+| `scripts/` | Operational helpers (`start_stack.sh`, `run_consumers.py`, etc.). |
+| `docs/` | MkDocs source files (kept in sync with the codebase). |
+| `tests/` | Unit and integration tests. |
 
 ---
 
-## Architecture Overview
-For a high‑level diagram see `docs/ARCHITECTURE.md`. In short:
-```
-+-------------------+   +-------------------+   +-------------------+
-|   FastAPI API    | → |   OpenAPI JSON    | ← |   MkDocs site    |
-+-------------------+   +-------------------+   +-------------------+
-|   Docker Compose  | → |   start_stack.sh  |
-+-------------------+   +-------------------+
-```
-**Key components**
-| Service | Image | Role |
-|---|---|---|
-| `redis` | `redis:7` | In‑memory KV cache with AOF persistence |
-| `qdrant` | `qdrant/qdrant:latest` | Vector similarity store |
-| `postgres` | `postgres:15-alpine` | Relational KV store (used in enterprise modes) |
-| `redpanda` | `redpandadata/redpanda:latest` | Kafka‑compatible event broker |
-| `api` | Built from local `Dockerfile` | FastAPI server exposing the memory API |
-| `consumer` | Same image as `api` | Background worker consuming `memory.events` |
+## Bootstrapping a Dev Environment
+1. Clone the repository and set up a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -e .
+   ```
+2. Install developer dependencies when needed:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Install pre-commit hooks (mirrors GitHub Actions):
+   ```bash
+   pre-commit install
+   ```
+
 ---
 
-## Docker Compose Setup
-All services are defined in `docker-compose.yml`.  The file **does not expose** the Redis port to the host (to avoid port conflicts) and PostgreSQL is bound to host port **5433**.
+## Running Services
+SomaFractalMemory supports two main local workflows:
 
-### 1. Create the environment file
+### Docker Compose (full stack)
 ```bash
-cp .env.example .env   # edit if you need custom values
+cp .env.example .env
+docker compose up -d  # starts Redis, Postgres, Qdrant, Redpanda, API, consumer, test API
 ```
-The default `.env` contains:
-```
-MEMORY_MODE=development
-REDIS_HOST=redis
-REDIS_PORT=6379
-POSTGRES_URL=postgresql://postgres:postgres@postgres:5433/somamemory
-QDRANT_HOST=qdrant
-QDRANT_PORT=6333
-KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
-EVENTING_ENABLED=true
-```
-### 2. Build the Docker images (only needed after code changes)
-```bash
-docker compose build
-```
-### 3. Start the stack in detached mode
-```bash
-docker compose up -d
-```
-All containers will start and attach to a shared Docker network, allowing them to reach each other via the service names defined in the compose file.
+The API lives at <http://localhost:9595>; Prometheus metrics are exposed at `/metrics`.
 
-### 4. Verify the stack
+### Minimal backends via `start_stack.sh`
 ```bash
-docker compose ps
+./scripts/start_stack.sh development            # Postgres + Qdrant only
+./scripts/start_stack.sh development --with-broker  # + Redpanda + Apicurio
+./scripts/start_stack.sh evented_enterprise     # Full evented stack
 ```
-You should see the backing services (`soma_redis`, `soma_qdrant`, `soma_postgres`, `soma_redpanda`) plus the API / consumer containers with **Status: Up**.
+After bringing up the dependencies, launch the API (and optionally the consumer) using `docker compose up -d api consumer`.
 
 ---
 
-## Environment Configuration (`.env`)
-The FastAPI app loads **every** variable from the shared `.env` (thanks to `env_file: .env` entries for each service).  Changing a value and restarting the `api` service is enough – the other containers keep their data.
-
-| Variable | Description | Typical values |
-|---|---|---|
-| `MEMORY_MODE` | Determines which backend mix is used. Options: `development`, `test`, `evented_enterprise`, `cloud_managed`. | `development` |
-| `REDIS_HOST` / `REDIS_PORT` | Hostname and port of the Redis cache (service name `redis`). | `redis` / `6379` |
-| `POSTGRES_URL` | Full DSN for PostgreSQL. Note the host is `postgres` and the port is **5433** on the host side. | `postgresql://postgres:postgres@postgres:5433/somamemory` |
-| `QDRANT_HOST` / `QDRANT_PORT` | Hostname and port of the Qdrant vector store. | `qdrant` / `6333` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Address of the Redpanda broker. | `redpanda:9092` |
-| `EVENTING_ENABLED` | Toggle event publishing. Set to `false` in pure test mode. | `true` |
-
----
-
-## Running the Stack (Development Mode)
-Development mode (`MEMORY_MODE=development`) uses Redis + Qdrant only – PostgreSQL is still started but not required.
-
+## CLI & API Usage
+### CLI (`soma`)
+The CLI wraps `create_memory_system` and exposes commands for storing, recalling, and exporting memories. Example:
 ```bash
-# 1️⃣ Ensure .env is set to development
-sed -i '' 's/^MEMORY_MODE=.*/MEMORY_MODE=development/' .env
-
-# 2️⃣ (Re)build and start
-docker compose up -d --build
+soma --mode development --namespace cli_demo store \
+  --coord "1,2,3" \
+  --payload '{"task": "triage", "importance": 3}'
 ```
-The API is now reachable at **http://localhost:9595**.
+Supply `--config-json` to point at a JSON file mirroring the `config` dictionary structure (`redis`, `postgres`, `qdrant`, `eventing`, `memory_enterprise`).
 
----
-
-## Managing the stack
-Use the helper script to start the full suite of services for development parity:
+### FastAPI Example
+Run the example app directly for rapid iteration:
 ```bash
-./scripts/start_stack.sh evented_enterprise
-docker compose up -d api consumer
+uvicorn examples.api:app --reload
 ```
-Edit `.env` as needed (for example to change `MEMORY_MODE`) and rerun the commands above so the containers restart with the new configuration.
+On startup it:
+- Creates a development-mode memory system (`redis.testing=True`, Qdrant pointed at the configured host/port).
+- Generates `openapi.json` in the repository root.
+- Publishes Prometheus metrics and rate limits using environment defaults.
 
-### Optional sandbox API
-For stress tests, start the sandbox instance on port 8888:
-```bash
-docker compose up -d test_api
-```
-Stop it with `docker compose rm -sf test_api` when you’re done.
-
-### Kubernetes stack
-Use Helm to spin up the full production-like stack inside a cluster:
-```bash
-helm install sfm ./helm \
-  --set image.repository="somatechlat/somafractalmemory" \
-  --set image.tag="2.0"
-```
-The chart provisions Postgres, Redis, Qdrant, and Redpanda alongside the API and consumer. Customize behaviour with `values.yaml` (e.g., disable persistence or supply external service endpoints). Tear everything down via `helm uninstall sfm`.
-
-### Performance knobs
-- `SOMA_RATE_LIMIT_MAX` (default `5000`) controls per-endpoint throttling.
-- `UVICORN_WORKERS` and `UVICORN_TIMEOUT_GRACEFUL` let you scale request throughput—set them in `.env` or pass via Helm/Docker Compose.
+Important endpoints: `/store`, `/recall`, `/remember`, `/store_bulk`, `/link`, `/neighbors`, `/shortest_path`, `/stats`, `/metrics`, `/healthz`, `/readyz`.
 
 ---
 
-## API Usage
-The FastAPI server exposes a rich set of endpoints (see `examples/api.py`).  The most important groups are:
-- **Memory operations** – `/store`, `/recall`, `/recall_batch`, `/store_bulk`, etc.
-- **Graph operations** – `/link`, `/neighbors`, `/shortest_path`.
-- **System** – `/stats`, `/health`, `/metrics`.
-- **Admin** – `/export_memories`, `/import_memories`, `/delete_many`.
+## Testing & Static Analysis
+| Command | What it does |
+|---------|---------------|
+| `pytest -q` | Runs the unit test suite using in-memory stores. |
+| `pytest -q tests/test_postgres_redis_hybrid_store.py` | Exercises the hybrid backend with Testcontainers (requires Docker). |
+| `ruff check .` | Linting (mirrors CI). |
+| `black --check .` | Formatting check. |
+| `bandit -q -r somafractalmemory` | Security scan of the library. |
+| `mypy somafractalmemory` | Static type checking. |
+| `mkdocs build` | Validates that documentation builds successfully. |
 
-All endpoints are documented automatically in the OpenAPI spec (`openapi.json`) generated on startup.  You can view Swagger UI at **http://localhost:9595/docs**.
-
----
-
-## Testing
-Run the full test suite with:
-```bash
-pytest -q
-```
-The tests use the **in‑memory** implementations (no Docker needed) and therefore run quickly.  They also verify that the Docker‑compose file parses.
+All of the above run automatically in GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
 
-## Cleaning Up & Data Persistence
-All stateful services use **named Docker volumes**:
-- `redis_data`
-- `qdrant_storage`
-- `postgres_data`
-- `redpanda_data`
-These survive container recreation and `docker compose down`.  To wipe everything (useful for a fresh start) run:
-```bash
-docker compose down -v
-```
-Be aware that this permanently deletes all stored memories.
+## Cleaning Up
+- Stop containers and keep data: `docker compose down`
+- Stop and purge data volumes: `docker compose down -v`
+- Remove the local Qdrant database used by tests or quickstarts: `rm -rf qdrant.db`
+- Reset the environment file: re-copy `.env.example`
 
 ---
 
-## FAQ & Troubleshooting
-**Q: Port 5432 is already in use.**
-- The compose file maps PostgreSQL to host port **5433**. Update your `.env` accordingly (the default already does this).
+## Troubleshooting
+**Postgres port conflicts** – The compose files expose Postgres on `5433`; ensure `.env` references that port when connecting from the host.
 
-**Q: Redis refuses to start because the port is taken.**
-- The Redis service no longer publishes a host port. It is reachable only inside the Docker network via the service name `redis`.
+**Redis connection errors during development** – If you only need in-memory mode, set `REDIS_HOST=localhost` and `redis.testing=true` in your config to force `fakeredis`.
 
-**Q: After changing a variable the API does not reflect the new value.**
-- Edit `.env`, then rerun `./scripts/start_stack.sh evented_enterprise` followed by `docker compose up -d api dev_api consumer` so the containers pick up the new values.
+**Kafka not required** – Set `EVENTING_ENABLED=false` and avoid running the consumer if you only care about synchronous store/recall APIs.
 
-**Q: How do I add a new service (e.g., a custom vector store)?**
-- Add the service definition to `docker-compose.yml`.
-- Add a corresponding entry in `.env.example`.
-- Extend `factory.create_memory_system` to recognise a new mode or configuration block.
-
-### Tracing in development
-OpenTelemetry tracing is enabled by default. Provide `OTEL_EXPORTER_OTLP_ENDPOINT` if you run a collector, or disable it locally with `OTEL_TRACES_EXPORTER=none` to avoid connection errors in the logs.
+**OpenTelemetry warnings** – When the collector endpoint is absent, set `OTEL_TRACES_EXPORTER=none` to silence connection errors.
 
 ---
 
-# End of Guide
-
-For any further questions, open an issue on the repository or consult the detailed architecture diagram in `docs/ARCHITECTURE.md`.
+*Refer back to `docs/CANONICAL_DOCUMENTATION.md` for deployment-focused instructions and `docs/api.md` for method-level details.*

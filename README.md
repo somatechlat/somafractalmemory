@@ -3,7 +3,7 @@
 ---
 
 ## 📖 Overview
-**Soma Fractal Memory (SFM)** is a modular, agent‑centric memory system written in Python. It provides a unified interface for storing, recalling, and linking **episodic** and **semantic** memories using a combination of in‑memory caches, relational databases, and vector similarity stores.  The library is designed for AI agents, knowledge‑graph pipelines, and any workload that needs fast, context‑aware retrieval of past events.
+**Soma Fractal Memory (SFM)** is a modular, agent-centric memory system written in Python. It exposes a single interface for storing, recalling, and linking **episodic** and **semantic** memories across Redis, PostgreSQL, Qdrant, and Kafka/Redpanda-backed pipelines. The system is designed for AI agents, knowledge-graph pipelines, and any workload that needs fast, context-aware recall of prior events.
 
 ---
 
@@ -20,221 +20,181 @@
         ^                         ^                         ^
         |                         |                         |
 +-------------------+   +-------------------+   +-------------------+
-|   Redpanda (Kafka)|   |   Workers (Consumer)    |
+|   Redpanda (Kafka)|   |  Worker Consumers |   |  Event Schema    |
 +-------------------+   +-------------------+   +-------------------+
 ```
 
-* **FastAPI** – HTTP server exposing the memory API (`/store`, `/recall`, `/graph`, …) and Prometheus metrics.
-* **CLI (`soma` command)** – Thin wrapper around the same API for local scripts and notebooks.
-* **Redis** – Low‑latency cache for recent episodic entries.
-* **PostgreSQL** – Durable KV store for canonical memory objects.
-* **Qdrant** – Approximate‑nearest‑neighbor vector store for semantic embeddings.
-* **Redpanda** – Kafka‑compatible broker that streams `memory.events` to background workers.
-* **Worker** – Consumes events, updates Redis / PostgreSQL / Qdrant, and emits optional side‑effects.
+* **FastAPI (`examples/api.py`)** – HTTP server exposing memory, graph, and admin endpoints plus Prometheus metrics.
+* **CLI (`soma` command)** – Thin wrapper around the same factory for scripting and batch jobs.
+* **Redis** – Optional low-latency cache and distributed lock store for recent episodic memories.
+* **PostgreSQL** – Canonical key-value store for durable JSON payloads.
+* **Qdrant** – Approximate nearest-neighbour vector store for semantic embeddings.
+* **Redpanda/Kafka** – Event bus carrying `memory.events` for asynchronous processing.
+* **Workers (`scripts/run_consumers.py`)** – Consume events, update Postgres/Qdrant, and expose their own Prometheus metrics.
 
 ---
 
 ## ⚙️ Settings & Configuration
-All services read a shared ```.env``` file (loaded via Docker‑Compose `env_file:`).  The most important variables are:
+All runtime services share a `.env` file (Docker Compose loads it via `env_file:`). The key variables are:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MEMORY_MODE` | Determines which back‑ends are active. Options: `development`, `test`, `evented_enterprise`, `cloud_managed` | `development` |
-| `REDIS_HOST` / `REDIS_PORT` | Connection to the Redis cache. | `redis:6379` |
+| `MEMORY_MODE` | Selects backend wiring. Options: `development`, `test`, `evented_enterprise`, `cloud_managed`. | `development` |
+| `REDIS_HOST` / `REDIS_PORT` | Redis connection used by the API and workers. | `redis:6379` |
 | `POSTGRES_URL` | Full DSN for PostgreSQL. | `postgresql://postgres:postgres@postgres:5433/somamemory` |
-| `QDRANT_HOST` / `QDRANT_PORT` | Host/port for the Qdrant vector store. | `qdrant:6333` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Redpanda broker address. | `redpanda:9092` |
-| `EVENTING_ENABLED` | Toggle event publishing (useful for pure unit‑test mode). | `true` |
+| `QDRANT_HOST` / `QDRANT_PORT` | Qdrant host/port. | `qdrant:6333` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Redpanda broker URL. | `redpanda:9092` |
+| `EVENTING_ENABLED` | Toggle Kafka publishing; automatically disabled in `MemoryMode.TEST`. | `true` |
+| `SOMA_RATE_LIMIT_MAX` | Per-endpoint request limit for the API example. | `5000` |
+| `UVICORN_WORKERS` / `UVICORN_TIMEOUT_GRACEFUL` | Control FastAPI worker count and graceful shutdown window. | `4` / `60` |
 
-Create the file from the example:
+Create an environment file by copying the template shipped with the repo:
 ```bash
-cp .env.example .env   # edit values as required
+cp .env.example .env
+# then edit values as needed
 ```
+
+Advanced tuning is documented in `docs/CONFIGURATION.md`.
 
 ---
 
 ## 📦 Installation
 ### 1️⃣ Python (editable mode)
 ```bash
-# Create a virtual environment (optional but recommended)
-python -m venv .venv && source .venv/bin/activate
-
-# Install the package in editable mode so the CLI is available
+python -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
+This installs the `somafractalmemory` package and makes the `soma` CLI available on your PATH.
 
-### 2️⃣ Docker‑Compose (full stack)
+### 2️⃣ Docker Compose (full stack)
 ```bash
-# Build all images (required after code changes)
+# Build images after local changes
 docker compose build
 
-# Start the complete stack in the background
+# Start Redis, Postgres, Qdrant, Redpanda, API, and workers
 docker compose up -d
 ```
-The API will be reachable at **http://localhost:9595**.
+The API listens on **http://localhost:9595**. A sandbox copy runs on **http://localhost:8888** when the `test_api` service is started.
 
 ---
 
 ## 🚀 Running & Dynamic Configuration
-* **Full stack (dev parity)** – Start Redis, Postgres, Qdrant, and Redpanda with the provided helper:
-```bash
-./scripts/start_stack.sh evented_enterprise
-```
-  Then launch the API and consumer containers:
-```bash
-docker compose up -d api consumer
-```
-* **Sandbox API (optional)** – `docker compose up -d test_api` exposes a second instance on `http://localhost:8888` for load or forensic testing.
-* **Env changes** – Edit `.env` (e.g. switch `MEMORY_MODE`) and re-run the commands above. The API reads values on startup.
+* **Minimal local services** – Start just Postgres and Qdrant for development:
+  ```bash
+  ./scripts/start_stack.sh development
+  docker compose up -d api
+  ```
+* **Add Kafka/Redpanda** – Include the broker (and Apicurio registry) by passing `--with-broker` to `start_stack.sh`, or simply run the full compose stack.
+* **Full parity stack** – Mirror production wiring with Redpanda and workers:
+  ```bash
+  ./scripts/start_stack.sh evented_enterprise
+  docker compose up -d api consumer
+  ```
+* **Environment changes** – Edit `.env`, then restart the affected services (`docker compose up -d api consumer`). Containers read configuration on startup.
 * **Stopping** – Preserve data with named volumes:
-```bash
-docker compose down   # keep volumes
-```
-* **Full wipe** (remove all persisted data):
-```bash
-docker compose down -v
-```
+  ```bash
+  docker compose down
+  ```
+* **Full wipe (remove volumes)** – Useful for a clean slate:
+  ```bash
+  docker compose down -v
+  ```
 
-> ℹ️ **Tracing in development:** The FastAPI example enables the OTLP exporter by default. In pure dev setups without a collector, set `OTEL_TRACES_EXPORTER=none` in `.env` (or point it at your collector) to avoid noisy connection errors.
-
-Performance tuning knobs:
-- `SOMA_RATE_LIMIT_MAX` (default `5000`) governs per-endpoint rate limiting.
-- `UVICORN_WORKERS` (default `4`) and `UVICORN_TIMEOUT_GRACEFUL` (default `60`) can be set in `.env`, Docker Compose, or Helm to scale request throughput.
+> ℹ️  The FastAPI example writes `openapi.json` to the repository root at startup for documentation builds.
 
 ---
 
 ## ☸️ Kubernetes Deployment
-Helm assets for a full SFM stack (API, consumer, Postgres, Redis, Qdrant, Redpanda) live in the `helm/` directory.
-
+A Helm chart for the full stack (API, consumer, Postgres, Redis, Qdrant, Redpanda) lives in `helm/`:
 ```bash
-# Package configuration (override image if desired)
 helm install sfm ./helm \
   --set image.repository="somatechlat/somafractalmemory" \
   --set image.tag="2.0"
 
-# When finished
+# Tear down when finished
 helm uninstall sfm
 ```
+Key chart values map to the same environment variables and feature flags documented above. See `docs/CANONICAL_DOCUMENTATION.md` for an end-to-end walkthrough.
 
-Key settings:
-- `env.*` controls API environment variables (defaults wire the pods together).
-- `consumer.enabled` toggles the background worker.
-- `postgres`, `qdrant`, `redpanda`, `redis` sections manage dependent services (toggle persistence or supply your own endpoints).
-- `test_api` is not deployed in Kubernetes; use `docker compose up -d test_api` locally if you need the sandbox.
-
-See `docs/CANONICAL_DOCUMENTATION.md` for a walkthrough of all values.
+For production deployments and an explicit checklist (build, image push, Helm values, schema compatibility and verification steps) see `docs/PRODUCTION_READINESS.md`.
 
 ---
 
-## 📡 API Endpoints
+## 📡 API Highlights
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/store` | Store a memory (coordinates + payload). Returns an ID.
-| `POST` | `/remember` | Convenience wrapper that lets the server choose coordinates (optional input coord).
-| `GET`  | `/recall` | Retrieve the most relevant memory for a text query or vector.
-| `POST` | `/recall_batch` | Recall multiple memories in a single request.
-| `POST` | `/store_bulk` | Store many memories at once (efficient for ingestion).
-| `GET`  | `/graph/neighbors` | Return direct graph neighbours for a given node.
-| `GET`  | `/graph/shortest_path` | Compute shortest‑path between two memory nodes.
-| `GET`  | `/stats` | Basic statistics (counts per backend, memory usage, etc.).
-| `GET`  | `/metrics` | Prometheus metrics (exposed automatically).
-| `GET`  | `/health` | Liveness / readiness probe for Kubernetes.
+| `POST` | `/store` | Persist a memory (coordinate + payload). |
+| `POST` | `/remember` | Let the server choose a coordinate when storing. |
+| `POST` | `/recall` | Recall top matches for a text query (hybrid semantic search). |
+| `POST` | `/recall_batch` | Run multiple recall queries in one call. |
+| `POST` | `/store_bulk` | Bulk-ingest memories from a payload list. |
+| `POST` | `/recall_with_scores` | Return matches with similarity scores. |
+| `POST` | `/recall_with_context` | Context-aware hybrid recall (filters/extra signals). |
+| `GET`  | `/range` | Find memories whose coordinates fall within a bounding box. |
+| `POST` | `/link` | Create a semantic edge between two coordinates. |
+| `GET`  | `/neighbors` | Inspect graph neighbours for a coordinate. |
+| `GET`  | `/shortest_path` | Compute the graph shortest path between two coordinates. |
+| `GET`  | `/stats` | Return memory counts and backend health. |
+| `GET`  | `/metrics` | Prometheus metrics exported by the API. |
+| `GET`  | `/health` | Lightweight readiness probe. |
+| `GET`  | `/healthz` / `/readyz` | Liveness/readiness checks for Kubernetes. |
 
-The full OpenAPI spec is generated at **`/openapi.json`** and can be explored via Swagger UI at **`/docs`**.
-
----
-
-## 🧮 Core Mathematics
-SFM relies on two main similarity concepts:
-
-### 1️⃣ Cosine Similarity (semantic vectors)
-```python
-cosine = (a · b) / (||a|| * ||b||)
-```
-* `a` and `b` are embedding vectors.
-* Returns a value in **[-1, 1]**; higher = more similar.
-* Used by Qdrant for nearest‑neighbor search.
-
-### 2️⃣ Euclidean Distance (episodic coordinates)
-```python
-distance = sqrt( Σ_i (x_i - y_i)^2 )
-```
-* Coordinates are stored as tuples (e.g., `(x, y, z)`).
-* Smaller distance ⇒ more recent / temporally close event.
-* Combined with a weighting factor (`α`) to produce a final relevance score:
-```python
-score = α * (1 - cosine) + (1 - α) * (distance / max_distance)
-```
-* `α` is configurable via `MemoryMode` – higher for semantic‑heavy use‑cases.
+Swagger UI is available at **`/docs`**, and the generated spec is published as `openapi.json` in the repo root each time the API boots.
 
 ---
 
 ## 🧪 Testing & CI
-* **Unit tests** – Run with `pytest -q`.  Tests use in‑memory back‑ends and do not require Docker.
-* **CI pipeline** – Executes the full test suite, runs `black`, `ruff`, and `pre‑commit` checks.
-* **Coverage** – Over 90 % line coverage on core modules.
+* **Unit tests** – `pytest -q` uses in-memory backends, so no external services are required.
+* **Integration** – Dedicated tests (e.g., `tests/test_postgres_redis_hybrid_store.py`) exercise the hybrid store against containerised Postgres/Redis.
+* **CI** – GitHub Actions run pytest, Ruff, Black, Bandit, mypy, and build the MkDocs documentation.
+* **Pre-commit** – A `.pre-commit-config.yaml` is provided; run `pre-commit install` to mirror the GitHub checks locally.
 
 ---
 
-## 🛠️ Development Workflow
-1. **Create a feature branch**
-   ```bash
-   git checkout -b feature/awesome-thing
-   ```
-2. **Make changes** – The repository ships with a pre‑commit config that automatically formats code.
-3. **Run tests & lint**
-   ```bash
-   pytest -q && pre-commit run --all-files
-   ```
-4. **Commit & push** – The CI will run on push; merge via pull request.
-
----
-
-## 🤝 Contributing
-* Follow the existing code style (`black` + `ruff`).
-* Add unit tests for new functionality.
-* Update the documentation (this README) if you change public behavior.
-* Open a Pull Request against the `main`/`v2.0` branch.
-
----
-
-## 📈 Monitoring & Observability
-* **Prometheus metrics** – Exported at `/metrics`.  Includes counters for store/recall calls, latency histograms, and a custom 404 counter.
-* **OpenTelemetry** – Traces are automatically created for PostgreSQL and Qdrant calls. Provide an OTLP endpoint via `OTEL_EXPORTER_OTLP_ENDPOINT`, or set `OTEL_TRACES_EXPORTER=none` when you do not have a collector running.
+## 📈 Observability & Eventing
+* **Prometheus metrics** – The API exposes `/metrics`. Consumers expose their own metrics server (default `localhost:8001/metrics`).
+* **OpenTelemetry** – Optional instrumentation for psycopg2 and Qdrant initialises at import time. If the OpenTelemetry packages are absent, SFM falls back to no-op stubs.
+* **Langfuse** – Integration keys are read from Dynaconf or `config.yaml`; logging is a no-op when Langfuse is unavailable.
+* **Kafka events** – `eventing/producer.py` validates each event against `schemas/memory.event.json` before publishing to `memory.events`.
 
 ---
 
 ## 🔧 Extending the System
-1. **Add a new vector store** – Implement the `VectorStore` interface in `somafractalmemory/implementations/`.  Register it in `factory.create_memory_system`.
-2. **Custom event handling** – Extend `scripts/run_consumers.py` to react to new event types.
-3. **Alternative API frameworks** – The core logic lives in `somafractalmemory.core`; you can wrap it with Flask, FastAPI, or any ASGI server.
+1. **New vector store** – Implement `IVectorStore` (see `somafractalmemory/interfaces/storage.py`) and register it in `factory.create_memory_system`.
+2. **Alternative KV backends** – Implement `IKeyValueStore` and compose it in the factory; the included `PostgresRedisHybridStore` shows how to layer cache + canonical stores.
+3. **Custom workers** – Extend `scripts/run_consumers.py` or add new consumers that subscribe to `memory.events`.
+4. **Different API surface** – `somafractalmemory.core.SomaFractalMemoryEnterprise` encapsulates all business logic; wrap it with your own framework if FastAPI does not fit.
 
 ---
 
 ## 📚 Additional Resources
-* **Architecture diagram** – See `docs/ARCHITECTURE.md` for a visual overview.
-* **API reference** – `docs/api.md` contains autogenerated OpenAPI docs.
-* **Configuration reference** – `docs/configuration.md` lists every environment variable.
-* **Community** – Open an issue on GitHub or join the `#soma-fractal-memory` channel on the project Discord.
+* Architecture deep dive – `docs/ARCHITECTURE.md`
+* Canonical operations guide – `docs/CANONICAL_DOCUMENTATION.md`
+* Configuration reference – `docs/CONFIGURATION.md`
+* API reference – `docs/api.md`
+* Quickstart tutorial – `docs/QUICKSTART.md`
 
 ---
 
-## 🏁 Quick Start Example
+## 🏁 Quick Start (Python)
 ```python
 from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
 
-# Minimal configuration (development mode)
-mem = create_memory_system(MemoryMode.DEVELOPMENT, "demo", config={
-    "redis": {"testing": True},
-    "qdrant": {"path": "./qdrant.db"},
-})
+memory = create_memory_system(
+    MemoryMode.DEVELOPMENT,
+    "demo",
+    config={
+        "redis": {"testing": True},
+        "qdrant": {"path": "./qdrant.db"},
+    },
+)
 
-# Store and recall a simple episodic memory
-mem.store_memory((1.0, 2.0, 3.0), {"task": "write README", "importance": 5}, MemoryType.EPISODIC)
-print(mem.recall("write README"))
+memory.store_memory((1.0, 2.0, 3.0), {"task": "document SFM", "importance": 5}, MemoryType.EPISODIC)
+print(memory.recall("document"))
 ```
 
 ---
 
-*© 2025 somatechlat – All rights reserved.*
+*© 2025 SomaTechLat – All rights reserved.*

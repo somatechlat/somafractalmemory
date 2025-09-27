@@ -1,128 +1,135 @@
 # Canonical Documentation for SomaFractalMemory
 
-## Overview
-This repository implements a modular agentic memory system with multiple back‑ends (PostgreSQL, Redis, Qdrant, Redpanda) and a FastAPI service. The architecture is described in `docs/ARCHITECTURE.md`.
+This document is the operational source of truth for developers and operators. It consolidates the steps required to run the stack locally, configure services, and keep documentation builds up to date.
 
-## Docker Compose Setup
-*(see the Docker section in the main `README.md` for a quick start)*
-1. Copy the example environment file:
+---
+
+## 1. Prepare the Environment
+1. Copy the shared environment file:
    ```bash
    cp .env.example .env
    ```
-2. Build the images:
+2. (Optional) Create a Python virtual environment and install the package in editable mode:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -e .
+   ```
+3. Adjust `.env` to match the target mode (`MEMORY_MODE`, ports, credentials). The file is consumed by every Docker service via `env_file: .env` in `docker-compose.yml`.
+
+---
+
+## 2. Build and Run the Stack
+1. **Build images** after code changes:
    ```bash
    docker compose build
    ```
-3. Launch the stack:
+2. **Start everything** (Redis, Postgres, Qdrant, Redpanda, API, consumer, sandbox API):
    ```bash
    docker compose up -d
    ```
-   - Services: `redis`, `qdrant`, `postgres`, `redpanda`, `api`, `consumer`.
-   - All services load the same `.env` via `env_file: .env` entries.
-4. Access the API at `http://localhost:9595`.
-5. To change configuration, edit `.env` and re-run the stack commands listed below.
+3. **Access endpoints**:
+   * API: <http://localhost:9595>
+   * Sandbox API (`test_api`): <http://localhost:8888>
+   * Prometheus metrics: `/metrics`
+   * Swagger UI: `/docs`
+4. **Stop services** while preserving data:
+   ```bash
+   docker compose down
+   ```
+5. **Wipe volumes** when you need a clean slate:
+   ```bash
+   docker compose down -v
+   ```
 
-## Configuration
-Environment variables control the memory mode and connections. Key variables:
-- `MEMORY_MODE` – `development`, `test`, `evented_enterprise`, `cloud_managed`
-- `REDIS_HOST`, `REDIS_PORT`
-- `POSTGRES_URL`
-- `QDRANT_HOST`, `QDRANT_PORT`
-- `KAFKA_BOOTSTRAP_SERVERS`
-- `EVENTING_ENABLED`
+Named volumes created by the compose file: `redis_data`, `qdrant_storage`, `postgres_data`, `redpanda_data`.
 
-## Running Tests
+---
+
+## 3. Alternative Startup Modes (`scripts/start_stack.sh`)
+`start_stack.sh` is a convenience wrapper around `docker-compose.dev.yml`:
+
+| Mode | Services | Notes |
+|------|----------|-------|
+| `development` | Postgres + Qdrant (optionally Redpanda/Apicurio with `--with-broker`) | Fast to start for local work. |
+| `evented_enterprise` / `cloud_managed` | Redpanda, Apicurio, Postgres, Qdrant | Mirrors the evented production setup. |
+| `test` | No external services | Unit tests rely on in-memory stores. |
+
+Example usage:
 ```bash
-pytest -q
+./scripts/start_stack.sh development --with-broker
 ```
-All tests pass against the in‑memory implementations.
+Follow up with `docker compose up -d api consumer` to launch the application containers against those services.
 
-## Documentation
-- Architecture details: `docs/ARCHITECTURE.md`
-- API reference: `docs/api.md`
-- Configuration reference: `docs/CONFIGURATION.md`
+---
 
-## Services Overview
+## 4. Configuration Checklist
+Key environment variables (see `docs/CONFIGURATION.md` for the full list):
+- `MEMORY_MODE` – selects backend wiring.
+- `POSTGRES_URL` – DSN for canonical storage.
+- `QDRANT_HOST` / `QDRANT_PORT` (or `qdrant.path` in config) – vector store.
+- `KAFKA_BOOTSTRAP_SERVERS` – broker location for event publishing.
+- `EVENTING_ENABLED` – toggle Kafka emission for local-only development.
+- `SOMA_RATE_LIMIT_MAX` – throttle for API endpoints.
 
-| Service | Image | Purpose |
-|---------|-------|---------|
-| **redis** | `redis:7` | In‑memory KV cache with AOF persistence. |
-| **qdrant** | `qdrant/qdrant:latest` | Vector similarity store for embeddings. |
-| **postgres** | `postgres:15-alpine` | Canonical relational store (used in enterprise modes). |
-| **redpanda** | `redpandadata/redpanda:latest` | Kafka‑compatible event broker for memory event streaming. |
-| **api** | Built from local `Dockerfile` | FastAPI server exposing the memory API. |
-| **consumer** | Built from local `Dockerfile` | Background worker consuming `memory.events` and updating stores. |
-
-## Environment Variables
-
-All services read configuration from a shared `.env` file (loaded via `env_file: .env`). Key variables:
-
-- `MEMORY_MODE` – `development`, `test`, `evented_enterprise`, `cloud_managed`.
-- `REDIS_HOST` / `REDIS_PORT` – connection to Redis.
-- `POSTGRES_URL` – full PostgreSQL DSN (includes port, e.g., `postgresql://postgres:postgres@postgres:5433/somamemory`).
-- `QDRANT_HOST` / `QDRANT_PORT` – connection to Qdrant.
-- `KAFKA_BOOTSTRAP_SERVERS` – Redpanda broker address.
-- `EVENTING_ENABLED` – `true`/`false` to toggle event publishing.
-
-The file `/.env.example` provides a template; copy it to `.env` before starting the stack.
-
-## Dynamic Configuration
-
-### Running the full stack
-Launch the backing services that mirror production:
-
-```bash
-./scripts/start_stack.sh evented_enterprise
-docker compose up -d api consumer
-```
-
-When `.env` changes (for example, switching `MEMORY_MODE`), re-run the commands above so the containers pick up the new environment.
-
-### Optional sandbox API
-For load testing without touching the primary instance, start the sandbox server:
-
-```bash
-docker compose up -d test_api
-```
-This exposes the API on `http://localhost:8888` while reusing the same backends.
-
-### Kubernetes deployment
-Deploy the full stack (API, consumer, Postgres, Redis, Qdrant, Redpanda) using Helm:
-
-```bash
-helm install sfm ./helm \
-  --set image.repository="somatechlat/somafractalmemory" \
-  --set image.tag="2.0"
-```
-
-Important values:
-- `env` – tweak URLs/feature flags for the API.
-- `consumer.enabled` – disable if you only need the API surface.
-- `postgres`, `redis`, `qdrant`, `redpanda` – control in-cluster backing services (toggle persistence or override images).
-- `probe` – adjust `/healthz` readiness/liveness checks as needed.
-
-Remove the release with `helm uninstall sfm` when the cluster tests are complete.
-
-### Performance tuning
-- `SOMA_RATE_LIMIT_MAX` defaults to **5000** requests per minute per endpoint; raise or lower it via `.env`/Helm.
-- `UVICORN_WORKERS` (default **4**) and `UVICORN_TIMEOUT_GRACEFUL` (default **60**) control API concurrency; set them in `.env` before launching Docker/Helm.
-
-## Full Workflow
-1. **Create env file**: `cp .env.example .env` and edit if needed.
-2. **Build images**: `docker compose build` (already done).
-3. **Start stack**: `docker compose up -d`.
-4. **Access API**: `http://localhost:9595`.
-5. **Change mode**: Edit `.env` (e.g. update `MEMORY_MODE`), then rerun the stack commands so containers restart with the new values.
-6. **Stop stack**: `docker compose down`.
-
-### Tracing / OTLP exporter
-The FastAPI example enables OpenTelemetry tracing. Provide a collector URL via `OTEL_EXPORTER_OTLP_ENDPOINT`, or disable traces in development by setting `OTEL_TRACES_EXPORTER=none` in `.env`.
-
-## Cleaning Up
-All persistent data is stored in Docker named volumes (`redis_data`, `qdrant_storage`, `postgres_data`, `redpanda_data`). They survive container restarts. To wipe all data, run:
-```bash
-docker compose down -v
+When running the CLI or FastAPI in-process, you can pass a dictionary to `create_memory_system` to override the same settings:
+```python
+create_memory_system(
+    MemoryMode.EVENTED_ENTERPRISE,
+    "namespace",
+    config={
+        "redis": {"host": "redis", "port": 6379},
+        "postgres": {"url": os.environ["POSTGRES_URL"]},
+        "qdrant": {"host": "qdrant", "port": 6333},
+        "eventing": {"enabled": True},
+    },
+)
+> Important: ensure `UVICORN_PORT=9595` is set in your `.env` (or override the
+> Helm chart value `env.UVICORN_PORT`) so that the API always binds to the
+> canonical port used by examples and CI.
 ```
 
 ---
-*This document serves as the single source of truth for developers and operators.*
+
+## 5. Testing & Validation
+- **Unit tests** – `pytest -q` (no services required).
+- **Hybrid store integration** – `pytest -q tests/test_postgres_redis_hybrid_store.py` spins up containers via Testcontainers.
+- **Static checks** – `ruff check .`, `black --check .`, `bandit`, and `mypy` mirror the GitHub Actions pipeline.
+- **Documentation build** – `mkdocs build` (requires `mkdocs` and `mkdocs-material`).
+
+The FastAPI example regenerates `openapi.json` in the repository root during startup; keep that file committed so docs and CI stay in sync.
+
+---
+
+## 6. Kubernetes Deployment
+The Helm chart at `helm/` provisions the full topology (API, consumer, Postgres, Redis, Qdrant, Redpanda). Key values:
+- `image.repository` / `image.tag` – override container images.
+- `env.*` – configure the API service (mirrors `.env`).
+- `consumer.enabled` – toggle the background worker deployment.
+- `postgres`, `redis`, `qdrant`, `redpanda` – enable/disable embedded dependencies or point to managed services.
+
+Install and remove as follows:
+```bash
+helm install sfm ./helm
+helm uninstall sfm
+```
+
+---
+
+## 7. Clean-Up Matrix
+| Goal | Command |
+|------|---------|
+| Stop containers, keep data | `docker compose down` |
+| Stop + delete data volumes | `docker compose down -v` |
+| Remove local Qdrant file | `rm -rf qdrant.db` |
+| Reset `.env` | Re-copy from `.env.example` |
+
+---
+
+*For detailed configuration keys see `docs/CONFIGURATION.md`. For API surface documentation refer to `docs/api.md`.*
+
+## Production readiness
+
+For a prescriptive production readiness and deployment checklist, see
+`docs/PRODUCTION_READINESS.md` which contains build, Helm deployment, schema
+compatibility notes, testing guidance and operational best-practices.

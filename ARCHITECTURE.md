@@ -7,14 +7,14 @@ This file is no longer maintained. Please refer to the up‑to‑date architectu
 ## 🛣️ Prioritized Roadmap
 
 ### 1. Core Foundation (Week 1)
-- Modularize memory, prediction, and graph interfaces.
+- Modularize memory and graph interfaces.
 - Implement config-driven mode selection (simple, local_llm, enterprise).
 - Build core memory storage, recall, and semantic graph (local).
 
-### 2. Predictive Memory & LLM Integration (Week 2)
-- Add pluggable prediction module (no LLM, local LLM, external LLM).
+### 2. LLM Integration (Week 2)
+- Add optional LLM-powered summarization and enrichment hooks.
 - Implement caching and cost-saving strategies.
-- Add agent self-reflection API (for prediction error analysis).
+- Add agent self-reflection API for analyzing reported outcomes.
 
 ### 3. Observability & Tooling (Week 3)
 - Integrate logging, tracing, and metrics.
@@ -41,17 +41,17 @@ This file is no longer maintained. Please refer to the up‑to‑date architectu
 +-------------------+         +-------------------+         +-------------------+
 |   Agent(s)        | <-----> |   Memory API      | <-----> |   Config Manager  |
 +-------------------+         +-------------------+         +-------------------+
-                                   |        |        |
-                                   |        |        |
-                +------------------+        |        +------------------+
-                |                           |                           |
-+---------------------------+   +-------------------------+   +-------------------------+
-|  Storage Module           |   |  Prediction Module      |   |  Semantic Graph Module  |
-|  (Dict/Redis/Cluster)    |   |  (None/Local/External)  |   |  (NetworkX/Neo4j/etc.) |
-+---------------------------+   +-------------------------+   +-------------------------+
-                |                           |                           |
-                +---------------------------+---------------------------+
-                                    |
+                                   |        |
+                                   |        |
+                +------------------+        +------------------+
+                |                                      |
++---------------------------+              +-------------------------+
+|  Storage Module           |              |  Semantic Graph Module  |
+|  (Postgres/Redis/Hybrid) |              |  (NetworkX/Neo4j/etc.) |
++---------------------------+              +-------------------------+
+                |                                      |
+                +---------------------------+----------+
+                                                |
                         +-----------------------------+
                         |   Observability/Monitoring  |
                         |   (Logging, Metrics, UI)    |
@@ -73,7 +73,6 @@ This file is no longer maintained. Please refer to the up‑to‑date architectu
 | Memory Storage/Recall    |    ✔     |      ✔        |     ✔      |
 | Semantic Graph           |    ✔     |      ✔        |     ✔      |
 | Vector Search            |    ✔     |      ✔        |     ✔      |
-| Predictive Memory        |    ✖     |      ✔        |     ✔      |
 | Distributed Event Stream |    ✖     |   (optional)  |     ✔      |
 | Distributed Vector DB    |    ✖     |   (optional)  |     ✔      |
 | High-Availability        |    ✖     |   (optional)  |     ✔      |
@@ -92,7 +91,7 @@ This file is no longer maintained. Please refer to the up‑to‑date architectu
 
 ## Key Principles
 
-- **Pluggable:** Swap any module (storage, prediction, graph) via config.
+- **Pluggable:** Swap storage and graph modules via config.
 - **Unified API:** All agent code interacts with a single, stable interface.
 - **Agent-Aware:** Self-reflection, memory prioritization, and meta-memory built in.
 - **Scalable:** Grows from laptop to enterprise cluster with config change.

@@ -5,11 +5,6 @@ from typing import Any, Dict, Iterator, Mapping, Optional
 # Local application imports (alphabetical)
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
-from somafractalmemory.implementations.prediction import (
-    ExternalPredictionProvider,
-    NoPredictionProvider,
-    OllamaPredictionProvider,
-)
 from somafractalmemory.implementations.storage import (
     InMemoryVectorStore,
     PostgresKeyValueStore,
@@ -157,7 +152,6 @@ def create_memory_system(
     kv_store = None
     vector_store = None
     graph_store = None
-    prediction_provider = None
 
     vector_cfg = config.get("vector", {})
     enterprise_cfg = config.get("memory_enterprise", {})
@@ -196,10 +190,8 @@ def create_memory_system(
         if vector_cfg.get("backend") == "qdrant" or qdrant_cfg.get("path"):
             qconf = qdrant_cfg if qdrant_cfg else {"location": ":memory:"}
             vector_store = QdrantVectorStore(collection_name=namespace, **qconf)
-            prediction_provider = OllamaPredictionProvider()
         else:
             vector_store = InMemoryVectorStore()
-            prediction_provider = NoPredictionProvider()
         graph_store = NetworkXGraphStore()
 
         # Event‑publishing flag – default to True.
@@ -212,8 +204,7 @@ def create_memory_system(
         kv_store = RedisKeyValueStore(testing=True)
         vector_store = InMemoryVectorStore()
         graph_store = NetworkXGraphStore()
-        prediction_provider = NoPredictionProvider()
-        # Event‑publishing not relevant in test mode; default to False to avoid accidental Kafka use.
+        # Event-publishing not relevant in test mode; default to False to avoid accidental Kafka use.
         eventing_enabled = False
 
     # ------------------------------------------------------------
@@ -245,15 +236,7 @@ def create_memory_system(
             )
         vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
         graph_store = NetworkXGraphStore()
-        # Determine prediction provider: external if config provided, else NoPredictionProvider.
-        external_cfg = config.get("external_prediction", {})
-        if external_cfg.get("api_key") and external_cfg.get("endpoint"):
-            prediction_provider = ExternalPredictionProvider(
-                api_key=external_cfg["api_key"], endpoint=external_cfg["endpoint"]
-            )
-        else:
-            prediction_provider = NoPredictionProvider()
-        # Event‑publishing flag for production
+        # Event-publishing flag for production
         eventing_enabled = config.get("eventing", {}).get("enabled", True)
 
     else:
@@ -264,7 +247,6 @@ def create_memory_system(
         kv_store=kv_store,
         vector_store=vector_store,
         graph_store=graph_store,
-        prediction_provider=prediction_provider,
         max_memory_size=enterprise_cfg.get("max_memory_size", 100000),
         pruning_interval_seconds=enterprise_cfg.get("pruning_interval_seconds", 600),
         decay_thresholds_seconds=enterprise_cfg.get("decay_thresholds_seconds", []),

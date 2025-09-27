@@ -7,6 +7,8 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
     restart: unless-stopped
 
   qdrant:
@@ -14,7 +16,7 @@ services:
     image: qdrant/qdrant:latest
     container_name: soma_qdrant
     ports:
-      - "6333:6333"
+      - "${QDRANT_HOST_PORT:-6333}:6333"
     volumes:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
@@ -31,7 +33,7 @@ services:
       # Convenience env var that the Python code can read directly.
       POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

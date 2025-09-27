@@ -1,11 +1,14 @@
 site_name: SomaFractalMemory
 site_url: https://example.com
 nav:
-  - Home: README.md
-  - API: api.md
+  - Home: index.md
+  - Quickstart: QUICKSTART.md
+  - Guides:
+      - Canonical Ops: CANONICAL_DOCUMENTATION.md
+      - Developer Guide: DEVELOPER_GUIDE.md
   - Architecture: ARCHITECTURE.md
   - Configuration: CONFIGURATION.md
-  - Quickstart: QUICKSTART.md
+  - API: api.md
   - Ops: ops/KAFKA_OPEN_SOURCE.md
 
 theme:
@@ -22,7 +25,7 @@ plugins:
   - search
   # mkdocstrings (and its autorefs dependency) caused configuration errors with the current environment.
   # Documentation can be built without it, or you can install compatible versions later.
-  # If you need API reference from code, re‑enable mkdocstrings after fixing the plugin version.
+  # If you need API reference from code, re-enable mkdocstrings after fixing the plugin version.
 
 markdown_extensions:
   - admonition
