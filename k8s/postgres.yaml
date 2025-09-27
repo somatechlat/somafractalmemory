@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: somafractalmemory-postgres
+  labels:
+    app: somafractalmemory-postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app: somafractalmemory-postgres
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: somafractalmemory-postgres
+  labels:
+    app: somafractalmemory-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: somafractalmemory-postgres
+  template:
+    metadata:
+      labels:
+        app: somafractalmemory-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          env:
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              value: "postgres"
+            - name: POSTGRES_DB
+              value: "somamemory"
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: "trust"
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: pvc-postgres

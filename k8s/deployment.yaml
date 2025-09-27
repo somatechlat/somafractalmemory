@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: somafractalmemory
+  labels:
+    app: somafractalmemory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: somafractalmemory
+  template:
+    metadata:
+      labels:
+        app: somafractalmemory
+    spec:
+      containers:
+        - name: somafractalmemory
+          # local image that we'll build and load into kind
+          image: somafractalmemory:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9595
+          env:
+            - name: UVICORN_PORT
+              value: "9595"
+            - name: SKIP_SCHEMA_VALIDATION
+              value: "true"
+            - name: VECTOR_INDEX_ASYNC
+              value: "true"
+            - name: POSTGRES_POOL_SIZE
+              value: "15"
+            # Use in-cluster services for infra in Kubernetes (overrides available via kubectl set env)
+            - name: POSTGRES_URL
+              value: "postgresql://postgres:postgres@somafractalmemory-postgres:5432/somamemory"
+            - name: REDIS_URL
+              value: "redis://somafractalmemory-redis:6379/0"
+            - name: QDRANT_HOST
+              value: "somafractalmemory-qdrant"
+            - name: QDRANT_PORT
+              value: "6333"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9595
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9595
+            initialDelaySeconds: 10
+            periodSeconds: 10

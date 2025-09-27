@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: somafractalmemory-redis
+  labels:
+    app: somafractalmemory-redis
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+  selector:
+    app: somafractalmemory-redis
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: somafractalmemory-redis
+  labels:
+    app: somafractalmemory-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: somafractalmemory-redis
+  template:
+    metadata:
+      labels:
+        app: somafractalmemory-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["redis-server", "--save", "", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: redisdata
+              mountPath: /data
+      volumes:
+        - name: redisdata
+          persistentVolumeClaim:
+            claimName: pvc-redis
