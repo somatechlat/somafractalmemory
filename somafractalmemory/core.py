@@ -233,17 +233,30 @@ class SomaFractalMemoryEnterprise:
 
         config = Dynaconf(settings_files=[config_file], environments=True, envvar_prefix="SOMA")
 
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(os.getenv("SOMA_MODEL_NAME", model_name))
-            self.model = AutoModel.from_pretrained(
-                os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True
-            )
-        except Exception as e:
-            logger.warning(
-                f"Transformer model init failed, falling back to hash-based embeddings: {e}"
-            )
+        # Allow forcing hash-only embeddings (fast, deterministic) for tests/dev
+        force_hash = os.getenv("SOMA_FORCE_HASH_EMBEDDINGS", "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if force_hash:
+            logger.info("SOMA_FORCE_HASH_EMBEDDINGS enabled: using hash-based embeddings")
             self.tokenizer = None
             self.model = None
+        else:
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    os.getenv("SOMA_MODEL_NAME", model_name)
+                )
+                self.model = AutoModel.from_pretrained(
+                    os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Transformer model init failed, falling back to hash-based embeddings: {e}"
+                )
+                self.tokenizer = None
+                self.model = None
 
         self.anomaly_detector = IsolationForest(contamination=0.1, random_state=42)
         self.cipher = Fernet(encryption_key or Fernet.generate_key()) if encryption_key else None

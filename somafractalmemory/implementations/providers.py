@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from transformers import AutoModel, AutoTokenizer
@@ -9,8 +10,18 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
     """An embedding provider that uses Hugging Face Transformers."""
 
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        # honor environment flag to force hash-based embeddings (fast/no model init)
+        force_hash = os.getenv("SOMA_FORCE_HASH_EMBEDDINGS", "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if force_hash:
+            self.tokenizer = None
+            self.model = None
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModel.from_pretrained(model_name)
 
     def embed_text(self, text: str) -> List[float]:
         return self.embed_texts([text])[0]
