@@ -115,7 +115,16 @@ redpanda:
   # changes introduced in some `latest` tags.
   image: docker.redpanda.com/redpandadata/redpanda:v23.1.13
   port: 9092
-  resources: {}
+  # Redpanda requires a moderate amount of memory to run reliably. For local
+  # development we request 1Gi and allow up to 2Gi if available. These values
+  # match the docker-compose defaults (1G) and provide headroom under load.
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
 
 # Name identifier for the Soma Fractal Memory cluster (used for labeling, metrics, etc.)
 clusterName: "soma-fractal-memory"
