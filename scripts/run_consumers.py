@@ -17,17 +17,10 @@ import logging
 import os
 import ssl
 import sys
-
-# Ensure the repository root (project root) is on the import path when the script is executed
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from typing import Any, Dict
 
 from aiokafka import AIOKafkaConsumer
 from prometheus_client import Counter, Histogram, start_http_server
-
-from workers.kv_writer import process_message
-from workers.vector_indexer import index_event
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
@@ -71,6 +64,12 @@ async def consume() -> None:
     ``memory.event`` schema. Errors are logged and counted, but the loop keeps
     running so that a single bad message does not halt the pipeline.
     """
+    # Import project-local modules lazily so this file can be imported without
+    # needing the repository path to be preconfigured. This avoids executing
+    # module-level statements before imports (ruff/flake8 E402).
+    from workers.kv_writer import process_message
+    from workers.vector_indexer import index_event
+
     consumer = AIOKafkaConsumer(
         TOPIC,
         bootstrap_servers=BROKER_URL,
@@ -114,6 +113,10 @@ async def consume() -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     # Expose Prometheus metrics endpoint
+    # Ensure the repository root (project root) is on the import path when
+    # the script is executed (only required when running from source).
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
     start_http_server(METRICS_PORT)
     log.info("Prometheus metrics exposed on http://localhost:%s/metrics", METRICS_PORT)
     # Log broker URL for debugging
