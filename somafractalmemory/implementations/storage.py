@@ -42,6 +42,7 @@ except Exception:  # pragma: no cover
 
 # Specific third‑party imports
 from psycopg2.extras import Json
+from psycopg2.sql import SQL, Identifier
 from qdrant_client.http.models import Distance, PointIdsList, PointStruct, VectorParams
 from redis.exceptions import ConnectionError
 
@@ -416,12 +417,9 @@ class PostgresKeyValueStore(IKeyValueStore):
     def _ensure_table(self):
         with self._conn.cursor() as cur:
             cur.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {self._TABLE_NAME} (
-                    key TEXT PRIMARY KEY,
-                    value JSONB NOT NULL
-                );
-                """
+                SQL(
+                    "CREATE TABLE IF NOT EXISTS {} (key TEXT PRIMARY KEY, value JSONB NOT NULL);"
+                ).format(Identifier(self._TABLE_NAME))
             )
 
     def set(self, key: str, value: bytes):
@@ -433,17 +431,18 @@ class PostgresKeyValueStore(IKeyValueStore):
             json_obj = value.decode("utf-8", errors="ignore")
         with self._conn.cursor() as cur:
             cur.execute(
-                f"""
-                INSERT INTO {self._TABLE_NAME} (key, value)
-                VALUES (%s, %s)
-                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
-                """,
+                SQL(
+                    "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
+                ).format(Identifier(self._TABLE_NAME)),
                 (key, Json(json_obj)),
             )
 
     def get(self, key: str) -> Optional[bytes]:
         with self._conn.cursor() as cur:
-            cur.execute(f"SELECT value FROM {self._TABLE_NAME} WHERE key = %s;", (key,))
+            cur.execute(
+                SQL("SELECT value FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
+                (key,),
+            )
             row = cur.fetchone()
             if row:
                 # row[0] is a Python dict (psycopg2 converts JSONB to dict)
@@ -452,13 +451,18 @@ class PostgresKeyValueStore(IKeyValueStore):
 
     def delete(self, key: str):
         with self._conn.cursor() as cur:
-            cur.execute(f"DELETE FROM {self._TABLE_NAME} WHERE key = %s;", (key,))
+            cur.execute(
+                SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)), (key,)
+            )
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
         # Convert glob pattern * to SQL %
         sql_pattern = pattern.replace("*", "%")
         with self._conn.cursor() as cur:
-            cur.execute(f"SELECT key FROM {self._TABLE_NAME} WHERE key LIKE %s;", (sql_pattern,))
+            cur.execute(
+                SQL("SELECT key FROM {} WHERE key LIKE %s;").format(Identifier(self._TABLE_NAME)),
+                (sql_pattern,),
+            )
             for (k,) in cur.fetchall():
                 yield k
 
