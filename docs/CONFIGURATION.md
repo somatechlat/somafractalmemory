@@ -34,6 +34,7 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `SOMA_VECTOR_DIM` | Embedding dimensionality. | `768` |
 | `SOMA_MODEL_NAME` | HuggingFace model used for embeddings. | `microsoft/codebert-base` |
 | `SOMA_API_TOKEN` | Optional bearer token required by the FastAPI example. | *(unset)* |
+| `SFM_FAST_CORE` | Enable flat in-process contiguous vector slabs (fast path). Accepts `1/true/yes`. | `0` |
 
 Langfuse options read from Dynaconf or the same prefix:
 - `SOMA_LANGFUSE_PUBLIC`
@@ -148,6 +149,27 @@ Dynaconf values are merged with environment variables; any explicit `config` dic
 | `SOMA_RATE_LIMIT_MAX` | Rate limiting for the FastAPI example. |
 
 Metrics are always available through the Prometheus client; no switches are required.
+
+---
+
+## Adaptive Importance Normalization
+
+Stored memories may include a raw `importance` (any numeric scale). The system maintains an adaptive normalization to `importance_norm ∈ [0,1]` used directly in similarity scoring (score = cosine_similarity * importance_norm).
+
+Decision tree (executed per insert):
+1. Warm‑up (<64 samples): plain min–max scaling using observed running min/max.
+2. Stable distribution with moderate tails (R_tail_max ≤ 5 and R_asym ≤ 3): continue plain min–max.
+3. Moderate heavy tail (R_tail_max ≤ 15 and R_tail_ext ≤ 8): winsorized scaling – clamp to [q10 − 0.25*(q90−q10), q90 + 0.25*(q90−q10)] then min–max.
+4. Extreme tail (otherwise): logistic mapping around median q50 with slope k = ln(9)/(q90−q10) (capped for numerical stability) to compress extremes.
+
+Where:
+R_tail_max = (max - q90) / (q90 - q50)
+R_tail_ext = (q99 - q90) / (q90 - q50)
+R_asym = (q90 - q50) / (q50 - q10)
+
+Quantiles (q10, q50, q90, q99) are recomputed every 64 inserts using a 512‑sample reservoir. The selected method (`minmax`, `winsor`, `logistic`) is stored alongside each memory in `importance_norm` and may be inspected for diagnostics.
+
+This keeps the scoring path branch‑free during recall (a simple multiply) while adapting to distribution shifts without external configuration.
 
 ---
 

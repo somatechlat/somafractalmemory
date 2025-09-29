@@ -8,6 +8,7 @@ services that are started by `docker compose up`.
 
 import os
 
+import pytest
 import requests
 
 # Ensure the real services URLs are set (Docker‑Compose exposes ports on localhost)
@@ -20,6 +21,11 @@ BASE_URL = "http://localhost:9595"
 
 
 def test_store_and_count_1000_memories():
+    # Skip if API server is not running (integration environment not started)
+    try:
+        requests.get(f"{BASE_URL}/health", timeout=1)
+    except Exception:
+        pytest.skip("FastAPI server not running on port 9595 – skipping integration bulk test")
     # Build 1000 memory items
     items = []
     for i in range(1000):

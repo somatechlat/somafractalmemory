@@ -152,7 +152,27 @@ Swagger UI is available at **`/docs`**, and the generated spec is published as `
 
 ---
 
-## 📈 Observability & Eventing
+## � Benchmarks (Fast Core vs Legacy Path)
+The repository ships a lightweight, repeatable smoke benchmark comparing the legacy vector store recall path with the in‑process fast core flat index (`SFM_FAST_CORE=1`).
+
+Run locally (hash embeddings for determinism):
+```bash
+export SOMA_FORCE_HASH_EMBEDDINGS=1
+python benchmarks/fast_core_smoke.py --n 2000 --q 50
+```
+Output reports p50/p95/p99 latency (in milliseconds) for both paths and the speedup factor. Use this as a relative regression detector—absolute numbers vary by hardware.
+
+Toggling fast core inside code/tests:
+```bash
+export SFM_FAST_CORE=1  # enable flat slab index
+pytest -k fast_core_math -q
+```
+
+Math & invariants are defined in `docs/FAST_CORE_MATH.md` (scoring = `max(0, cosine) * importance_norm`).
+
+---
+
+## �📈 Observability & Eventing
 * **Prometheus metrics** – The API exposes `/metrics`. Consumers expose their own metrics server (default `localhost:8001/metrics`).
 * **OpenTelemetry** – Optional instrumentation for psycopg2 and Qdrant initialises at import time. If the OpenTelemetry packages are absent, SFM falls back to no-op stubs.
 * **Langfuse** – Integration keys are read from Dynaconf or `config.yaml`; logging is a no-op when Langfuse is unavailable.
