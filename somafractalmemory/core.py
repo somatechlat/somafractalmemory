@@ -7,6 +7,7 @@ import os
 import threading
 import time
 import uuid
+import math
 from enum import Enum
 from typing import Any, ContextManager, Dict, List, Optional, Tuple
 
@@ -230,6 +231,26 @@ class SomaFractalMemoryEnterprise:
         # JSON-first mode only  legacy binary Python serialization support removed for v2.
         self.model_lock = threading.RLock()
         self.vector_dim = int(os.getenv("SOMA_VECTOR_DIM", vector_dim))
+        # Fast core / flat index enable flag
+        self.fast_core_enabled = os.getenv("SFM_FAST_CORE", "0").lower() in ("1", "true", "yes")
+
+        # Adaptive importance normalization state
+        self._imp_reservoir: List[float] = []
+        self._imp_reservoir_max = 512
+        self._imp_last_recompute = 0
+        self._imp_q10 = self._imp_q50 = self._imp_q90 = self._imp_q99 = None
+        self._imp_method = "minmax"  # minmax | winsor | logistic
+        self._importance_min = None
+        self._importance_max = None
+
+        # Fast core contiguous slabs (allocated lazily if enabled)
+        if self.fast_core_enabled:
+            self._fast_capacity = 1024
+            self._fast_size = 0
+            self._fast_vectors = np.zeros((self._fast_capacity, self.vector_dim), dtype="float32")
+            self._fast_importance = np.zeros(self._fast_capacity, dtype="float32")
+            self._fast_timestamps = np.zeros(self._fast_capacity, dtype="float64")
+            self._fast_payloads: List[Optional[Dict[str, Any]]] = [None] * self._fast_capacity
 
         config = Dynaconf(settings_files=[config_file], environments=True, envvar_prefix="SOMA")
 
@@ -793,7 +814,28 @@ class SomaFractalMemoryEnterprise:
         if memory_type == MemoryType.EPISODIC:
             value["timestamp"] = value.get("timestamp", time.time())
         value["coordinate"] = list(coord_t)
+        # Adaptive importance normalization
+        raw_imp = value.get("importance", 1.0)
+        try:
+            raw_f = float(raw_imp)
+        except Exception:
+            raw_f = 0.0
+        value["importance_norm"], self._imp_method = self._adaptive_importance_norm(raw_f)
+
+        # Persist via KV + vector store (legacy path) and optionally append to fast core slabs.
         result = self.store(coord_t, value)
+        if self.fast_core_enabled:
+            try:
+                # Reuse embedding work: embed serialized payload (same as store())
+                emb = self.embed_text(json.dumps(value))  # normalized inside embed_text
+                self._fast_append(
+                    emb,
+                    value.get("importance_norm", 0.0),
+                    value.get("timestamp", time.time()),
+                    value,
+                )
+            except Exception as e:  # pragma: no cover - fast path is best effort
+                logger.debug(f"Fast core append failed: {e}")
         self.graph_store.add_memory(coord_t, value)
         try:
             self._enforce_memory_limit()
@@ -809,6 +851,162 @@ class SomaFractalMemoryEnterprise:
             except Exception as ev_err:
                 logger.warning(f"Failed to publish memory event: {ev_err}")
         return result
+
+    # ---------------- Fast Core Helpers -----------------
+    def _fast_append(
+        self, vector: np.ndarray, importance_norm: float, ts: float, payload: Dict[str, Any]
+    ):
+        if not self.fast_core_enabled:
+            return
+        if vector.shape[0] == 1:
+            vector = vector[0]
+        if self._fast_size >= self._fast_capacity:
+            new_cap = self._fast_capacity * 2
+            self._fast_vectors = np.vstack(
+                [
+                    self._fast_vectors,
+                    np.zeros((self._fast_capacity, self.vector_dim), dtype="float32"),
+                ]
+            )
+            self._fast_importance = np.concatenate(
+                [
+                    self._fast_importance,
+                    np.zeros(self._fast_capacity, dtype="float32"),
+                ]
+            )
+            self._fast_timestamps = np.concatenate(
+                [
+                    self._fast_timestamps,
+                    np.zeros(self._fast_capacity, dtype="float64"),
+                ]
+            )
+            self._fast_payloads.extend([None] * self._fast_capacity)
+            self._fast_capacity = new_cap
+        idx = self._fast_size
+        self._fast_vectors[idx] = vector.astype("float32")
+        self._fast_importance[idx] = float(importance_norm)
+        self._fast_timestamps[idx] = ts
+        self._fast_payloads[idx] = payload
+        self._fast_size += 1
+
+    def _fast_search(
+        self,
+        query: str,
+        top_k: int,
+        memory_type: Optional[MemoryType],
+        filters: Optional[Dict[str, Any]],
+    ):
+        if self._fast_size == 0:
+            return []
+        qv = self.embed_text(query)  # already normalized (1,D)
+        if qv.shape[0] == 1:
+            q = qv[0]
+        else:
+            q = qv
+        sims = self._fast_vectors[: self._fast_size] @ q
+        np.maximum(sims, 0.0, out=sims)
+        sims *= self._fast_importance[: self._fast_size]
+        k = min(top_k, self._fast_size)
+        if k <= 0:
+            return []
+        # argpartition then refine
+        idx = np.argpartition(sims, -k)[-k:]
+        idx = idx[np.argsort(sims[idx])[::-1]]
+        out: List[Dict[str, Any]] = []
+        for i in idx:
+            payload = self._fast_payloads[i]
+            if not payload:
+                continue
+            if memory_type and payload.get("memory_type") != memory_type.value:
+                continue
+            if filters:
+                ok = True
+                for fk, fv in filters.items():
+                    if payload.get(fk) != fv:
+                        ok = False
+                        break
+                if not ok:
+                    continue
+            out.append(payload)
+            if len(out) >= top_k:
+                break
+        return out
+
+    # -------------- Adaptive Importance Normalization --------------
+    def _adaptive_importance_norm(self, raw: float) -> Tuple[float, str]:
+        """Return (normalized_importance, method_used).
+
+        Decision tree:
+          - <64 samples: plain min-max
+          - moderate tail: winsorized min-max
+          - extreme tail: logistic
+        """
+        # Reservoir update
+        self._imp_reservoir.append(raw)
+        if len(self._imp_reservoir) > self._imp_reservoir_max:
+            self._imp_reservoir.pop(0)
+
+        n = len(self._imp_reservoir)
+        # Bootstrap min/max tracking (for early stage and min-max path)
+        if self._importance_min is None or raw < self._importance_min:
+            self._importance_min = raw
+        if self._importance_max is None or raw > self._importance_max:
+            self._importance_max = raw
+
+        if n < 64:
+            span = (self._importance_max - self._importance_min) or 1.0
+            return ((raw - self._importance_min) / span, "minmax")
+
+        # Periodic recompute (every 64 inserts) or if quantiles unset
+        if (n - self._imp_last_recompute) >= 64 or self._imp_q10 is None:
+            arr = np.array(self._imp_reservoir, dtype="float64")
+            self._imp_q10, self._imp_q50, self._imp_q90, self._imp_q99 = np.percentile(
+                arr, [10, 50, 90, 99]
+            )
+            self._imp_last_recompute = n
+
+        q10 = self._imp_q10 or raw
+        q50 = self._imp_q50 or raw
+        q90 = self._imp_q90 or raw
+        q99 = self._imp_q99 or raw
+        eps = 1e-12
+        upper_core = (q90 - q50) or eps
+        lower_core = (q50 - q10) or eps
+        R_tail_max = (self._importance_max - q90) / upper_core
+        R_tail_ext = (q99 - q90) / upper_core
+        R_asym = (q90 - q50) / lower_core
+
+        # Decide method
+        if R_tail_max <= 5 and R_asym <= 3:
+            # Plain min-max
+            span = (self._importance_max - self._importance_min) or 1.0
+            norm = (raw - self._importance_min) / span
+            return (max(0.0, min(1.0, norm)), "minmax")
+        elif R_tail_max <= 15 and R_tail_ext <= 8:
+            # Winsorized min-max
+            spread = (q90 - q10) or 1.0
+            delta = 0.25 * spread
+            L = max(self._importance_min, q10 - delta)
+            U = min(self._importance_max, q90 + delta)
+            if U - L < eps:
+                return (0.5, "winsor")
+            clipped = min(max(raw, L), U)
+            return ((clipped - L) / (U - L), "winsor")
+        else:
+            # Logistic mapping
+            spread = q90 - q10
+            if spread < eps:
+                return (0.5, "logistic")
+            k = math.log(9.0) / spread
+            c = q50
+            # Avoid overflow: clamp k
+            if k > 25:
+                k = 25
+            try:
+                norm = 1.0 / (1.0 + math.exp(-k * (raw - c)))
+            except OverflowError:
+                norm = 1.0 if raw > c else 0.0
+            return (norm, "logistic")
 
     def retrieve_memories(self, memory_type: Optional[MemoryType] = None) -> List[Dict[str, Any]]:
         all_mems = self.get_all_memories()
@@ -839,9 +1037,13 @@ class SomaFractalMemoryEnterprise:
         filters: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> List[Dict[str, Any]]:
-        query_vector = self.embed_text(query)
-        results = self.vector_store.search(query_vector.flatten().tolist(), top_k=top_k)
-        payloads = [r.payload for r in results]
+        # Fast core path bypasses vector_store when enabled
+        if self.fast_core_enabled:
+            payloads = self._fast_search(query, top_k, memory_type, filters)
+        else:
+            query_vector = self.embed_text(query)
+            results = self.vector_store.search(query_vector.flatten().tolist(), top_k=top_k)
+            payloads = [r.payload for r in results]
         if filters:
 
             def ok(p):
@@ -973,10 +1175,22 @@ class SomaFractalMemoryEnterprise:
                 inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
                 outputs = self.model(**inputs)
                 emb = outputs.last_hidden_state.mean(dim=1).detach().cpu().numpy().astype("float32")
+            # L2 normalize embedding (Stage 1 invariant)
+            try:
+                norm = float(np.linalg.norm(emb)) or 1.0
+                emb = emb / norm
+            except Exception:
+                pass
             return emb
         except Exception:
             # Quiet fallback to avoid CLI JSON noise
-            return _fallback_hash()
+            fb = _fallback_hash()
+            try:
+                norm = float(np.linalg.norm(fb)) or 1.0
+                fb = fb / norm
+            except Exception:
+                pass
+            return fb
 
     def _enforce_memory_limit(self):
         all_items = []

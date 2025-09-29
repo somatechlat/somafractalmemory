@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import networkx as nx
 
@@ -11,21 +11,21 @@ class NetworkXGraphStore(IGraphStore):
     def __init__(self):
         self.graph = nx.DiGraph()
 
-    def add_memory(self, coordinate: Tuple[float, ...], memory_data: Dict[str, Any]):
+    def add_memory(self, coordinate: tuple[float, ...], memory_data: dict[str, Any]):
         self.graph.add_node(coordinate, **memory_data)
 
     def add_link(
-        self, from_coord: Tuple[float, ...], to_coord: Tuple[float, ...], link_data: Dict[str, Any]
+        self, from_coord: tuple[float, ...], to_coord: tuple[float, ...], link_data: dict[str, Any]
     ):
         self.graph.add_edge(from_coord, to_coord, **link_data)
 
     def get_neighbors(
         self,
-        coordinate: Tuple[float, ...],
-        link_type: Optional[str] = None,
-        limit: Optional[int] = None,
-    ) -> List[Tuple[Any, Dict[str, Any]]]:
-        neighbors: List[Tuple[Any, Dict[str, Any]]] = []
+        coordinate: tuple[float, ...],
+        link_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[tuple[Any, dict[str, Any]]]:
+        neighbors: list[tuple[Any, dict[str, Any]]] = []
         for neighbor in self.graph.neighbors(coordinate):
             edge_data = self.graph.get_edge_data(coordinate, neighbor)
             if link_type is None or edge_data.get("type") == link_type:
@@ -36,10 +36,10 @@ class NetworkXGraphStore(IGraphStore):
 
     def find_shortest_path(
         self,
-        from_coord: Tuple[float, ...],
-        to_coord: Tuple[float, ...],
-        link_type: Optional[str] = None,
-    ) -> List[Any]:
+        from_coord: tuple[float, ...],
+        to_coord: tuple[float, ...],
+        link_type: str | None = None,
+    ) -> list[Any]:
         # If link_type specified, filter edges to those with matching 'type'
         G = self.graph
         if link_type is not None:
@@ -61,7 +61,7 @@ class NetworkXGraphStore(IGraphStore):
         except nx.NetworkXNoPath:
             return []
 
-    def remove_memory(self, coordinate: Tuple[float, ...]):
+    def remove_memory(self, coordinate: tuple[float, ...]):
         if self.graph.has_node(coordinate):
             self.graph.remove_node(coordinate)
 

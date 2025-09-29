@@ -8,7 +8,7 @@ from somafractalmemory.serialization import deserialize, serialize
 def test_serialize_returns_utf8_json_bytes():
     obj = {"a": 1, "b": "text", "c": [1, 2, 3]}
     b = serialize(obj)
-    assert isinstance(b, (bytes, bytearray))
+    assert isinstance(b, bytes | bytearray)
     # Ensure it's valid UTF-8 JSON and matches a standard dump with the same separators
     assert b.decode("utf-8") == json.dumps(obj, separators=(",", ":"))
 

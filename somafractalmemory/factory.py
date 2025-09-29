@@ -1,6 +1,7 @@
 # Standard library imports
+from collections.abc import Iterator, Mapping
 from enum import Enum
-from typing import Any, Dict, Iterator, Mapping, Optional
+from typing import Any
 
 # Local application imports (alphabetical)
 from somafractalmemory.core import SomaFractalMemoryEnterprise
@@ -40,7 +41,7 @@ class PostgresRedisHybridStore(IKeyValueStore):
         if self.redis_store:
             self.redis_store.set(key, value)
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         # Try Redis cache first for speed.
         if self.redis_store:
             cached = self.redis_store.get(key)
@@ -66,7 +67,7 @@ class PostgresRedisHybridStore(IKeyValueStore):
                     seen.add(k)
                     yield k
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         # Prefer Postgres (authoritative) but fall back to Redis.
         pg_val = self.pg_store.hgetall(key)
         if pg_val:
@@ -129,7 +130,7 @@ class MemoryMode(Enum):
 
 
 def create_memory_system(
-    mode: MemoryMode, namespace: str, config: Optional[Dict[str, Any]] = None
+    mode: MemoryMode, namespace: str, config: dict[str, Any] | None = None
 ) -> SomaFractalMemoryEnterprise:
     """
     Factory function to create a SomaFractalMemoryEnterprise instance based on the specified mode.

@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any, ContextManager, Dict, Iterator, List, Mapping, Optional
+from collections.abc import Iterator, Mapping
+from contextlib import AbstractContextManager
+from typing import Any
 
 
 class IKeyValueStore(ABC):
@@ -8,7 +10,7 @@ class IKeyValueStore(ABC):
         pass
 
     @abstractmethod
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         pass
 
     @abstractmethod
@@ -20,7 +22,7 @@ class IKeyValueStore(ABC):
         pass
 
     @abstractmethod
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         pass
 
     @abstractmethod
@@ -28,7 +30,7 @@ class IKeyValueStore(ABC):
         pass
 
     @abstractmethod
-    def lock(self, name: str, timeout: int) -> ContextManager:
+    def lock(self, name: str, timeout: int) -> AbstractContextManager:
         pass
 
     @abstractmethod
@@ -42,15 +44,15 @@ class IVectorStore(ABC):
         pass
 
     @abstractmethod
-    def upsert(self, points: List[Dict[str, Any]]):
+    def upsert(self, points: list[dict[str, Any]]):
         pass
 
     @abstractmethod
-    def search(self, vector: List[float], top_k: int) -> List[Any]:
+    def search(self, vector: list[float], top_k: int) -> list[Any]:
         pass
 
     @abstractmethod
-    def delete(self, ids: List[str]):
+    def delete(self, ids: list[str]):
         pass
 
     @abstractmethod

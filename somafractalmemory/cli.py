@@ -1,12 +1,12 @@
 import argparse
 import json
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from .core import MemoryType
 from .factory import MemoryMode, create_memory_system
 
 
-def parse_coord(text: str) -> Tuple[float, ...]:
+def parse_coord(text: str) -> tuple[float, ...]:
     """
     Parse a comma-separated string into a tuple of floats.
 
@@ -24,7 +24,7 @@ def parse_coord(text: str) -> Tuple[float, ...]:
     return tuple(float(p) for p in parts)
 
 
-def load_config_json(path: Optional[str]) -> Dict[str, Any]:
+def load_config_json(path: str | None) -> dict[str, Any]:
     """
     Load a JSON configuration file from the given path.
 

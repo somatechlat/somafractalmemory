@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict
 
 import psycopg2
 from psycopg2.extras import Json
@@ -44,7 +43,7 @@ def _ensure_table():
         )
 
 
-def process_message(record: Dict) -> bool:
+def process_message(record: dict) -> bool:
     """Upsert a memory event into Postgres.
 
     The function validates required fields, then performs an ``INSERT ... ON CONFLICT``

@@ -27,14 +27,14 @@ import json
 import os
 import time
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 from jsonschema import ValidationError, validate
 
 # ---------------------------------------------------------------------------
 # JSON schema – kept minimal but must stay in sync with ``schemas/memory.event.json``
 # ---------------------------------------------------------------------------
-MEMORY_SCHEMA: Dict[str, Any] = {
+MEMORY_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "required": ["event_id", "id", "namespace", "type", "timestamp", "payload"],
@@ -58,7 +58,7 @@ def _kafka_producer():
         ) from exc
 
     # Build the configuration dictionary from env vars.
-    conf: Dict[str, Any] = {
+    conf: dict[str, Any] = {
         "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         "security.protocol": os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
     }
@@ -97,7 +97,7 @@ def _delivery_report(err, msg):  # pragma: no cover – exercised via produce_ev
     # No‑op on success – could add debug logging here if desired.
 
 
-def build_memory_event(namespace: str, payload: Dict) -> Dict:
+def build_memory_event(namespace: str, payload: dict) -> dict:
     """Create a validated memory event.
 
     The function generates a UUID for both ``event_id`` (the Kafka‑level identifier)
@@ -120,7 +120,7 @@ def build_memory_event(namespace: str, payload: Dict) -> Dict:
     return event
 
 
-def produce_event(event: Dict, topic: str = "memory.events") -> bool:
+def produce_event(event: dict, topic: str = "memory.events") -> bool:
     """Publish a memory event to Kafka.
 
     The function serialises ``event`` to JSON, sends it to ``topic`` and blocks

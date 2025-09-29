@@ -17,7 +17,7 @@ import logging
 import os
 import ssl
 import sys
-from typing import Any, Dict
+from typing import Any
 
 from aiokafka import AIOKafkaConsumer
 from prometheus_client import Counter, Histogram, start_http_server
@@ -91,7 +91,7 @@ async def consume() -> None:
     try:
         async for msg in consumer:
             MESSAGES_CONSUMED.labels(topic=TOPIC).inc()
-            record: Dict[str, Any] = msg.value
+            record: dict[str, Any] = msg.value
             with PROCESS_LATENCY.labels(component="kv_writer").time():
                 ok_kv = process_message(record)
             with PROCESS_LATENCY.labels(component="vector_indexer").time():

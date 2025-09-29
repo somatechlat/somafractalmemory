@@ -8,8 +8,10 @@ import json
 import os
 import threading
 from collections import defaultdict
+from collections.abc import Iterator, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, ContextManager, Dict, Iterator, List, Mapping, Optional
+from typing import Any, Optional
 
 # Third‑party imports (alphabetical)
 import fakeredis
@@ -82,15 +84,34 @@ class InMemoryVectorStore(IVectorStore):
 
     def upsert(self, points: list[dict]):
         for p in points:
-            self._points[p["id"]] = InMemoryVectorStore._Record(
-                id=p["id"], vector=p["vector"], payload=p.get("payload", {})
-            )
+            vec = p["vector"]
+            # Ensure vector dimensionality & normalization (L2) – defensive; skip heavy ops if already unit.
+            if self._vector_dim and len(vec) == self._vector_dim:
+                import math
+
+                norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+                vec = [x / norm for x in vec]
+            rec = InMemoryVectorStore._Record(id=p["id"], vector=vec, payload=p.get("payload", {}))
+            self._points[p["id"]] = rec
 
     def search(self, vector: list[float], top_k: int) -> list:
-        # Return all points as hits for testing
-        hits = []
+        # Real cosine similarity (vectors assumed normalized; normalize query defensively)
+        import math
+
+        q_norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+        q = [x / q_norm for x in vector]
+        hits: list[InMemoryVectorStore._Hit] = []
         for rec in self._points.values():
-            hits.append(InMemoryVectorStore._Hit(id=rec.id, score=1.0, payload=rec.payload))
+            # Dot product (both normalized) gives cosine
+            sim = sum(a * b for a, b in zip(rec.vector, q, strict=True))
+            if sim < 0:
+                sim = 0.0  # clamp negative similarity
+            imp = rec.payload.get("importance_norm")
+            if isinstance(imp, int | float):
+                sim *= float(imp)
+            hits.append(InMemoryVectorStore._Hit(id=rec.id, score=sim, payload=rec.payload))
+        # Partial selection for small in-memory test set: full sort acceptable
+        hits.sort(key=lambda h: (h.score if h.score is not None else -1.0), reverse=True)
         return hits[:top_k]
 
     def delete(self, ids: list[str]):
@@ -114,7 +135,7 @@ class InMemoryKeyValueStore(IKeyValueStore):
     def set(self, key: str, value: bytes):
         self._data[key] = value
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         return self._data.get(key)
 
     def delete(self, key: str):
@@ -128,7 +149,7 @@ class InMemoryKeyValueStore(IKeyValueStore):
         regex = re.compile(pattern.replace("*", ".*"))
         return (key for key in self._data if regex.match(key))
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         # This is a simplified implementation for non-hash types
         value = self.get(key)
         return {b"data": value} if value else {}
@@ -145,7 +166,7 @@ class InMemoryKeyValueStore(IKeyValueStore):
             # Last-resort fallback to plain str bytes
             self.set(key, str(mapping).encode("utf-8"))
 
-    def lock(self, name: str, timeout: int = 10) -> ContextManager:
+    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         return self._lock
 
     def health_check(self) -> bool:
@@ -153,7 +174,7 @@ class InMemoryKeyValueStore(IKeyValueStore):
 
 
 class RedisKeyValueStore(IKeyValueStore):
-    def lock(self, name: str, timeout: int = 10):
+    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         if self._testing or isinstance(self.client, fakeredis.FakeRedis):
             return self._inproc_locks[name]
         return self.client.lock(name, timeout=timeout)
@@ -171,7 +192,7 @@ class RedisKeyValueStore(IKeyValueStore):
     ):
         self._testing = testing
         # Always prepare an in-proc lock map for tests and fakeredis
-        self._inproc_locks: Dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
+        self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
         if testing:
             self.client = fakeredis.FakeRedis()
         else:
@@ -180,13 +201,13 @@ class RedisKeyValueStore(IKeyValueStore):
     def set(self, key: str, value: bytes):
         self.client.set(key, value)
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         result = self.client.get(key)
         if inspect.isawaitable(result):
             import asyncio
 
             result = asyncio.get_event_loop().run_until_complete(result)
-        if isinstance(result, (bytes, type(None))):
+        if isinstance(result, bytes | type(None)):
             return result
         return None
 
@@ -195,12 +216,12 @@ class RedisKeyValueStore(IKeyValueStore):
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
         for key in self.client.scan_iter(pattern):
-            if isinstance(key, (bytes, bytearray)):
+            if isinstance(key, bytes | bytearray):
                 yield key.decode("utf-8")
             else:
                 yield str(key)
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         result = self.client.hgetall(key)
         if inspect.isawaitable(result):
             import asyncio
@@ -241,7 +262,7 @@ class PostgresRedisHybridStore(IKeyValueStore):
         if self.redis_store:
             self.redis_store.set(key, value)
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         if self.redis_store:
             cached = self.redis_store.get(key)
             if cached is not None:
@@ -265,7 +286,7 @@ class PostgresRedisHybridStore(IKeyValueStore):
                     seen.add(k)
                     yield k
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         pg_val = self.pg_store.hgetall(key)
         if pg_val:
             return pg_val
@@ -279,7 +300,7 @@ class PostgresRedisHybridStore(IKeyValueStore):
             self.redis_store.hset(key, mapping)
 
     # ----- Lock & health -----
-    def lock(self, name: str, timeout: int = 10):
+    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         if self.redis_store:
             return self.redis_store.lock(name, timeout)
         return self.pg_store.lock(name, timeout)
@@ -327,19 +348,19 @@ class QdrantVectorStore(IVectorStore):
         except Exception:  # Catch if collection already exists
             pass
 
-    def upsert(self, points: List[Dict[str, Any]]):
+    def upsert(self, points: list[dict[str, Any]]):
         point_structs = [
             PointStruct(id=p["id"], vector=p["vector"], payload=p["payload"]) for p in points
         ]
         self.client.upsert(collection_name=self.collection_name, wait=True, points=point_structs)
 
-    def search(self, vector: List[float], top_k: int) -> List[Any]:
+    def search(self, vector: list[float], top_k: int) -> list[Any]:
         hits = self.client.search(
             collection_name=self.collection_name, query_vector=vector, limit=top_k
         )
         return hits
 
-    def delete(self, ids: List[str]):
+    def delete(self, ids: list[str]):
         # Qdrant point IDs can be strings or UUIDs. We'll stick to strings as passed.
         self.client.delete(
             collection_name=self.collection_name,
@@ -437,7 +458,7 @@ class PostgresKeyValueStore(IKeyValueStore):
                 (key, Json(json_obj)),
             )
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         with self._conn.cursor() as cur:
             cur.execute(
                 SQL("SELECT value FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
@@ -466,7 +487,7 @@ class PostgresKeyValueStore(IKeyValueStore):
             for (k,) in cur.fetchall():
                 yield k
 
-    def hgetall(self, key: str) -> Dict[bytes, bytes]:
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
         # Not used in core for canonical store; return empty dict.
         return {}
 
@@ -478,7 +499,7 @@ class PostgresKeyValueStore(IKeyValueStore):
             json_obj = {k.decode(): v.decode() for k, v in mapping.items()}
         self.set(key, json.dumps(json_obj).encode("utf-8"))
 
-    def lock(self, name: str, timeout: int = 10) -> ContextManager:
+    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         return self._lock
 
     def health_check(self) -> bool:

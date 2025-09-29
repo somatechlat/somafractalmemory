@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 from transformers import AutoModel, AutoTokenizer
 
@@ -23,10 +22,10 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.model = AutoModel.from_pretrained(model_name)
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         return self.embed_texts([text])[0]
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
         inputs = self.tokenizer(
             texts, padding=True, truncation=True, return_tensors="pt", max_length=512
         )

@@ -28,7 +28,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from jsonschema import ValidationError, validate
 
@@ -36,7 +36,7 @@ from jsonschema import ValidationError, validate
 # ---------------------------------------------------------------------------
 # JSON schema – kept minimal but must stay in sync with ``schemas/memory.event.json``
 # ---------------------------------------------------------------------------
-def _load_memory_schema() -> Dict[str, Any]:
+def _load_memory_schema() -> dict[str, Any]:
     """Load the canonical memory event JSON schema from the repository's
     top-level `schemas/memory.event.json` file. If the file can't be found we
     fall back to a minimal inline schema so validation still works in tests.
@@ -71,7 +71,7 @@ def _load_memory_schema() -> Dict[str, Any]:
         }
 
 
-MEMORY_SCHEMA: Dict[str, Any] = _load_memory_schema()
+MEMORY_SCHEMA: dict[str, Any] = _load_memory_schema()
 
 
 def _kafka_producer():
@@ -89,7 +89,7 @@ def _kafka_producer():
             "'pip install confluent-kafka'"
         ) from exc
 
-    conf: Dict[str, Any] = {
+    conf: dict[str, Any] = {
         "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         "security.protocol": os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
     }
@@ -123,7 +123,7 @@ def _delivery_report(err, msg):  # pragma: no cover – exercised via produce_ev
     # No‑op on success – could add debug logging here if desired.
 
 
-def build_memory_event(namespace: str, payload: Dict) -> Dict:
+def build_memory_event(namespace: str, payload: dict) -> dict:
     """Create a validated memory event.
 
     The function generates a UUID for both ``event_id`` (the Kafka‑level identifier)
@@ -150,7 +150,7 @@ def build_memory_event(namespace: str, payload: Dict) -> Dict:
     return event
 
 
-def produce_event(event: Dict, topic: str = "memory.events") -> bool:
+def produce_event(event: dict, topic: str = "memory.events") -> bool:
     """Publish a memory event to Kafka.
 
     The function serialises ``event`` to JSON, sends it to ``topic`` and blocks

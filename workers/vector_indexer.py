@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from typing import Dict
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
@@ -44,7 +43,7 @@ def _ensure_collection(client: QdrantClient):
         logger.error(f"Failed to ensure Qdrant collection {_QDRANT_COLLECTION}: {e}")
 
 
-def _embed(payload: Dict) -> list[float]:
+def _embed(payload: dict) -> list[float]:
     """Create a deterministic pseudo‑embedding from the payload.
 
     For now we hash the JSON representation and expand it to the required
@@ -68,7 +67,7 @@ def _embed(payload: Dict) -> list[float]:
     return vec
 
 
-def index_event(record: Dict) -> bool:
+def index_event(record: dict) -> bool:
     """Upsert a memory event into Qdrant.
 
     The function validates required fields, generates a deterministic vector from
