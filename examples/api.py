@@ -10,7 +10,7 @@ import os
 import time
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -36,20 +36,6 @@ trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanEx
 app = FastAPI(title="SomaFractalMemory API")
 # Instrument the FastAPI app for tracing
 FastAPIInstrumentor().instrument_app(app)
-
-
-# Generate a static OpenAPI JSON file on startup so docs can reference it.
-@app.on_event("startup")
-def _write_openapi() -> None:
-    import json
-    import pathlib
-
-    spec = app.openapi()
-    root = pathlib.Path(__file__).resolve().parents[1]
-    (root / "openapi.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
-    print("✅ openapi.json generated at", root / "openapi.json")
-    # Inform that metrics endpoint is ready
-    print("🚀 Metrics endpoint available at /metrics")
 
 
 # mem = create_memory_system(
@@ -96,10 +82,15 @@ API_TOKEN = os.getenv("SOMA_API_TOKEN")
 _RATE: dict[tuple[str, str], list[float]] = {}
 
 
-def auth_dep(
-    authorization: str | None = Header(default=None),
-):  # noqa: B008 - FastAPI dependency signature requires callable default factory pattern
+def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
+    """Extract Authorization header manually to avoid Header call in defaults.
+
+    FastAPI recommends using ``Header`` for dependency injection, but the linter
+    flags calling it in a default argument. This implementation reads the header
+    from the ``Request`` object directly, preserving the same security checks.
+    """
     if API_TOKEN:
+        authorization = request.headers.get("Authorization")
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Missing bearer token")
         token = authorization.split(" ", 1)[1]
@@ -409,7 +400,7 @@ def recall_with_scores(query: str, top_k: int = 5, type: str | None = None) -> S
 )
 def recall_with_context(
     query: str, context: dict, top_k: int = 5, type: str | None = None
-) -> ResultsResponse:
+) -> ResultsResponse:  # noqa: F811 – suppress redefinition warning if any
     from somafractalmemory.core import MemoryType
 
     mtype = (
