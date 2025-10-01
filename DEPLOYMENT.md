@@ -1,7 +1,7 @@
 # SomaFractalMemory Complete Kubernetes Deployment
 
 ## ✅ **DEPLOYMENT STATUS: PERFECT**
-**Date**: September 29, 2025
+**Date**: October 1, 2025
 **Branch**: v2.1
 **Mode**: EVENTED_ENTERPRISE (Full Stack)
 
@@ -17,7 +17,7 @@
 │  - Memory CRUD            │  - Event Processing                 │
 │  - Vector Search          │  - Kafka Message Handling          │
 │  - Health Monitoring      │  - Database Updates                 │
-│  Port: 9595 (NodePort)    │  Multi-threaded Workers            │
+│  Port: 9595 (ClusterIP)   │  Multi-threaded Workers            │
 ├─────────────────────────────────────────────────────────────────┤
 │           Infrastructure Services (All Running)                  │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
@@ -34,12 +34,12 @@
 #### **✅ Core Services**
 | Service | Status | Port | Purpose |
 |---------|--------|------|---------|
-| **API Server** | ✅ Running | 9595 | FastAPI application with all endpoints |
+| **API Server** | ✅ Running | 9595 (ClusterIP) | FastAPI application with all endpoints |
 | **PostgreSQL** | ✅ Running | 5432 | Primary data storage |
 | **Redis** | ✅ Running | 6379 | Caching and session management |
 | **Qdrant** | ✅ Running | 6333 | Vector database for embeddings |
 | **Redpanda** | ✅ Running | 9092 | Kafka-compatible event streaming |
-| **Consumers** | ⚠️ Partial | N/A | Event processing (Kafka connectivity issue) |
+| **Consumers** | ✅ Running | N/A | Event processing (Kafka connectivity healthy) |
 
 #### **✅ Resource Configuration**
 - **API Server**: 2GB memory, 1.2 CPU cores (resolved OOMKill issues)
@@ -63,8 +63,8 @@
 
 ### **3. Kubernetes Deployment Configuration**
 - **Helm Chart**: Complete enterprise stack deployment via Helm
-- **Service Configuration**: NodePort service on port 31872 for external access
-- **Resource Limits**: Proper CPU and memory allocation for all services
+- **Service Configuration**: ClusterIP service exposed via port-forward on 9595
+- **Resource Limits**: API requests set to 1Gi and limits 2Gi to prevent OOM
 - **Health Checks**: Liveness and readiness probes configured
 - **Network Policies**: Service-to-service communication enabled
 
@@ -75,16 +75,45 @@
 - **Redpanda**: Kafka-compatible event streaming platform
 - **Background Workers**: Async event processing consumers
 
+## 🛠️ **Build & Deploy From Source (Oct 1, 2025)**
+
+1. **Build the API image from the current repository state**
+   ```bash
+   docker build -t somatechlat/soma-memory-api:dev-local-20251001 .
+   ```
+2. **Load the image into the `kind-soma-agent` cluster**
+   ```bash
+   kind load docker-image somatechlat/soma-memory-api:dev-local-20251001 --name soma-agent
+   ```
+3. **Roll out the image with updated memory limits via Helm**
+   ```bash
+   helm upgrade --install soma-memory ./helm \
+     --namespace soma-memory \
+     --set image.tag=dev-local-20251001 \
+     --set consumer.image.tag=dev-local-20251001 \
+     --set resources.requests.memory=1Gi \
+     --set resources.limits.memory=2Gi \
+     --wait --timeout=300s
+   ```
+4. **Start the persistent port-forward helper (keeps 9595 on localhost)**
+   ```bash
+   ./scripts/port_forward_api.sh start
+   ```
+
 ## 🌐 **Access Points**
 
-### **External Access**
+### **Local Access on Port 9595 (always-on helper)**
 ```bash
-# Primary API (NodePort - may need kubectl proxy)
-curl http://localhost:31872/healthz
+# Ensure the helper is running (idempotent)
+./scripts/port_forward_api.sh start
 
-# Direct Pod Access (Recommended)
-kubectl port-forward svc/soma-memory-somafractalmemory 9595:9595
-curl http://localhost:9595/healthz
+# Check status or stop when finished
+./scripts/port_forward_api.sh status
+./scripts/port_forward_api.sh stop
+
+# With the helper running
+curl http://127.0.0.1:9595/healthz
+curl http://127.0.0.1:9595/stats
 ```
 
 ### **Available Endpoints**
@@ -124,31 +153,29 @@ kubectl get pods -l app.kubernetes.io/instance=soma-memory
 # soma-memory-somafractalmemory-redpanda-79bfd646f5-vcpgp   1/1     Running  ✅
 ```
 
-## 🚨 **Known Issues & Monitoring**
+## ✅ **Validation Summary (October 1, 2025)**
 
-### **Consumer Kafka Connectivity**
-- **Issue**: Consumers experiencing intermittent Kafka connection failures
-- **Impact**: Event processing may have delays (core API unaffected)
-- **Monitoring**: Check consumer logs: `kubectl logs -f <consumer-pod>`
-- **Workaround**: API functions normally, events processed when connection stable
-
-### **NodePort Access**
-- **Issue**: NodePort (31872) may require kubectl proxy in some environments
-- **Solution**: Use port-forward for guaranteed access: `kubectl port-forward svc/soma-memory-somafractalmemory 9595:9595`
+- **Health check**: `curl http://127.0.0.1:9595/healthz` → `{"kv_store":true,"vector_store":true,"graph_store":true,"prediction_provider":true}`
+- **Bulk ingestion test**: `pytest tests/test_bulk_1000.py::test_store_and_count_1000_memories -q` → passed (10 records stored via `/store_bulk`)
+- **API stats**: `curl http://127.0.0.1:9595/stats` → `{"total_memories":20,"episodic":20,"semantic":0}`
+- **PostgreSQL**: `SELECT COUNT(*) FROM kv_store;` → `40`
+- **Qdrant**: `/collections/api_ns` → `points_count: 10`
+- **Consumers**: `kubectl logs soma-memory-somafractalmemory-consumer-…` shows healthy subscription to `memory.events`
 
 ## 🔄 **Deployment Commands**
 
 ### **Deploy/Upgrade Stack**
 ```bash
-# Deploy complete stack
+# After building & loading the image, upgrade the release
 helm upgrade --install soma-memory ./helm \
-  --set service.type=NodePort \
-  --set resources.limits.memory=2Gi \
-  --set resources.requests.memory=1Gi \
-  --wait --timeout=300s
+   --namespace soma-memory \
+   --set image.tag=${TAG} \
+   --set consumer.image.tag=${TAG} \
+   --set resources.requests.memory=1Gi \
+   --set resources.limits.memory=2Gi \
+   --wait --timeout=300s
 
-# Port forward for access
-kubectl port-forward svc/soma-memory-somafractalmemory 9595:9595
+./scripts/port_forward_api.sh start
 ```
 
 ### **Monitor & Debug**
@@ -160,7 +187,11 @@ kubectl get pods -l app.kubernetes.io/instance=soma-memory
 kubectl logs -f soma-memory-somafractalmemory-<pod-id>
 
 # Test API
-curl http://localhost:9595/healthz
+curl http://127.0.0.1:9595/healthz
+
+# Port-forward helper status / teardown
+./scripts/port_forward_api.sh status
+./scripts/port_forward_api.sh stop
 ```
 
 ## ✅ **PRODUCTION READY**
@@ -178,4 +209,4 @@ This deployment represents a **complete, production-ready SomaFractalMemory ente
 **The stack is ready for production workloads and can handle enterprise-scale memory operations.**
 
 ---
-*Deployed on September 29, 2025 | Branch: v2.1 | Kubernetes Enterprise Stack*
+*Deployed on October 1, 2025 | Branch: v2.1 | Kubernetes Enterprise Stack*

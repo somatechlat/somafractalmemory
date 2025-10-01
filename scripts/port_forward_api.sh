@@ -4,11 +4,13 @@
 
 set -euo pipefail
 
-NAMESPACE=${NAMESPACE:-soma}
+NAMESPACE=${NAMESPACE:-soma-memory}
 SERVICE=${SERVICE:-soma-memory-somafractalmemory}
 LOCAL_PORT=${LOCAL_PORT:-9595}
 REMOTE_PORT=${REMOTE_PORT:-9595}
-PF_PIDFILE="/tmp/port-forward-${SERVICE}-${LOCAL_PORT}.pid"
+PF_BASE="port-forward-${SERVICE}-${LOCAL_PORT}"
+PF_PIDFILE="/tmp/${PF_BASE}.pid"
+PF_LOGFILE="/tmp/${PF_BASE}.log"
 
 start() {
   if [ -f "$PF_PIDFILE" ]; then
@@ -24,7 +26,7 @@ start() {
 
   echo "Starting port-forward from service/$SERVICE ($NAMESPACE) $LOCAL_PORT:$REMOTE_PORT"
   # run in background and detach; redirect output to logfile for diagnostics
-  nohup kubectl port-forward -n "$NAMESPACE" svc/"$SERVICE" "$LOCAL_PORT":"$REMOTE_PORT" > /tmp/port-forward-${SERVICE}.log 2>&1 &
+  nohup kubectl port-forward -n "$NAMESPACE" svc/"$SERVICE" "$LOCAL_PORT":"$REMOTE_PORT" > "$PF_LOGFILE" 2>&1 &
   pf_pid=$!
   echo "$pf_pid" > "$PF_PIDFILE"
   sleep 0.5
@@ -32,7 +34,7 @@ start() {
     echo "Port-forward started (pid=$pf_pid)"
     exit 0
   else
-    echo "Failed to start port-forward; check /tmp/port-forward-${SERVICE}.log"
+  echo "Failed to start port-forward; check $PF_LOGFILE"
     exit 2
   fi
 }
