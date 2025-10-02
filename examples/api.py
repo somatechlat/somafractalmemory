@@ -94,6 +94,10 @@ redis_cfg = _redis_config()
 if redis_cfg:
     config["redis"] = redis_cfg
 
+eventing_env = os.getenv("EVENTING_ENABLED")
+if eventing_env is not None:
+    config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
+
 mem = create_memory_system(memory_mode, os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns"), config=config)
 print("[DEBUG] Memory mode:", memory_mode.value)
 print("[DEBUG] POSTGRES_URL used:", os.getenv("POSTGRES_URL"))
@@ -117,6 +121,8 @@ if not hasattr(mem, "prediction_provider"):
 # Simple auth + rate limit stubs
 API_TOKEN = os.getenv("SOMA_API_TOKEN")
 _RATE: dict[tuple[str, str], list[float]] = {}
+_RATE_LIMIT_MAX = int(os.getenv("SOMA_RATE_LIMIT_MAX", "60"))
+_RATE_WINDOW = float(os.getenv("SOMA_RATE_LIMIT_WINDOW_SECONDS", "60"))
 
 
 def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
@@ -136,9 +142,8 @@ def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
 
 
 def rate_limit_dep(path: str):
-    # Allow up to 60 requests per minute per path
-    window = 60.0
-    max_reqs = 60
+    window = _RATE_WINDOW if _RATE_WINDOW > 0 else 60.0
+    max_reqs = max(_RATE_LIMIT_MAX, 1)
     key = (path, "global")
     now = time.time()
     bucket = _RATE.setdefault(key, [])

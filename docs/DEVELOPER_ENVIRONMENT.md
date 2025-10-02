@@ -79,7 +79,7 @@ This will start:
 - **Redis** (`redis:7`)
 - **PostgreSQL** (`postgres:15-alpine`)
 - **Qdrant** (`qdrant/qdrant:latest`)
-- **Redpanda** (`docker.redpanda.com/redpandadata/redpanda:v23.1.13`)
+- **Redpanda** (`redpandadata/redpanda:latest`)
 - **FastAPI** (`soma-memory-somafractalmemory`)
 - **Consumer** (event processor)
 
@@ -124,27 +124,35 @@ kubectl cluster-info --context kind-soma-cluster
 ### 5.2 Load the local Docker image into Kind
 ```bash
 # After you build the image (see section 4.1)
-kind load docker-image somatechlat/somafractalmemory:2.0-jsonschema-fix --name soma-cluster
+kind load docker-image somatechlat/soma-memory-api:dev-local-20251002 --name soma-cluster
 ```
 
-### 5.3 Deploy with Helm (including the resource‑limit fixes)
+### 5.3 Deploy with Helm (including default resource requests)
 ```bash
-helm upgrade --install soma-memory ./helm -n soma \
+helm upgrade --install soma-memory ./helm \
+  --namespace soma-memory \
   --create-namespace \
-  --set image.tag=2.0-jsonschema-fix \
-  --set resources.requests.cpu=100m \
-  --set resources.requests.memory=256Mi \
-  --set resources.limits.cpu=500m \
-  --set resources.limits.memory=512Mi \
-  --set env.UVICORN_WORKERS="2" \
-  --set probe.initialDelaySeconds=20 \
-  --set probe.timeoutSeconds=5 \
-  --wait
+  --wait --timeout=600s
 ```
-The Helm chart creates the following resources in the `soma` namespace:
+
+The default `values.yaml` already requests 300 m CPU / 2 Gi memory for the API and consumer to mimic production sizing. When deploying to a remote cluster, override the image coordinates and pull policy:
+
+```bash
+helm upgrade --install soma-memory ./helm \
+  --namespace soma-memory \
+  --create-namespace \
+  --set image.repository=somatechlat/soma-memory-api \
+  --set image.tag=v2.1.0 \
+  --set image.pullPolicy=IfNotPresent \
+  --wait --timeout=600s
+```
+
+Apply `--values helm/values-production.yaml` (plus per-service `*.persistence.storageClass` overrides) to enable durable PVCs.
+
+The Helm chart creates the following resources in namespace `soma-memory`:
 - API Deployment (`soma-memory-somafractalmemory`)
 - Consumer Deployment (`soma-memory-somafractalmemory-consumer`)
-- PostgreSQL StatefulSet
+- PostgreSQL Deployment
 - Redis Deployment
 - Qdrant Deployment
 - Redpanda Deployment
@@ -160,14 +168,14 @@ Now you can hit the API exactly as you would with Docker‑Compose.
 ### 5.5 Verify the deployment
 ```bash
 # Pods are Running?
-kubectl -n soma get pods -o wide
+kubectl -n soma-memory get pods -o wide
 # Health endpoint
 curl -s http://127.0.0.1:9595/healthz | jq .
 ```
 If any pod is CrashLoopBackOff, inspect logs:
 ```bash
-kubectl -n soma logs pod/<pod-name> -c somafractalmemory   # API logs
-kubectl -n soma logs pod/<consumer-pod> -c somafractalmemory-consumer   # consumer logs
+kubectl -n soma-memory logs pod/<pod-name> -c somafractalmemory   # API logs
+kubectl -n soma-memory logs pod/<consumer-pod> -c somafractalmemory-consumer   # consumer logs
 ```
 
 ---
@@ -239,8 +247,8 @@ The repo uses **ruff**, **black**, **isort**, **mypy**, and **bandit**.
 
 | Symptom | Likely Cause | How to Investigate |
 |---------|--------------|--------------------|
-| **API returns 502 / connection refused** | Port‑forward not running or API pod crashed | `./scripts/port_forward_api.sh status`; `kubectl -n soma get pods`; `kubectl -n soma logs pod/<api-pod>` |
-| **Consumer not processing events** | Wrong `KAFKA_BOOTSTRAP_SERVERS` or Redpanda not reachable | `kubectl -n soma exec -it pod/<redpanda-pod> -- rpk cluster info`; check consumer logs |
+| **API returns 502 / connection refused** | Port‑forward not running or API pod crashed | `./scripts/port_forward_api.sh status`; `kubectl -n soma-memory get pods`; `kubectl -n soma-memory logs pod/<api-pod>` |
+| **Consumer not processing events** | Wrong `KAFKA_BOOTSTRAP_SERVERS` or Redpanda not reachable | `kubectl -n soma-memory exec -it pod/<redpanda-pod> -- rpk cluster info`; check consumer logs |
 | **Postgres rows missing** | Event schema mismatch (timestamp) or `kv_store` not called | Look at `workers/kv_writer.py` logs; verify the `timestamp` field is ISO8601 (the recent fix) |
 | **Qdrant points count stays at 0** | Consumer failed to index vectors, or vector dimension mismatch | Inspect `workers/vector_indexer.py` logs; run a manual scroll query as shown in the README |
 | **Tests fail on CI but pass locally** | Missing Docker‑Compose services in CI environment | Ensure the CI workflow brings up the stack (`docker compose up -d`), or use the `testcontainers` based tests that spin up containers automatically |
@@ -333,7 +341,7 @@ hey -c 100 -z 10s -m POST -H 'Content-Type: application/json' \
     -d '{"coord":"0,0,0","payload":{"text":"load","run_id":"stress"},"type":"episodic"}' \
     http://127.0.0.1:9595/store
 ```
-Watch the API pod’s CPU/Memory (`kubectl top pod -n soma`) and the Prometheus latency histogram to see where bottlenecks appear.
+Watch the API pod’s CPU/Memory (`kubectl top pod -n soma-memory`) and the Prometheus latency histogram to see where bottlenecks appear.
 
 ---
 
@@ -426,7 +434,7 @@ hey -c 30 -z 20s -m POST \
 - Adjust `-c` and `-z` to simulate higher load.
 
 ### Monitoring while stress‑testing
-- **Pod metrics:** `kubectl top pod -n soma` to watch CPU/Memory.
+- **Pod metrics:** `kubectl top pod -n soma-memory` to watch CPU/Memory.
 - **Prometheus latency histogram:** query `histogram_quantile(0.95, sum(rate(api_request_latency_seconds_bucket{endpoint="store"}[1m])) by (le)`.
 - **Postgres lock contention:** `SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE state='active';`
 - **Qdrant health:** `curl http://localhost:6333/collections/api_ns` to ensure the service stays responsive.

@@ -37,16 +37,22 @@
 ## ⚙️ Settings & Configuration
 All runtime services share a `.env` file (Docker Compose loads it via `env_file:`). The key variables are:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
+| Variable | Description | Default / Example |
+|----------|-------------|--------------------|
 | `MEMORY_MODE` | Selects backend wiring. Options: `development`, `test`, `evented_enterprise`, `cloud_managed`. | `development` |
-| `REDIS_HOST` / `REDIS_PORT` | Redis connection used by the API and workers. | `redis:6379` |
-| `POSTGRES_URL` | Full DSN for PostgreSQL. | `postgresql://postgres:postgres@postgres:5433/somamemory` |
-| `QDRANT_HOST` / `QDRANT_PORT` | Qdrant host/port. | `qdrant:6333` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Redpanda broker URL. | `redpanda:9092` |
-| `EVENTING_ENABLED` | Toggle Kafka publishing; automatically disabled in `MemoryMode.TEST`. | `true` |
-| `SOMA_RATE_LIMIT_MAX` | Per-endpoint request limit for the API example. | `5000` |
-| `UVICORN_WORKERS` / `UVICORN_TIMEOUT_GRACEFUL` | Control FastAPI worker count and graceful shutdown window. | `4` / `60` |
+| `SOMA_MEMORY_NAMESPACE` | Namespace injected into `create_memory_system` (defaults to `api_ns`). | `api_ns` |
+| `POSTGRES_URL` | Full DSN for PostgreSQL (used by API, CLI, and workers). | `postgresql://postgres:postgres@postgres:5433/somamemory` |
+| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints; host/port/db win over URL when provided. | `redis://redis:6379/0` |
+| `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint for vector search. | `http://qdrant:6333` |
+| `EVENTING_ENABLED` | When set to `false`, disables Kafka publishing by wiring `eventing.enabled=False` in the factory. | `true` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Redpanda broker URL consumed by API and consumers. | `redpanda:9092` |
+| `SOMA_API_TOKEN` | Optional bearer token enforced by the FastAPI dependencies. | *(unset)* |
+| `SOMA_RATE_LIMIT_MAX` | Requests per minute per endpoint for the sample API (set `0` to disable throttling). | `60` |
+| `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window (seconds) for the rate limiter buckets. | `60` |
+| `UVICORN_PORT` | Exposed port for the API process (kept at `9595` in charts and Compose). | `9595` |
+| `UVICORN_WORKERS` / `UVICORN_TIMEOUT_GRACEFUL` / `UVICORN_TIMEOUT_KEEP_ALIVE` | Process tuning knobs honoured by `scripts/docker-entrypoint.sh`. | `4` / `60` / `30` |
+| `POSTGRES_POOL_SIZE` | Reserved for future async session pooling (exported in Helm values but currently unused). | *(n/a)* |
+| `SKIP_SCHEMA_VALIDATION` / `VECTOR_INDEX_ASYNC` | Present in Helm defaults for forward compatibility; not consumed by the FastAPI example yet. | *(n/a)* |
 
 Create an environment file by copying the template shipped with the repo:
 ```bash
@@ -106,18 +112,35 @@ The API listens on **http://localhost:9595**. A sandbox copy runs on **http://lo
 ---
 
 ## ☸️ Kubernetes Deployment
-A Helm chart for the full stack (API, consumer, Postgres, Redis, Qdrant, Redpanda) lives in `helm/`:
-```bash
-helm install sfm ./helm \
-  --set image.repository="somatechlat/somafractalmemory" \
-  --set image.tag="2.0"
+The Helm chart in `helm/` deploys the API, consumer, and all backing services into a namespace (defaults to `soma-memory`). The default `values.yaml` is tuned for local Kind clusters: it pins the application image to `somatechlat/soma-memory-api:dev-local-20251002` and uses `image.pullPolicy=Never` so the node consumes the image you loaded with `kind load`.
 
-# Tear down when finished
-helm uninstall sfm
+```bash
+# Load the local image into Kind (skip when pointing at a remote registry)
+kind load docker-image somatechlat/soma-memory-api:dev-local-20251002 \
+  --name soma-fractal-memory
+
+helm upgrade --install soma-memory ./helm \
+  --namespace soma-memory \
+  --create-namespace \
+  --wait --timeout=600s
+
+kubectl get pods -n soma-memory
 ```
 
-To mirror production storage, pass `helm/values-production.yaml` and override the
-`storageClass` entries for your cluster:
+When deploying to a real cluster, override the image coordinates and pull policy:
+
+```bash
+helm upgrade --install soma-memory ./helm \
+  --namespace soma-memory \
+  --create-namespace \
+  --set image.repository=somatechlat/soma-memory-api \
+  --set image.tag=v2.1.0 \
+  --set image.pullPolicy=IfNotPresent \
+  --wait --timeout=600s
+```
+
+Durable storage defaults live in `helm/values-production.yaml`. Apply them (and set `storageClass` values) to keep Postgres, Redis, Qdrant, and Redpanda data across pod restarts:
+
 ```bash
 helm upgrade --install soma-memory ./helm \
   --namespace soma-memory \
@@ -129,16 +152,16 @@ helm upgrade --install soma-memory ./helm \
   --set redpanda.persistence.storageClass=standard \
   --wait --timeout=600s
 ```
-Expose the API on `localhost:9595` via the helper script (runs in the background
-and keeps a pidfile/log in `/tmp`):
+
+Expose the API locally with the idempotent helper (wraps `kubectl port-forward` and keeps logs under `/tmp/port-forward-*.log`):
+
 ```bash
 ./scripts/port_forward_api.sh start
+curl -s http://127.0.0.1:9595/healthz | jq .
+./scripts/port_forward_api.sh stop
 ```
-Stop it with `./scripts/port_forward_api.sh stop`.
-```
-Key chart values map to the same environment variables and feature flags documented above. See `docs/CANONICAL_DOCUMENTATION.md` for an end-to-end walkthrough.
 
-For production deployments and an explicit checklist (build, image push, Helm values, schema compatibility and verification steps) see `docs/PRODUCTION_READINESS.md`.
+The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, and Redpanda, plus PVCs when persistence is enabled. Environment variables match the table above; consult `docs/CANONICAL_DOCUMENTATION.md` for the full day-two workflow and `docs/PRODUCTION_READINESS.md` for a production checklist.
 
 ---
 
@@ -146,20 +169,20 @@ For production deployments and an explicit checklist (build, image push, Helm va
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/store` | Persist a memory (coordinate + payload). |
-| `POST` | `/remember` | Let the server choose a coordinate when storing. |
 | `POST` | `/recall` | Recall top matches for a text query (hybrid semantic search). |
-| `POST` | `/recall_batch` | Run multiple recall queries in one call. |
+| `POST` | `/recall_batch` | Issue multiple recall queries in one call. |
 | `POST` | `/store_bulk` | Bulk-ingest memories from a payload list. |
 | `POST` | `/recall_with_scores` | Return matches with similarity scores. |
-| `POST` | `/recall_with_context` | Context-aware hybrid recall (filters/extra signals). |
+| `POST` | `/recall_with_context` | Context-aware hybrid recall with caller filters. |
 | `GET`  | `/range` | Find memories whose coordinates fall within a bounding box. |
 | `POST` | `/link` | Create a semantic edge between two coordinates. |
 | `GET`  | `/neighbors` | Inspect graph neighbours for a coordinate. |
 | `GET`  | `/shortest_path` | Compute the graph shortest path between two coordinates. |
 | `GET`  | `/stats` | Return memory counts and backend health. |
-| `GET`  | `/metrics` | Prometheus metrics exported by the API. |
-| `GET`  | `/health` | Lightweight readiness probe. |
-| `GET`  | `/healthz` / `/readyz` | Liveness/readiness checks for Kubernetes. |
+| `GET`  | `/metrics` | Prometheus metrics for the API (see Observability). |
+| `GET`  | `/health` | Combined health report (without auth). |
+| `GET`  | `/healthz` / `/readyz` | Liveness/readiness checks for Kubernetes probes. |
+| `GET`  | `/` | Simple banner that links to `/metrics`. |
 
 Swagger UI is available at **`/docs`**, and the generated spec is published as `openapi.json` in the repo root each time the API boots.
 
@@ -193,11 +216,11 @@ Math & invariants are defined in `docs/FAST_CORE_MATH.md` (scoring = `max(0, cos
 
 ---
 
-## �📈 Observability & Eventing
-* **Prometheus metrics** – The API exposes `/metrics`. Consumers expose their own metrics server (default `localhost:8001/metrics`).
-* **OpenTelemetry** – Optional instrumentation for psycopg2 and Qdrant initialises at import time. If the OpenTelemetry packages are absent, SFM falls back to no-op stubs.
-* **Langfuse** – Integration keys are read from Dynaconf or `config.yaml`; logging is a no-op when Langfuse is unavailable.
-* **Kafka events** – `eventing/producer.py` validates each event against `schemas/memory.event.json` before publishing to `memory.events`.
+## 📈 Observability & Eventing
+* **Prometheus metrics** – The API exports `api_requests_total`, `api_request_latency_seconds`, and `http_404_requests_total` on `/metrics`. Hit at least one endpoint after startup so counters appear. The consumer process serves `consumer_*` counters on `http://localhost:8001/metrics`.
+* **OpenTelemetry** – Optional instrumentation for FastAPI wires in via `opentelemetry-instrumentation-fastapi`. Configure exporters with the standard OTEL environment variables; when the packages are absent, instrumentation is a no-op.
+* **Langfuse** – Credentials load from Dynaconf (`config.yaml`) or the `SOMA_LANGFUSE_*` environment variables. Without the package installed, the stub simply drops events.
+* **Kafka events** – `eventing/producer.py` validates payloads against `schemas/memory.event.json` before publishing to the `memory.events` topic. Set `EVENTING_ENABLED=false` to disable publishing when running without Redpanda.
 
 ---
 

@@ -13,12 +13,16 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `MEMORY_MODE` | Selects backend wiring (`development`, `test`, `evented_enterprise`, `cloud_managed`). | `development` |
-| `REDIS_HOST` / `REDIS_PORT` | Redis connection used by the API and consumers. | `localhost` / `6379` |
-| `POSTGRES_URL` | PostgreSQL DSN read by the factory and CLI. | *(unset)* |
-| `QDRANT_HOST` / `QDRANT_PORT` | Qdrant endpoint when not using a local file path. | `localhost` / `6333` |
+| `SOMA_MEMORY_NAMESPACE` | Namespace passed to `create_memory_system` by `examples/api.py`. | `api_ns` |
+| `POSTGRES_URL` | PostgreSQL DSN read by the factory, API, CLI, and consumers. | *(unset)* |
+| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints (host/port/db override URL when provided). | `redis://localhost:6379/0` |
+| `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint when not using a local file path. | `localhost` / `6333` |
 | `KAFKA_BOOTSTRAP_SERVERS` | Broker address for event publishing/consumption. | `localhost:9092` |
-| `EVENTING_ENABLED` | Toggle publishing of `memory.events`. Forced to `false` in `MemoryMode.TEST`. | `true` |
-| `SOMA_RATE_LIMIT_MAX` | Per-path rate limit used by `examples/api.py`. | `1000` |
+| `EVENTING_ENABLED` | When set (e.g. `false`), overrides the factory toggle via `config["eventing"]["enabled"]`. | `true` |
+| `SOMA_API_TOKEN` | Optional bearer token required by the FastAPI dependencies. | *(unset)* |
+| `SOMA_RATE_LIMIT_MAX` | Requests per endpoint per minute for the sample API (minimum 1; set `0` to disable). | `60` |
+| `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window for the limiter (seconds). | `60` |
+| `UVICORN_PORT` | API process port (kept at `9595` in charts/Compose). | `9595` |
 | `UVICORN_WORKERS` | Worker count for the FastAPI container images. | `4` |
 | `UVICORN_TIMEOUT_GRACEFUL` | Graceful shutdown timeout for the API. | `60` |
 | `UVICORN_TIMEOUT_KEEP_ALIVE` | Keep-alive timeout override. | `30` |
@@ -42,6 +46,8 @@ Langfuse options read from Dynaconf or the same prefix:
 - `SOMA_LANGFUSE_HOST`
 
 If Langfuse is not installed these values are ignored.
+
+> **Namespace layering:** `examples/api.py` reads `SOMA_MEMORY_NAMESPACE` (default `api_ns`) when it builds the factory config. Inside `SomaFractalMemoryEnterprise`, `SOMA_NAMESPACE` still overrides whatever the caller passed—use it for last-mile overrides when embedding the library directly.
 
 ---
 
@@ -105,6 +111,8 @@ TLS-related variables for Postgres are honoured when present:
 - `POSTGRES_SSL_CERT`
 - `POSTGRES_SSL_KEY`
 
+To disable Kafka publishing without editing source, set `EVENTING_ENABLED=false` in the environment; the FastAPI wiring will feed `{"eventing": {"enabled": False}}` into the factory.
+
 ---
 
 ## Dynaconf (`config.yaml`)
@@ -146,9 +154,12 @@ Dynaconf values are merged with environment variables; any explicit `config` dic
 | `OTEL_TRACES_EXPORTER` | Default `otlp`. Set to `none` to silence exporter errors in development. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Endpoint used when OTLP is enabled. |
 | `SOMA_LANGFUSE_*` | Langfuse credentials (see above). |
-| `SOMA_RATE_LIMIT_MAX` | Rate limiting for the FastAPI example. |
+| `SOMA_RATE_LIMIT_MAX` | Per-endpoint request budget per minute for the FastAPI example (default `60`). |
+| `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Customise the limiter window size if the default 60 s bucket is too coarse. |
 
-Metrics are always available through the Prometheus client; no switches are required.
+Metrics (`api_requests_total`, `api_request_latency_seconds`, `http_404_requests_total`) are emitted via the Prometheus client. Hit at least one endpoint after startup so counters appear on `/metrics`.
+
+Helm defaults also export `POSTGRES_POOL_SIZE`, `SKIP_SCHEMA_VALIDATION`, and `VECTOR_INDEX_ASYNC` for forward compatibility. These variables are currently ignored by the FastAPI example but kept in the chart so future releases can wire them without additional template churn.
 
 ---
 

@@ -1,4 +1,3 @@
-```markdown
 # Production Readiness & Deployment Guide
 
 This guide documents how to prepare, deploy and validate a production-capable
@@ -13,20 +12,20 @@ verification steps for eventing, persistence and vector indexing.
 ## 1. Build, tag and push images
 
 Recommended image tags follow semantic versioning plus a short patch label.
-Examples below use `2.0-prod` and `2.0-jsonschema-fix` for a local build.
+Examples below use `v2.1.0` and `v2.1.0-rc1` for a local build.
 
 Local build (developer machine):
 
 ```bash
 # Build a reproducible image locally (adjust tag as needed)
-docker build -t somatechlat/somafractalmemory:2.0-jsonschema-fix .
+docker build -t somatechlat/soma-memory-api:v2.1.0 .
 
 # For local Kubernetes (Kind) load it into the cluster node
-kind load docker-image somatechlat/somafractalmemory:2.0-jsonschema-fix --name soma-cluster
+kind load docker-image somatechlat/soma-memory-api:v2.1.0 --name soma-cluster
 
 # For a remote registry (recommended for production) push the image:
-docker tag somatechlat/somafractalmemory:2.0-jsonschema-fix myregistry.example.com/somatechlat/somafractalmemory:2.0-jsonschema-fix
-docker push myregistry.example.com/somatechlat/somafractalmemory:2.0-jsonschema-fix
+docker tag somatechlat/soma-memory-api:v2.1.0 myregistry.example.com/somatechlat/soma-memory-api:v2.1.0
+docker push myregistry.example.com/somatechlat/soma-memory-api:v2.1.0
 ```
 
 Notes:
@@ -37,28 +36,28 @@ Notes:
 
 ## 2. Helm deployment (Kind or cloud Kubernetes)
 
-Set the namespace and release name. This example uses `soma` namespace and
-release `soma-memory`.
+Set the namespace and release name. This example uses the `soma-memory`
+namespace and release `soma-memory`.
 
 ```bash
-kubectl create namespace soma || true
+kubectl create namespace soma-memory || true
 helm upgrade --install soma-memory ./helm \
-  -n soma \
+  -n soma-memory \
   --values helm/values-production.yaml \
-  --set image.tag=2.0-jsonschema-fix \
+  --set image.tag=v2.1.0 \
   --wait
 
 # Check rollout status
-kubectl -n soma get pods -l app.kubernetes.io/name=somafractalmemory
-kubectl -n soma rollout status deployment/soma-memory-somafractalmemory
-kubectl -n soma get pvc
+kubectl -n soma-memory get pods -l app.kubernetes.io/name=somafractalmemory
+kubectl -n soma-memory rollout status deployment/soma-memory-somafractalmemory
+kubectl -n soma-memory get pvc
 ```
 
 If pods don't start, inspect logs:
 
 ```bash
-kubectl -n soma logs deploy/soma-memory-somafractalmemory --follow
-kubectl -n soma describe pod <pod-name>
+kubectl -n soma-memory logs deploy/soma-memory-somafractalmemory --follow
+kubectl -n soma-memory describe pod <pod-name>
 ```
 
 ## 3. Key configuration and schema notes
@@ -74,7 +73,7 @@ Recent compatibility fix included:
 
 ## 4. Expose API for developers (local dev only)
 
-- Use `kubectl port-forward` for a single machine: `kubectl -n soma port-forward svc/soma-memory-somafractalmemory 9595:9595`.
+- Use `kubectl port-forward` for a single machine: `kubectl -n soma-memory port-forward svc/soma-memory-somafractalmemory 9595:9595`.
 - Prefer the idempotent helper `./scripts/port_forward_api.sh start`; it wraps
   the port-forward in `nohup`, records the PID in `/tmp/port-forward-*.pid`, and
   frees the terminal while continuing to stream logs to `/tmp/port-forward-*.log`.
@@ -103,14 +102,14 @@ PY
 3. Verify Postgres persistence (from the Postgres pod to avoid networking differences):
 
 ```bash
-kubectl exec -n soma deploy/soma-memory-somafractalmemory-postgres -- \
+kubectl exec -n soma-memory deploy/soma-memory-somafractalmemory-postgres -- \
   -- psql -U postgres -d somamemory -t -c "select count(*) from public.kv_store where value::text like '%<RUN_ID>%';"
 ```
 
 4. Verify Qdrant indexing:
 
 ```bash
-curl -s http://$(kubectl -n soma get svc soma-memory-somafractalmemory-qdrant -o jsonpath='{.spec.clusterIP}'):6333/collections/api_ns | jq .
+curl -s http://$(kubectl -n soma-memory get svc soma-memory-somafractalmemory-qdrant -o jsonpath='{.spec.clusterIP}'):6333/collections/api_ns | jq .
 ```
 
 5. If you need to run a large bulk test (1000 items) prefer chunking:
@@ -141,7 +140,7 @@ Avoid single huge HTTP requests — port-forward and reverse-proxy timeouts make
 
 - Validation errors: check `api` logs for schema validation failures and ensure producer & schema are in sync.
 - Timeouts: increase poster HTTP timeouts or use chunked uploads; consider increasing `UVICORN_WORKERS`.
-- Missing vectors in Qdrant: check consumer logs (`kubectl -n soma logs deploy/soma-memory-somafractalmemory-consumer`) and verify `workers/vector_indexer.py` is running without exceptions.
+- Missing vectors in Qdrant: check consumer logs (`kubectl -n soma-memory logs deploy/soma-memory-somafractalmemory-consumer`) and verify `workers/vector_indexer.py` is running without exceptions.
 
 ## 9. Production recommendations
 
@@ -154,8 +153,8 @@ Avoid single huge HTTP requests — port-forward and reverse-proxy timeouts make
 
 ```bash
 # Roll back to previous chart revision
-helm rollback soma-memory 1 -n soma
-kubectl -n soma rollout status deployment/soma-memory-somafractalmemory
+helm rollback soma-memory 1 -n soma-memory
+kubectl -n soma-memory rollout status deployment/soma-memory-somafractalmemory
 ```
 
 ---

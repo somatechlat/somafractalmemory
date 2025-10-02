@@ -157,27 +157,28 @@ Follow up with `docker compose up -d api consumer` to launch the application con
 ## 5. Configuration Checklist
 Key environment variables (see `docs/CONFIGURATION.md` for the full list):
 - `MEMORY_MODE` – selects backend wiring.
+- `SOMA_MEMORY_NAMESPACE` – logical namespace for the API instance.
 - `POSTGRES_URL` – DSN for canonical storage.
 - `QDRANT_HOST` / `QDRANT_PORT` (or `qdrant.path` in config) – vector store.
 - `KAFKA_BOOTSTRAP_SERVERS` – broker location for event publishing.
-- `EVENTING_ENABLED` – toggle Kafka emission for local-only development.
-- `SOMA_RATE_LIMIT_MAX` – throttle for API endpoints.
+- `EVENTING_ENABLED` – set to `false` to disable Kafka emission when Redpanda is absent.
+- `SOMA_API_TOKEN` – optional bearer token required by the FastAPI dependencies.
+- `SOMA_RATE_LIMIT_MAX` / `SOMA_RATE_LIMIT_WINDOW_SECONDS` – rate limiter budget and window for API endpoints (defaults 60 requests per 60 s).
 
 When running the CLI or FastAPI in-process, you can pass a dictionary to `create_memory_system` to override the same settings:
 ```python
 create_memory_system(
-    MemoryMode.EVENTED_ENTERPRISE,
-    "namespace",
-    config={
-        "redis": {"host": "redis", "port": 6379},
-        "postgres": {"url": os.environ["POSTGRES_URL"]},
-        "qdrant": {"host": "qdrant", "port": 6333},
-        "eventing": {"enabled": True},
-    },
+   MemoryMode.EVENTED_ENTERPRISE,
+   "namespace",
+   config={
+      "redis": {"host": "redis", "port": 6379},
+      "postgres": {"url": os.environ["POSTGRES_URL"]},
+      "qdrant": {"host": "qdrant", "port": 6333},
+      "eventing": {"enabled": os.getenv("EVENTING_ENABLED", "true").lower() in ("1", "true", "yes")},
+   },
 )
-> Important: ensure `UVICORN_PORT=9595` is set in your `.env` (or override the
-> Helm chart value `env.UVICORN_PORT`) so that the API always binds to the
-> canonical port used by examples and CI.
+
+Important: keep `UVICORN_PORT=9595` in `.env` (or override the Helm value `env.UVICORN_PORT`) so the API binds to the canonical port used by CI and helper scripts.
 ```
 
 ---
@@ -199,11 +200,29 @@ The Helm chart at `helm/` provisions the full topology (API, consumer, Postgres,
 - `consumer.enabled` – toggle the background worker deployment.
 - `postgres`, `redis`, `qdrant`, `redpanda` – enable/disable embedded dependencies or point to managed services.
 
-Install and remove as follows:
+Install (or upgrade) the stack like so:
 ```bash
-helm install sfm ./helm
-helm uninstall sfm
+kind load docker-image somatechlat/soma-memory-api:dev-local-20251002 \
+   --name soma-fractal-memory  # skip on managed clusters
+
+helm upgrade --install soma-memory ./helm \
+   --namespace soma-memory \
+   --create-namespace \
+   --wait --timeout=600s
 ```
+
+Override the image coordinates and pull policy when deploying to a shared cluster:
+```bash
+helm upgrade --install soma-memory ./helm \
+   --namespace soma-memory \
+   --create-namespace \
+   --set image.repository=somatechlat/soma-memory-api \
+   --set image.tag=v2.1.0 \
+   --set image.pullPolicy=IfNotPresent \
+   --wait --timeout=600s
+```
+
+Add `--values helm/values-production.yaml` (plus `postgres/qdrant/redis/redpanda.persistence` overrides) to enable durable PVCs. Tear down the release with `helm uninstall soma-memory -n soma-memory`.
 
 ---
 
