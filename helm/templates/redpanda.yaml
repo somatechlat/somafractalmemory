@@ -92,7 +92,28 @@ spec:
             {{- toYaml .Values.redpanda.resources | nindent 12 }}
       volumes:
         - name: data
+{{- if .Values.redpanda.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "somafractalmemory.fullname" . }}-redpanda-data
+{{- else }}
           emptyDir: {}
+{{- end }}
         - name: config
           emptyDir: {}
+{{- end }}
+
+{{- if and .Values.redpanda.enabled .Values.redpanda.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}-redpanda-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.redpanda.persistence.size }}
+{{- if .Values.redpanda.persistence.storageClass }}
+  storageClassName: {{ .Values.redpanda.persistence.storageClass | quote }}
+{{- end }}
 {{- end }}

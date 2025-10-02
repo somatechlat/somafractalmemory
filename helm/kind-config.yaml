@@ -1,0 +1,13 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: soma-fractal-memory
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.29.2
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            # Disable aggressive disk eviction so the stack can run on local machines
+            eviction-hard: nodefs.available<1%,nodefs.inodesFree<1%,imagefs.available<1%

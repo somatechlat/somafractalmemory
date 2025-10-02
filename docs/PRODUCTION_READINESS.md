@@ -44,12 +44,14 @@ release `soma-memory`.
 kubectl create namespace soma || true
 helm upgrade --install soma-memory ./helm \
   -n soma \
+  --values helm/values-production.yaml \
   --set image.tag=2.0-jsonschema-fix \
   --wait
 
 # Check rollout status
 kubectl -n soma get pods -l app.kubernetes.io/name=somafractalmemory
 kubectl -n soma rollout status deployment/soma-memory-somafractalmemory
+kubectl -n soma get pvc
 ```
 
 If pods don't start, inspect logs:
@@ -73,7 +75,9 @@ Recent compatibility fix included:
 ## 4. Expose API for developers (local dev only)
 
 - Use `kubectl port-forward` for a single machine: `kubectl -n soma port-forward svc/soma-memory-somafractalmemory 9595:9595`.
-- For robust port-forwarding, run the script `scripts/port_forward_api.sh` (it creates an idempotent background port-forward), or configure a systemd/launchd service.
+- Prefer the idempotent helper `./scripts/port_forward_api.sh start`; it wraps
+  the port-forward in `nohup`, records the PID in `/tmp/port-forward-*.pid`, and
+  frees the terminal while continuing to stream logs to `/tmp/port-forward-*.log`.
 
 ## 5. Testing & verification (end-to-end)
 

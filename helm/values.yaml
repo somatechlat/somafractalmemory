@@ -6,7 +6,7 @@ replicaCount: 1
 # API container image
 image:
   repository: somatechlat/soma-memory-api
-  tag: "latest"
+  tag: "dev-local-20251002"
   pullPolicy: Never
 
 service:
@@ -16,10 +16,10 @@ service:
 resources:
   requests:
     cpu: "300m"
-    memory: "256Mi"
+    memory: "2Gi"   # higher request for production‑like load
   limits:
     cpu: "1200m"
-    memory: "512Mi"
+    memory: "4Gi"   # higher limit to avoid OOM kills
 
 # Environment configuration for the API pod
 env:
@@ -58,9 +58,15 @@ consumer:
   replicaCount: 1
   image:
     repository: somatechlat/soma-memory-api
-    tag: "latest"
+    tag: "dev-local-20251002"
     pullPolicy: Never
-  resources: {}
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "2Gi"   # match API request
+    limits:
+      cpu: "1200m"
+      memory: "4Gi"   # match API limit
   env:
     # Service names include the release prefix (soma-memory) and chart name (somafractalmemory)
     POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory"
@@ -71,7 +77,7 @@ consumer:
     KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
     KAFKA_MEMORY_EVENTS_TOPIC: "memory.events"
     KAFKA_CONSUMER_GROUP: "soma-consumer-group"
-    SOMA_RATE_LIMIT_MAX: "5000"
+    SOMA_RATE_MAX: "5000"
 
 # Redis cache
 redis:
@@ -79,6 +85,10 @@ redis:
   image: redis:7
   port: 6379
   resources: {}
+  persistence:
+    enabled: false
+    size: 5Gi
+    storageClass: ""
 
 # PostgreSQL configuration
 postgres:
@@ -91,16 +101,17 @@ postgres:
   persistence:
     enabled: false
     size: 5Gi
+    storageClass: ""
   # Recommended PostgreSQL tuning (pgtune for ~2 GB RAM, OLTP workload, 100 connections)
   # shared_buffers=512MB, work_mem=4MB, maintenance_work_mem=64MB, effective_cache_size=1536MB
   # These are applied via the container's memory limits; the DB will auto‑scale within that budget.
   resources:
     requests:
       cpu: "500m"
-      memory: "2Gi"
+      memory: "1Gi"
     limits:
       cpu: "1000m"
-      memory: "2Gi"
+      memory: "1Gi"
 
 # Qdrant vector store
 qdrant:
@@ -110,7 +121,14 @@ qdrant:
   persistence:
     enabled: false
     size: 5Gi
-  resources: {}
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
 
 # Redpanda (Kafka-compatible broker)
 redpanda:
@@ -125,11 +143,15 @@ redpanda:
   # match the docker-compose defaults (1G) and provide headroom under load.
   resources:
     requests:
-      memory: "1Gi"
+      memory: "512Mi"
       cpu: "500m"
     limits:
-      memory: "2Gi"
+      memory: "1Gi"
       cpu: "2000m"
+  persistence:
+    enabled: false
+    size: 10Gi
+    storageClass: ""
 
 # Name identifier for the Soma Fractal Memory cluster (used for labeling, metrics, etc.)
 clusterName: "soma-fractal-memory"

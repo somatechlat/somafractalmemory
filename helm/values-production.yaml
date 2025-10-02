@@ -1,0 +1,74 @@
+# Override file for production-like deployments
+# Enable durable persistence and switch pull policy to IfNotPresent for all workloads.
+# storageClass values default to the cluster default; override per environment if needed.
+image:
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "2Gi"
+  limits:
+    cpu: "1500m"
+    memory: "4Gi"
+
+consumer:
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1500m"
+      memory: "4Gi"
+
+postgres:
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "1"
+      memory: "4Gi"
+    limits:
+      cpu: "2"
+      memory: "8Gi"
+
+qdrant:
+  persistence:
+    enabled: true
+    size: 200Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "2"
+      memory: "8Gi"
+    limits:
+      cpu: "4"
+      memory: "16Gi"
+
+redis:
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1"
+      memory: "4Gi"
+
+redpanda:
+  persistence:
+    enabled: true
+    size: 200Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "2"
+      memory: "8Gi"
+    limits:
+      cpu: "4"
+      memory: "16Gi"

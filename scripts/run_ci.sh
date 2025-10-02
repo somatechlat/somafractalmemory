@@ -11,26 +11,31 @@ pkill -f "kubectl port-forward" 2>/dev/null || true
 echo "✅ Cleaned up existing port forwards"
 
 # Check if Kubernetes deployment exists
-if ! kubectl get pods -l app.kubernetes.io/instance=soma-memory >/dev/null 2>&1; then
-    echo "❌ No Kubernetes deployment found. Please run: helm upgrade soma-memory ./helm"
+if ! kubectl get pods -l app.kubernetes.io/instance=soma-memory -n soma-memory >/dev/null 2>&1; then
+    echo "❌ No Kubernetes deployment found in namespace soma-memory. Please run: helm upgrade soma-memory ./helm"
     exit 1
 fi
 
 # Wait for essential pods to be ready (API is required, others are optional)
 echo "⏳ Waiting for API pod to be ready..."
-if ! kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=api,app.kubernetes.io/instance=soma-memory --timeout=120s; then
+if ! kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=api,app.kubernetes.io/instance=soma-memory -n soma-memory --timeout=120s; then
     echo "❌ API pod not ready - cannot proceed"
     exit 1
 fi
 
-# Get pod names
-API_POD=$(kubectl get pods -l app.kubernetes.io/component=api,app.kubernetes.io/instance=soma-memory -o jsonpath='{.items[0].metadata.name}')
-REDPANDA_POD=$(kubectl get pods -l app.kubernetes.io/component=redpanda,app.kubernetes.io/instance=soma-memory -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+# Re‑fetch the current API pod name (it may have changed during the wait)
+API_POD=$(kubectl get pod -l app.kubernetes.io/component=api,app.kubernetes.io/instance=soma-memory -n soma-memory -o jsonpath='{.items[0].metadata.name}')
+
+# Get other infra pod names (optional)
+POSTGRES_POD=$(kubectl get pod -l app.kubernetes.io/component=postgres,app.kubernetes.io/instance=soma-memory -n soma-memory -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+REDIS_POD=$(kubectl get pod -l app.kubernetes.io/component=redis,app.kubernetes.io/instance=soma-memory -n soma-memory -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+QDRANT_POD=$(kubectl get pod -l app.kubernetes.io/component=qdrant,app.kubernetes.io/instance=soma-memory -n soma-memory -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+REDPANDA_POD=$(kubectl get pod -l app.kubernetes.io/component=redpanda,app.kubernetes.io/instance=soma-memory -n soma-memory -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 
 echo "📡 Found API pod: $API_POD"
 if [[ -n $REDPANDA_POD ]]; then
     # Check if Redpanda pod is actually running
-    POD_STATUS=$(kubectl get pod "$REDPANDA_POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+    POD_STATUS=$(kubectl get pod "$REDPANDA_POD" -n soma-memory -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
     if [[ "$POD_STATUS" == "Running" ]]; then
         echo "📡 Found Redpanda pod: $REDPANDA_POD"
     else
@@ -41,24 +46,43 @@ else
     echo "⚠️ No Redpanda pod found - Kafka tests will be skipped"
 fi
 
-# Start port forwards in background
+# Start port forwards in background for API and required services
 echo "🔗 Setting up port forwarding..."
-kubectl port-forward "$API_POD" 9595:9595 &
+# API ports
+kubectl port-forward -n soma-memory "$API_POD" 9595:9595 &
 API_PF_PID=$!
-kubectl port-forward "$API_POD" 9999:9595 &
+# Optional test port (keep for compatibility)
+kubectl port-forward -n soma-memory "$API_POD" 9999:9595 &
 TEST_PF_PID=$!
 
+# Forward infra services if pods are found
+if [[ -n $POSTGRES_POD ]]; then
+    kubectl port-forward -n soma-memory "$POSTGRES_POD" 5433:5432 &
+    POSTGRES_PF_PID=$!
+    echo "✅ Postgres forward (PID: $POSTGRES_PF_PID)"
+fi
+if [[ -n $REDIS_POD ]]; then
+    kubectl port-forward -n soma-memory "$REDIS_POD" 6380:6379 &
+    REDIS_PF_PID=$!
+    echo "✅ Redis forward (PID: $REDIS_PF_PID)"
+fi
+if [[ -n $QDRANT_POD ]]; then
+    kubectl port-forward -n soma-memory "$QDRANT_POD" 6333:6333 &
+    QDRANT_PF_PID=$!
+    echo "✅ Qdrant forward (PID: $QDRANT_PF_PID)"
+fi
+
+# Kafka (Redpanda) – optional
 if [[ -n $REDPANDA_POD ]]; then
-    kubectl port-forward "$REDPANDA_POD" 9092:9092 &
+    kubectl port-forward -n soma-memory "$REDPANDA_POD" 9092:9092 &
     KAFKA_PF_PID=$!
-    echo "✅ Kafka forward started (PID: $KAFKA_PF_PID)"
+    echo "✅ Kafka forward (PID: $KAFKA_PF_PID)"
 else
-    echo "⚠️ No Redpanda pod found - Kafka tests may fail"
+    echo "⚠️ No Redpanda pod found – Kafka tests will be skipped"
     KAFKA_PF_PID=""
 fi
 
-# Wait for services to be ready
-echo "⏳ Waiting for services to be ready..."
+# Wait a bit for forwards to settle
 sleep 5
 
 # Test connectivity

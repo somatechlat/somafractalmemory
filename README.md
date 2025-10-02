@@ -115,6 +115,27 @@ helm install sfm ./helm \
 # Tear down when finished
 helm uninstall sfm
 ```
+
+To mirror production storage, pass `helm/values-production.yaml` and override the
+`storageClass` entries for your cluster:
+```bash
+helm upgrade --install soma-memory ./helm \
+  --namespace soma-memory \
+  --create-namespace \
+  --values helm/values-production.yaml \
+  --set postgres.persistence.storageClass=standard \
+  --set qdrant.persistence.storageClass=standard \
+  --set redis.persistence.storageClass=standard \
+  --set redpanda.persistence.storageClass=standard \
+  --wait --timeout=600s
+```
+Expose the API on `localhost:9595` via the helper script (runs in the background
+and keeps a pidfile/log in `/tmp`):
+```bash
+./scripts/port_forward_api.sh start
+```
+Stop it with `./scripts/port_forward_api.sh stop`.
+```
 Key chart values map to the same environment variables and feature flags documented above. See `docs/CANONICAL_DOCUMENTATION.md` for an end-to-end walkthrough.
 
 For production deployments and an explicit checklist (build, image push, Helm values, schema compatibility and verification steps) see `docs/PRODUCTION_READINESS.md`.
