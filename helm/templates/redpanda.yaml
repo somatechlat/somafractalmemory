@@ -55,13 +55,13 @@ spec:
                   - address: 0.0.0.0
                     port: 9092
                 advertised_kafka_api:
-                  address: {{ include "somafractalmemory.fullname" . }}-redpanda.soma.svc.cluster.local
+                  address: {{ include "somafractalmemory.fullname" . }}-redpanda.{{ .Release.Namespace }}.svc.cluster.local
                   port: 9092
                 rpc_server:
                   address: 0.0.0.0
                   port: 33145
                 advertised_rpc_api:
-                  address: {{ include "somafractalmemory.fullname" . }}-redpanda.soma.svc.cluster.local
+                  address: {{ include "somafractalmemory.fullname" . }}-redpanda.{{ .Release.Namespace }}.svc.cluster.local
                   port: 33145
                 admin:
                   - address: 0.0.0.0

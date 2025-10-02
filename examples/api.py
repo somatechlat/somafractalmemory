@@ -9,6 +9,7 @@ Run (after installing fastapi and uvicorn):
 import os
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -38,34 +39,70 @@ app = FastAPI(title="SomaFractalMemory API")
 FastAPIInstrumentor().instrument_app(app)
 
 
-# mem = create_memory_system(
-#     MemoryMode.DEVELOPMENT,
-#     "api_ns",
-#     config={
-#         "redis": {"testing": False},  # use real Redis service
-#         "postgres": {"url": os.getenv("POSTGRES_URL")},  # real Postgres connection
-#         "vector": {"backend": "qdrant"},
-#         "qdrant": {
-#             "host": os.getenv("QDRANT_HOST", "qdrant"),
-#             "port": int(os.getenv("QDRANT_PORT", "6333")),
-#         },
-#     },
-# )
-# Re‑create the memory system with the real back‑ends (Redis, Postgres, Qdrant)
-mem = create_memory_system(
-    MemoryMode.DEVELOPMENT,
-    "api_ns",
-    config={
-        "redis": {"testing": False},  # real Redis container
-        "postgres": {"url": os.getenv("POSTGRES_URL")},  # real Postgres connection
-        "vector": {"backend": "qdrant"},
-        "qdrant": {
-            "host": os.getenv("QDRANT_HOST", "qdrant"),
-            "port": int(os.getenv("QDRANT_PORT", "6333")),
-        },
-    },
-)
+def _resolve_memory_mode() -> MemoryMode:
+    mode_env = (os.getenv("MEMORY_MODE") or MemoryMode.DEVELOPMENT.value).lower()
+    for mode in MemoryMode:
+        if mode.value == mode_env:
+            return mode
+    return MemoryMode.DEVELOPMENT
+
+
+def _redis_config() -> dict[str, Any]:
+    cfg: dict[str, Any] = {"testing": False}
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        parsed = urlparse(redis_url)
+        if parsed.hostname:
+            cfg["host"] = parsed.hostname
+        if parsed.port:
+            cfg["port"] = parsed.port
+        path = parsed.path.lstrip("/")
+        if path.isdigit():
+            cfg["db"] = int(path)
+    if host := os.getenv("REDIS_HOST"):
+        cfg["host"] = host
+    if port := os.getenv("REDIS_PORT"):
+        try:
+            cfg["port"] = int(port)
+        except ValueError:
+            pass
+    if db := os.getenv("REDIS_DB"):
+        try:
+            cfg["db"] = int(db)
+        except ValueError:
+            pass
+    return cfg
+
+
+def _qdrant_config() -> dict[str, Any]:
+    url = os.getenv("QDRANT_URL")
+    if url:
+        return {"url": url}
+    host = os.getenv("QDRANT_HOST", "qdrant")
+    port = int(os.getenv("QDRANT_PORT", "6333"))
+    return {"host": host, "port": port}
+
+
+memory_mode = _resolve_memory_mode()
+config: dict[str, Any] = {
+    "postgres": {"url": os.getenv("POSTGRES_URL")},
+    "vector": {"backend": "qdrant"},
+    "qdrant": _qdrant_config(),
+}
+
+redis_cfg = _redis_config()
+if redis_cfg:
+    config["redis"] = redis_cfg
+
+mem = create_memory_system(memory_mode, os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns"), config=config)
+print("[DEBUG] Memory mode:", memory_mode.value)
 print("[DEBUG] POSTGRES_URL used:", os.getenv("POSTGRES_URL"))
+if redis_host := redis_cfg.get("host"):
+    print("[DEBUG] Redis host:", redis_host)
+if qdrant_url := config["qdrant"].get("url"):
+    print("[DEBUG] Qdrant URL:", qdrant_url)
+else:
+    print("[DEBUG] Qdrant host:", config["qdrant"].get("host"))
 
 # Some tests expect a prediction_provider attribute for health endpoints; provide a no-op stub
 if not hasattr(mem, "prediction_provider"):
@@ -296,8 +333,19 @@ def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
     mtype = None
     if req.type:
         mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
-    res = mem.recall_batch(req.queries, top_k=req.top_k, memory_type=mtype, filters=req.filters)
-    return BatchesResponse(batches=res)
+    # Some memory system implementations don't provide a recall_batch helper.
+    # Fall back to calling recall/find_hybrid_by_type per query to maintain
+    # compatibility across implementations.
+    batches: list[list[dict[str, Any]]] = []
+    for q in req.queries:
+        if req.filters:
+            batch = mem.find_hybrid_by_type(
+                q, top_k=req.top_k, memory_type=mtype, filters=req.filters
+            )
+        else:
+            batch = mem.recall(q, top_k=req.top_k, memory_type=mtype)
+        batches.append(batch)
+    return BatchesResponse(batches=batches)
 
 
 @app.get(

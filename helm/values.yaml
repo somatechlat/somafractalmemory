@@ -5,9 +5,9 @@ replicaCount: 1
 
 # API container image
 image:
-  repository: somatechlat/somafractalmemory
-  tag: "2.0"
-  pullPolicy: IfNotPresent
+  repository: somatechlat/soma-memory-api
+  tag: "latest"
+  pullPolicy: Never
 
 service:
   type: ClusterIP
@@ -28,7 +28,12 @@ env:
   # Service names include the release prefix (soma-memory)
   POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory"
   REDIS_URL: "redis://soma-memory-somafractalmemory-redis:6379/0"
+  REDIS_HOST: "soma-memory-somafractalmemory-redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
   QDRANT_URL: "http://soma-memory-somafractalmemory-qdrant:6333"
+  QDRANT_HOST: "soma-memory-somafractalmemory-qdrant"
+  QDRANT_PORT: "6333"
   KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
   EVENTING_ENABLED: "true"
   UVICORN_PORT: "9595"  # reverted to original value
@@ -52,9 +57,9 @@ consumer:
   enabled: true
   replicaCount: 1
   image:
-    repository: somatechlat/somafractalmemory
-    tag: "2.0"
-    pullPolicy: IfNotPresent
+    repository: somatechlat/soma-memory-api
+    tag: "latest"
+    pullPolicy: Never
   resources: {}
   env:
     # Service names include the release prefix (soma-memory) and chart name (somafractalmemory)

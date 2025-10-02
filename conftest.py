@@ -55,6 +55,9 @@ def pytest_sessionstart(session):
     )
     os.environ.setdefault("QDRANT_HOST", os.getenv("QDRANT_HOST", "localhost"))
     os.environ.setdefault("QDRANT_PORT", os.getenv("QDRANT_PORT", "6333"))
+    os.environ.setdefault(
+        "KAFKA_BOOTSTRAP_SERVERS", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    )
 
     # Quick connectivity checks
     redis_host = os.environ["REDIS_URL"].split("//")[-1].split(":")[0]
@@ -63,13 +66,21 @@ def pytest_sessionstart(session):
     pg_port = int(os.environ["POSTGRES_URL"].split(":")[-1].split("/")[0])
     q_host = os.environ["QDRANT_HOST"]
     q_port = int(os.environ["QDRANT_PORT"])
+    kafka_host = os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(":")[0]
+    kafka_port = int(os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(":")[1])
 
     ok_redis = _tcp_open(redis_host, redis_port)
     ok_pg = _tcp_open(pg_host, pg_port)
     ok_q = _tcp_open(q_host, q_port)
+    ok_kafka = _tcp_open(kafka_host, kafka_port)
 
     if ok_redis and ok_pg and ok_q:
-        print("[conftest] Redis, Postgres and Qdrant are reachable on localhost.")
+        if ok_kafka:
+            print("[conftest] Redis, Postgres, Qdrant and Kafka are reachable on localhost.")
+        else:
+            print(
+                "[conftest] Redis, Postgres and Qdrant are reachable on localhost. Kafka unavailable - some tests may be skipped."
+            )
         return
 
     # On Docker Desktop (macOS) containers may be reachable at host.docker.internal
@@ -81,11 +92,21 @@ def pytest_sessionstart(session):
         alt_ok_redis = _tcp_open(alt_host, redis_port)
         alt_ok_pg = _tcp_open(alt_host, pg_port)
         alt_ok_q = _tcp_open(alt_host, q_port)
+        alt_ok_kafka = _tcp_open(alt_host, kafka_port)
         if alt_ok_redis and alt_ok_pg and alt_ok_q:
-            print(f"[conftest] Services reachable via {alt_host}; updating env vars.")
+            if alt_ok_kafka:
+                print(f"[conftest] Services reachable via {alt_host}; updating env vars.")
+            else:
+                print(
+                    f"[conftest] Core services reachable via {alt_host}; updating env vars. Kafka unavailable."
+                )
             os.environ["REDIS_URL"] = os.environ["REDIS_URL"].replace(redis_host, alt_host)
             os.environ["POSTGRES_URL"] = os.environ["POSTGRES_URL"].replace(pg_host, alt_host)
             os.environ["QDRANT_HOST"] = alt_host
+            if alt_ok_kafka:
+                os.environ["KAFKA_BOOTSTRAP_SERVERS"] = os.environ[
+                    "KAFKA_BOOTSTRAP_SERVERS"
+                ].replace(kafka_host, alt_host)
             return
 
     print(
@@ -99,6 +120,8 @@ def pytest_sessionstart(session):
         missing.append("postgres")
     if not ok_q:
         missing.append("qdrant")
+    if not ok_kafka:
+        missing.append("redpanda")
 
     if missing:
         try:
@@ -114,8 +137,14 @@ def pytest_sessionstart(session):
         ok_redis = _tcp_open(redis_host, redis_port)
         ok_pg = _tcp_open(pg_host, pg_port)
         ok_q = _tcp_open(q_host, q_port)
+        ok_kafka = _tcp_open(kafka_host, kafka_port)
         if ok_redis and ok_pg and ok_q:
-            print("[conftest] Services are now reachable.")
+            if ok_kafka:
+                print("[conftest] Services are now reachable.")
+            else:
+                print(
+                    "[conftest] Core services are now reachable. Kafka unavailable - some tests may be skipped."
+                )
             return
         time.sleep(2)
 
@@ -123,8 +152,14 @@ def pytest_sessionstart(session):
     ok_redis = _tcp_open(redis_host, redis_port)
     ok_pg = _tcp_open(pg_host, pg_port)
     ok_q = _tcp_open(q_host, q_port)
+    ok_kafka = _tcp_open(kafka_host, kafka_port)
     if ok_redis and ok_pg and ok_q:
-        print("[conftest] Services are reachable after final check.")
+        if ok_kafka:
+            print("[conftest] Services are reachable after final check.")
+        else:
+            print(
+                "[conftest] Core services are reachable after final check. Kafka unavailable - some tests may be skipped."
+            )
         return
 
     pytest.exit(

@@ -61,7 +61,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       # PostgreSQL – optional, used when MEMORY_MODE requires it.
-      POSTGRES_URL: postgresql://postgres:postgres@postgres:5433/somamemory
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
       # Qdrant vector store
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
@@ -92,7 +92,7 @@ services:
       # The same connection settings the API uses.
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      POSTGRES_URL: postgresql://postgres:postgres@postgres:5433/somamemory
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     depends_on:

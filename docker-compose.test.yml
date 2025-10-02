@@ -1,0 +1,115 @@
+services:
+  # TEST API Server on port 9999
+  test_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_test_api
+    ports:
+      - "9999:9595"
+    environment:
+      MEMORY_MODE: evented_enterprise
+      SOMA_RATE_LIMIT_MAX: "5000"
+      UVICORN_WORKERS: "2"
+      UVICORN_TIMEOUT_GRACEFUL: "60"
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory_test
+      REDIS_URL: redis://redis:6379/1  # Different Redis DB
+      QDRANT_URL: http://qdrant:6333
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      EVENTING_ENABLED: "true"
+      SOMA_MEMORY_NAMESPACE: test_ns
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - redpanda
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9595/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Consumer for TEST environment
+  test_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_test_consumer
+    command: ["python", "scripts/run_consumers.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_MEMORY_EVENTS_TOPIC: memory.events.test
+      KAFKA_CONSUMER_GROUP: test-consumer-group
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory_test
+      REDIS_URL: redis://redis:6379/1
+      QDRANT_URL: http://qdrant:6333
+      SOMA_MEMORY_NAMESPACE: test_ns
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - redpanda
+    restart: unless-stopped
+
+  # Infrastructure services (shared with DEV but different DBs/namespaces)
+  postgres:
+    image: postgres:15-alpine
+    container_name: soma_test_postgres
+    environment:
+      POSTGRES_DB: somamemory_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    command: postgres -c 'shared_preload_libraries=pg_stat_statements'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    container_name: soma_test_redis
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: soma_test_qdrant
+    volumes:
+      - qdrant_test_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: soma_test_redpanda
+    command: ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "1G", "--reserve-memory", "0M", "--advertise-kafka-addr", "redpanda:9092", "--advertise-rpc-addr", "redpanda:33145"]
+    volumes:
+      - redpanda_test_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  qdrant_test_storage:
+  postgres_test_data:
+  redis_test_data:
+  redpanda_test_data:
