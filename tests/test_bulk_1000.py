@@ -17,7 +17,26 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("QDRANT_HOST", "localhost")
 os.environ.setdefault("QDRANT_PORT", "6333")
 
-BASE_URL = "http://localhost:9595"
+# Prefer SOMA_TEST_API_BASE_URL override; else try primary 9595 then fallback to 8888 mapping (test_api service)
+BASE_URL = os.getenv("SOMA_TEST_API_BASE_URL", "http://localhost:9595")
+
+
+def _resolve_base_url():
+    # If explicit override provided, trust it
+    if os.getenv("SOMA_TEST_API_BASE_URL"):
+        return os.getenv("SOMA_TEST_API_BASE_URL")
+    import requests
+
+    for candidate in ["http://localhost:9595", "http://localhost:8888"]:
+        try:
+            requests.get(f"{candidate}/healthz", timeout=0.4)
+            return candidate
+        except Exception:
+            continue
+    return "http://localhost:9595"  # default (will skip later if unreachable)
+
+
+BASE_URL = _resolve_base_url()
 
 
 def test_store_and_count_1000_memories():

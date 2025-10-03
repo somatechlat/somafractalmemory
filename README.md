@@ -20,7 +20,7 @@
         ^                         ^                         ^
         |                         |                         |
 +-------------------+   +-------------------+   +-------------------+
-|   Redpanda (Kafka)|   |  Worker Consumers |   |  Event Schema    |
+|   Kafka Broker    |   |  Worker Consumers |   |  Event Schema    |
 +-------------------+   +-------------------+   +-------------------+
 ```
 
@@ -29,7 +29,7 @@
 * **Redis** – Optional low-latency cache and distributed lock store for recent episodic memories.
 * **PostgreSQL** – Canonical key-value store for durable JSON payloads.
 * **Qdrant** – Approximate nearest-neighbour vector store for semantic embeddings.
-* **Redpanda/Kafka** – Event bus carrying `memory.events` for asynchronous processing.
+* **Kafka** – Event bus carrying `memory.events` for asynchronous processing. (Docker Compose now uses a single Confluent Kafka KRaft broker; earlier revisions shipped Redpanda.)
 * **Workers (`scripts/run_consumers.py`)** – Consume events, update Postgres/Qdrant, and expose their own Prometheus metrics.
 
 ---
@@ -45,7 +45,7 @@ All runtime services share a `.env` file (Docker Compose loads it via `env_file:
 | `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints; host/port/db win over URL when provided. | `redis://redis:6379/0` |
 | `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint for vector search. | `http://qdrant:6333` |
 | `EVENTING_ENABLED` | When set to `false`, disables Kafka publishing by wiring `eventing.enabled=False` in the factory. | `true` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Redpanda broker URL consumed by API and consumers. | `redpanda:9092` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka bootstrap servers consumed by API and consumers. | `kafka:9092` |
 | `SOMA_API_TOKEN` | Optional bearer token enforced by the FastAPI dependencies. | *(unset)* |
 | `SOMA_RATE_LIMIT_MAX` | Requests per minute per endpoint for the sample API (set `0` to disable throttling). | `60` |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window (seconds) for the rate limiter buckets. | `60` |
@@ -78,7 +78,7 @@ This installs the `somafractalmemory` package and makes the `soma` CLI available
 # Build images after local changes
 docker compose build
 
-# Start Redis, Postgres, Qdrant, Redpanda, API, and workers
+# Start Redis, Postgres, Qdrant, Kafka (single Confluent broker), API, and workers
 docker compose up -d
 ```
 The API listens on **http://localhost:9595**. A sandbox copy runs on **http://localhost:8888** when the `test_api` service is started.
@@ -91,8 +91,8 @@ The API listens on **http://localhost:9595**. A sandbox copy runs on **http://lo
   ./scripts/start_stack.sh development
   docker compose up -d api
   ```
-* **Add Kafka/Redpanda** – Include the broker (and Apicurio registry) by passing `--with-broker` to `start_stack.sh`, or simply run the full compose stack.
-* **Full parity stack** – Mirror production wiring with Redpanda and workers:
+* **Add Kafka** – Include the broker by passing `--with-broker` to `start_stack.sh` (legacy flag; compose already defines the `kafka` service), or simply run the full compose stack.
+* **Full parity stack** – Mirror production wiring with Kafka and workers:
   ```bash
   ./scripts/start_stack.sh evented_enterprise
   docker compose up -d api consumer
@@ -139,7 +139,7 @@ helm upgrade --install soma-memory ./helm \
   --wait --timeout=600s
 ```
 
-Durable storage defaults live in `helm/values-production.yaml`. Apply them (and set `storageClass` values) to keep Postgres, Redis, Qdrant, and Redpanda data across pod restarts:
+Durable storage defaults live in `helm/values-production.yaml`. Apply them (and set `storageClass` values) to keep Postgres, Redis, Qdrant, and broker data across pod restarts (Helm values still label the broker section `redpanda` for backward compatibility):
 
 ```bash
 helm upgrade --install soma-memory ./helm \
@@ -161,7 +161,7 @@ curl -s http://127.0.0.1:9595/healthz | jq .
 ./scripts/port_forward_api.sh stop
 ```
 
-The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, and Redpanda, plus PVCs when persistence is enabled. Environment variables match the table above; consult `docs/CANONICAL_DOCUMENTATION.md` for the full day-two workflow and `docs/PRODUCTION_READINESS.md` for a production checklist.
+The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, and the Kafka broker (value block still named `redpanda`), plus PVCs when persistence is enabled. Environment variables match the table above; consult `docs/CANONICAL_DOCUMENTATION.md` for the full day-two workflow and `docs/PRODUCTION_READINESS.md` for a production checklist.
 
 ---
 
@@ -189,14 +189,14 @@ Swagger UI is available at **`/docs`**, and the generated spec is published as `
 ---
 
 ## 🧪 Testing & CI
-* **Unit tests** – `pytest -q` uses in-memory backends, so no external services are required.
-* **Integration** – Dedicated tests (e.g., `tests/test_postgres_redis_hybrid_store.py`) exercise the hybrid store against containerised Postgres/Redis.
+* **Unit tests** – `pytest -q` can use lightweight in-memory/ephemeral paths.
+* **Integration & E2E** – Full infra tests (e.g., `tests/test_full_infra_e2e.py`) exercise API → Kafka → consumer → Postgres/Qdrant/Redis with `USE_REAL_INFRA=1`.
 * **CI** – GitHub Actions run pytest, Ruff, Black, Bandit, mypy, and build the MkDocs documentation.
 * **Pre-commit** – A `.pre-commit-config.yaml` is provided; run `pre-commit install` to mirror the GitHub checks locally.
 
 ---
 
-## � Benchmarks (Fast Core vs Legacy Path)
+## 🏎️ Benchmarks (Fast Core vs Legacy Path)
 The repository ships a lightweight, repeatable smoke benchmark comparing the legacy vector store recall path with the in‑process fast core flat index (`SFM_FAST_CORE=1`).
 
 Run locally (hash embeddings for determinism):
@@ -220,7 +220,7 @@ Math & invariants are defined in `docs/FAST_CORE_MATH.md` (scoring = `max(0, cos
 * **Prometheus metrics** – The API exports `api_requests_total`, `api_request_latency_seconds`, and `http_404_requests_total` on `/metrics`. Hit at least one endpoint after startup so counters appear. The consumer process serves `consumer_*` counters on `http://localhost:8001/metrics`.
 * **OpenTelemetry** – Optional instrumentation for FastAPI wires in via `opentelemetry-instrumentation-fastapi`. Configure exporters with the standard OTEL environment variables; when the packages are absent, instrumentation is a no-op.
 * **Langfuse** – Credentials load from Dynaconf (`config.yaml`) or the `SOMA_LANGFUSE_*` environment variables. Without the package installed, the stub simply drops events.
-* **Kafka events** – `eventing/producer.py` validates payloads against `schemas/memory.event.json` before publishing to the `memory.events` topic. Set `EVENTING_ENABLED=false` to disable publishing when running without Redpanda.
+* **Kafka events** – `eventing/producer.py` validates payloads against `schemas/memory.event.json` before publishing to the `memory.events` topic. Set `EVENTING_ENABLED=false` to disable publishing when running without a broker.
 
 ---
 
@@ -238,6 +238,7 @@ Math & invariants are defined in `docs/FAST_CORE_MATH.md` (scoring = `max(0, cos
 * Configuration reference – `docs/CONFIGURATION.md`
 * API reference – `docs/api.md`
 * Quickstart tutorial – `docs/QUICKSTART.md`
+* Cognitive / adaptive design spec – `docs/COGNITIVE_MEMORY_DESIGN.md`
 
 ---
 
@@ -260,5 +261,11 @@ print(memory.recall("document"))
 ```
 
 ---
+
+---
+### Migration Note: Redpanda → Confluent Kafka
+Earlier revisions used Redpanda for the local single-broker runtime. Due to intermittent async I/O resource exhaustion and crash loops on some development machines, the default Docker Compose broker migrated to a Confluent Kafka single-node KRaft image (`confluentinc/cp-kafka`).
+
+Helm values and service identifiers may still reference `redpanda`; this is a naming artifact only. Reverting to Redpanda requires swapping the image and (optionally) tuning flags—no application code changes are needed because the clients speak the Kafka protocol.
 
 *© 2025 SomaTechLat – All rights reserved.*

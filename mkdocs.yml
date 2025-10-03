@@ -9,7 +9,13 @@ nav:
   - Architecture: ARCHITECTURE.md
   - Configuration: CONFIGURATION.md
   - API: api.md
-  - Ops: ops/KAFKA_OPEN_SOURCE.md
+  - Ops:
+      - Kafka (Open Source): ops/KAFKA_OPEN_SOURCE.md
+      - Kubernetes Deploy: ops/KUBERNETES.md
+      - Port Forwarding Improvements: PORT_FORWARDING_IMPROVEMENTS.md
+      - Helm Values (Local): ../helm/values-local.yaml
+      - Helm Values (Kind): ../helm/values-kind.yaml
+      - Helm Values (Test): ../helm/values-test.yaml
 
 theme:
   name: material

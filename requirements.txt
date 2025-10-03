@@ -20,3 +20,8 @@ confluent-kafka
 testcontainers
 
 jsonschema
+# API runtime & instrumentation (added for endpoint hardening / health checks)
+fastapi
+uvicorn
+opentelemetry-instrumentation-fastapi
+opentelemetry-sdk

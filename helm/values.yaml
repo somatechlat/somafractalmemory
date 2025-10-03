@@ -5,9 +5,11 @@ replicaCount: 1
 
 # API container image
 image:
-  repository: somatechlat/soma-memory-api
-  tag: "dev-local-20251002"
-  pullPolicy: Never
+  # Single runtime image usable for both API and consumer; build via:
+  # docker build -f Dockerfile.runtime -t somafractalmemory-runtime:local .
+  repository: somafractalmemory-runtime
+  tag: "local"
+  pullPolicy: IfNotPresent
 
 service:
   type: ClusterIP
@@ -57,9 +59,9 @@ consumer:
   enabled: true
   replicaCount: 1
   image:
-    repository: somatechlat/soma-memory-api
-    tag: "dev-local-20251002"
-    pullPolicy: Never
+    repository: somafractalmemory-runtime
+    tag: "local"
+    pullPolicy: IfNotPresent
   resources:
     requests:
       cpu: "300m"

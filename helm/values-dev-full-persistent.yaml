@@ -1,0 +1,95 @@
+# Dev Full Persistent ("somabrain") configuration
+# Purpose: Run a developer instance that uses FULL real infrastructure with persistence
+# across restarts. Suitable for long-lived integration / tuning while keeping
+# development image tags.
+
+# Base image settings can be overridden via --set on CLI if needed.
+image:
+  repository: somafractalmemory-runtime
+  tag: "local"
+  pullPolicy: IfNotPresent
+
+# Keep API on alternate port to avoid clashing with local compose usage (optional).
+service:
+  type: ClusterIP
+  port: 9696
+
+env:
+  MEMORY_MODE: "evented_enterprise"
+  SOMA_MEMORY_NAMESPACE: "somabrain_ns"
+  EVENTING_ENABLED: "true"
+  UVICORN_PORT: "9696"
+  UVICORN_WORKERS: "4"
+  UVICORN_TIMEOUT_GRACEFUL: "60"
+  SOMA_RATE_LIMIT_MAX: "5000"
+  VECTOR_INDEX_ASYNC: "true"
+  SKIP_SCHEMA_VALIDATION: "false"
+
+probe:
+  path: /healthz
+  port: 9696
+  initialDelaySeconds: 25
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+consumer:
+  enabled: true
+  replicaCount: 1
+  env:
+    KAFKA_MEMORY_EVENTS_TOPIC: memory.events
+    KAFKA_CONSUMER_GROUP: somabrain-consumer-group
+
+postgres:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+qdrant:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1500m"
+      memory: "2Gi"
+
+redpanda:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+# Optional cluster name label override
+clusterName: "somabrain-dev-full"

@@ -450,11 +450,23 @@ class SomaFractalMemoryEnterprise:
             except Exception:
                 return False
 
-        return {
+        # Include prediction_provider if present to align with API HealthResponse model
+        result = {
             "kv_store": safe(self.kv_store.health_check),
             "vector_store": safe(self.vector_store.health_check),
             "graph_store": safe(self.graph_store.health_check),
         }
+        if hasattr(self, "prediction_provider") and hasattr(
+            self.prediction_provider, "health_check"
+        ):
+            try:
+                result["prediction_provider"] = safe(self.prediction_provider.health_check)
+            except Exception:
+                result["prediction_provider"] = False
+        else:
+            # Maintain key presence to satisfy schema even if provider missing
+            result["prediction_provider"] = False
+        return result
 
     def set_importance(self, coordinate: Tuple[float, ...], importance: int = 1):
         data_key, _ = _coord_to_key(self.namespace, coordinate)

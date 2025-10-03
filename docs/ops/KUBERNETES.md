@@ -1,6 +1,6 @@
 # SomaFractalMemory Kubernetes Playbook
 
-This playbook walks through building a fully functional SomaFractalMemory (SFM) cluster on Kubernetes. It is designed for operators who need a reproducible way to launch the entire enterprise topology (API, consumer, PostgreSQL, Redis, Qdrant, Redpanda) on a single-machine Kind cluster or a remote Kubernetes environment.
+This playbook walks through building a fully functional SomaFractalMemory (SFM) cluster on Kubernetes. It is designed for operators who need a reproducible way to launch the entire enterprise topology (API, consumer, PostgreSQL, Redis, Qdrant, Kafka broker) on a single-machine Kind cluster or a remote Kubernetes environment. (Legacy documents referenced Redpanda; the default local broker has migrated to a Confluent Kafka single-node KRaft image.)
 
 The guide is intentionally detailed, covering host preparation, cluster bootstrap, Helm installation, post-install checks, and common failure recovery. Follow the steps in order for a clean deployment.
 
@@ -30,6 +30,15 @@ docker build -t somafractalmemory:local .
 ```
 
 If you are using a published image, skip the build and reference the registry tag in step 6.
+
+For a slimmer production-style image (excludes tests, docs, and build toolchain), build the
+runtime variant:
+
+```bash
+docker build -f Dockerfile.runtime -t somafractalmemory-runtime:local .
+```
+
+Then load that tagged runtime image instead of the full dev image in Kind (see step 5).
 
 ---
 
@@ -61,9 +70,9 @@ If you are using a published image, skip the build and reference the registry ta
 
 ---
 
-## 4. Increase async I/O capacity for Redpanda
+## 4. (Legacy) Increase async I/O capacity for Redpanda
 
-Redpanda requires a higher `fs.aio-max-nr` value than the Kind default. Apply the tweak to every Kind node:
+If you are running Redpanda instead of the default Confluent Kafka KRaft broker, it requires a higher `fs.aio-max-nr` value than the Kind default. Apply the tweak to every Kind node:
 
 ```bash
 for node in $(kind get nodes --name soma-fractal-memory); do
@@ -81,7 +90,7 @@ These commands execute inside the Kind node containers and persist for the lifet
 For local iterative work, load the freshly built image into Kind:
 
 ```bash
-kind load docker-image somafractalmemory:local --name soma-fractal-memory
+kind load docker-image somafractalmemory-runtime:local --name soma-fractal-memory
 ```
 
 When using a registry-hosted image, record its coordinates (e.g., `somatechlat/soma-memory-api:v2.1.0`) and configure the Helm chart accordingly in step 6.
@@ -90,7 +99,7 @@ When using a registry-hosted image, record its coordinates (e.g., `somatechlat/s
 
 ## 6. Prepare Helm values for Kind
 
-The default `helm/values.yaml` requests production-sized resources (2 Gi per API/consumer). Kind nodes typically cannot schedule those pods. Create a Kind override file with lighter requests and Redpanda arguments:
+The default `helm/values.yaml` requests production-sized resources (2 Gi per API/consumer). Kind nodes typically cannot schedule those pods. Create a Kind override file with lighter requests (Redpanda resource tuning lines can remain; they are ignored if you swap to Confluent Kafka but the values block name persists for compatibility):
 
 ```bash
 cat <<'YAML' > helm/values-kind.yaml
@@ -112,7 +121,7 @@ consumer:
       memory: "1280Mi"
 
 image:
-  repository: somafractalmemory
+  repository: somafractalmemory-runtime
   tag: local
   pullPolicy: IfNotPresent
 
@@ -190,7 +199,7 @@ Adjust CPU/memory numbers upward if your host can accommodate more headroom. If 
     ```
   ```
 
-3. Reduce Redpanda’s CPU/memory footprint so it stays stable on Kind:
+3. (Legacy) Reduce Redpanda’s CPU/memory footprint so it stays stable on Kind:
 
   ```bash
   kubectl patch deployment soma-memory-somafractalmemory-redpanda \
@@ -226,7 +235,7 @@ Run the following checks after the chart finishes installing.
     kubectl -n soma-memory get pods -o wide
     ```
 
-    Expected deployments: API, consumer, postgres, redis, qdrant, redpanda.
+  Expected deployments: API, (optional consumer if enabled), postgres, redis, qdrant, broker (deployment name may still include `redpanda`).
 
 2. **API health**
 
@@ -256,7 +265,7 @@ Run the following checks after the chart finishes installing.
     kubectl -n soma-memory exec deploy/soma-memory-somafractalmemory-qdrant -- curl -s localhost:6333/collections | jq .
     ```
 
-6. **Redpanda liveness**
+6. **Broker liveness (Redpanda legacy)**
 
     ```bash
     kubectl -n soma-memory exec deploy/soma-memory-somafractalmemory-redpanda -- rpk cluster health
@@ -268,7 +277,7 @@ If any command fails, refer to the troubleshooting section below.
 
 ## 9. Smoke test the API and eventing
 
-1. Store a single memory:
+1. Store a single memory (ensure port-forward is active):
 
     ```bash
     curl -s -X POST http://127.0.0.1:9595/store \
@@ -303,10 +312,10 @@ If any command fails, refer to the troubleshooting section below.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | API pod `Pending` with `Insufficient memory` | Requests exceed node capacity. | Increase Docker memory or lower `resources.requests` in `values-kind.yaml`. Re-run Helm upgrade. |
-| Redpanda `CrashLoopBackOff` with `Could not setup Async I/O` | `fs.aio-max-nr` too low. | Re-run the sysctl loop from step 4 and restart the Redpanda pod. |
+| Redpanda `CrashLoopBackOff` with `Could not setup Async I/O` | `fs.aio-max-nr` too low. | Re-run the sysctl loop from step 4 (legacy section) and restart the Redpanda pod. |
 | `local-path-provisioner` crash loops | Kind bug after Docker restart. | `kubectl delete pod -n local-path-storage -l app=local-path-provisioner`. |
 | Consumer logs show `redis://localhost:6379` | Old deployment revision or missing env override. | Run `helm upgrade` to regenerate the deployment, then delete stale ReplicaSets: `kubectl delete rs -n soma-memory -l app.kubernetes.io/name=somafractalmemory`. |
-| API health check fails but pod is running | Evented mode needs backing services | Ensure Redis, Postgres, Qdrant, and Redpanda pods are ready. Examine logs with `kubectl logs`. |
+| API health check fails but pod is running | Evented mode needs backing services | Ensure Redis, Postgres, Qdrant, and broker pods are ready. Examine logs with `kubectl logs`. |
 
 ---
 
@@ -361,5 +370,9 @@ rm -f helm/values-kind.yaml
 ```
 
 ---
+
+---
+### Migration Note: Redpanda → Confluent Kafka
+The default development broker has migrated from Redpanda to a single-node Confluent Kafka KRaft image due to intermittent async I/O resource exhaustion on some hosts. Helm values and deployment names may still reference `redpanda`; this is intentional backward compatibility. To continue using Redpanda keep the existing image and follow the legacy tuning steps. To use Confluent Kafka, swap the image and omit Redpanda-only flags—no application code changes are required.
 
 By following this playbook you should consistently achieve a healthy SomaFractalMemory cluster with all supporting pods online. Keep the values file under version control if you customize it further, and revisit this guide whenever the Helm chart gains new components.

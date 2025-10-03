@@ -53,7 +53,9 @@ SomaFractalMemory supports two main local workflows:
 The canonical development stack now uses Kafka (single-node KRaft), Postgres, Redis, Qdrant, the API, a consumer worker, and an auxiliary test API container – all wired for real integration tests.
 
 ```bash
-docker compose up -d  # starts Kafka, Postgres (5433), Redis (6381), Qdrant (6333), API (9595), consumer
+docker compose up -d  # starts Kafka, Postgres (5433), Redis (6381), Qdrant (6333), API (9595)
+# Start consumer only when needed via profile
+docker compose --profile consumer up -d somafractalmemory_kube
 ```
 The API lives at <http://localhost:9595>; Prometheus metrics are exposed at `/metrics`.
 
@@ -119,6 +121,14 @@ Important endpoints: `/store`, `/recall`, `/remember`, `/store_bulk`, `/link`, `
 Setting `USE_REAL_INFRA=1` signals fixtures to bind directly to running Postgres/Redis/etc. instead of launching ephemeral testcontainers. This avoids nested Docker overhead and ensures we exercise the same long‑lived stateful services used in production-like runs.
 
 If you still need completely isolated ephemeral databases for a single test, unset `USE_REAL_INFRA` and rely on testcontainers (Docker socket must be available). The suite filters most third‑party deprecation warnings automatically.
+
+### Runtime vs Development Images
+The default `Dockerfile` is development-oriented (includes tests, docs, build toolchain). For
+Kubernetes/Helm or slimmer production packaging use the multi-stage runtime image:
+```bash
+docker build -f Dockerfile.runtime -t somafractalmemory-runtime:local .
+```
+Helm `values.yaml` can then reference `somafractalmemory-runtime` for both API and consumer components.
 
 All of the above run automatically in GitHub Actions (`.github/workflows/ci.yml`).
 
