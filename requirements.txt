@@ -25,3 +25,6 @@ fastapi
 uvicorn
 opentelemetry-instrumentation-fastapi
 opentelemetry-sdk
+
+# CLI HTTP client for real-stack synthetic benchmark
+requests

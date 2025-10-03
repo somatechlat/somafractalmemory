@@ -216,6 +216,27 @@ Math & invariants are defined in `docs/FAST_CORE_MATH.md` (scoring = `max(0, cos
 
 ---
 
+## 🧪 Synthetic runs (real stack, no mocks)
+Use the built-in synthetic runner to measure correctness and latency against the live API. It never spins up containers; ensure your stack is running and healthy on 9595 (or pass `--base-url`).
+
+Quick run:
+```bash
+python scripts/synthetic_real_stack_benchmark.py --N 2000 --Q 400 --top-k 5 --batch-size 200
+```
+
+With explicit base and JSON report:
+```bash
+python scripts/synthetic_real_stack_benchmark.py \
+  --base-url http://127.0.0.1:9595 \
+  --N 5000 --Q 500 --top-k 5 --out benchmark.json
+```
+
+Outputs include: insert throughput, query QPS, latency p50/p90/p95/p99 (ms), Recall@K, and MRR. Authentication is honored when `SOMA_API_TOKEN` is set.
+
+For methodology and troubleshooting, see `docs/CANONICAL_DOCUMENTATION.md#61-synthetic-runs-on-real-servers-no-mocks`.
+
+---
+
 ## 📈 Observability & Eventing
 * **Prometheus metrics** – The API exports `api_requests_total`, `api_request_latency_seconds`, and `http_404_requests_total` on `/metrics`. Hit at least one endpoint after startup so counters appear. The consumer process serves `consumer_*` counters on `http://localhost:8001/metrics`.
 * **OpenTelemetry** – Optional instrumentation for FastAPI wires in via `opentelemetry-instrumentation-fastapi`. Configure exporters with the standard OTEL environment variables; when the packages are absent, instrumentation is a no-op.
