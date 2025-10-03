@@ -10,6 +10,12 @@ WORKDIR /app
 # Install system dependencies (build tools and curl for health/metrics checks)
 RUN apt-get update && apt-get install -y build-essential curl && rm -rf /var/lib/apt/lists/*
 
+# Install netcat for scripts that need to probe other containers
+RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
+
+# Install procps to provide sysctl binary for adjusting kernel parameters inside containers
+RUN apt-get update && apt-get install -y procps && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /app/requirements.txt
 COPY api-requirements.txt /app/api-requirements.txt
 RUN pip install --upgrade pip && pip install --no-cache-dir -r /app/requirements.txt -r /app/api-requirements.txt

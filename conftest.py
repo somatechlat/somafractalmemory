@@ -2,7 +2,6 @@ import os
 import shutil
 import socket
 import subprocess
-import time
 
 import pytest
 
@@ -46,122 +45,45 @@ def pytest_sessionstart(session):
 
     print("[conftest] USE_REAL_INFRA enabled: attempting to bind tests to local infra...")
 
-    # Default to compose mapping (host port 6380 -> container 6379) to avoid conflicts
-    os.environ.setdefault("REDIS_URL", os.getenv("REDIS_URL", "redis://localhost:6380/0"))
-    # Default to compose mapping (host port 5433 -> container 5432)
+    # Set default connection URLs using internal Docker service names.
+    os.environ.setdefault("REDIS_URL", "redis://redis:6379/0")
     os.environ.setdefault(
         "POSTGRES_URL",
-        os.getenv("POSTGRES_URL", "postgresql://postgres:postgres@localhost:5433/somamemory"),
+        "postgresql://postgres:postgres@postgres:5432/somamemory",
     )
-    os.environ.setdefault("QDRANT_HOST", os.getenv("QDRANT_HOST", "localhost"))
-    os.environ.setdefault("QDRANT_PORT", os.getenv("QDRANT_PORT", "6333"))
-    os.environ.setdefault(
-        "KAFKA_BOOTSTRAP_SERVERS", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    )
+    os.environ.setdefault("QDRANT_HOST", "qdrant")
+    os.environ.setdefault("QDRANT_PORT", "6333")
+    os.environ.setdefault("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
-    # Quick connectivity checks
-    redis_host = os.environ["REDIS_URL"].split("//")[-1].split(":")[0]
-    redis_port = int(os.environ["REDIS_URL"].split(":")[-1].split("/")[0])
-    pg_host = os.environ["POSTGRES_URL"].split("@")[1].split(":")[0]
-    pg_port = int(os.environ["POSTGRES_URL"].split(":")[-1].split("/")[0])
-    q_host = os.environ["QDRANT_HOST"]
-    q_port = int(os.environ["QDRANT_PORT"])
-    kafka_host = os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(":")[0]
-    kafka_port = int(os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(":")[1])
+    # Quick connectivity checks – abort if any required service is unreachable.
+    redis_host = "redis"
+    redis_port = 6379
+    pg_host = "postgres"
+    pg_port = 5432
+    q_host = "qdrant"
+    q_port = 6333
+    kafka_host = "kafka"
+    kafka_port = 9092
 
     ok_redis = _tcp_open(redis_host, redis_port)
     ok_pg = _tcp_open(pg_host, pg_port)
     ok_q = _tcp_open(q_host, q_port)
     ok_kafka = _tcp_open(kafka_host, kafka_port)
 
-    if ok_redis and ok_pg and ok_q:
-        if ok_kafka:
-            print("[conftest] Redis, Postgres, Qdrant and Kafka are reachable on localhost.")
-        else:
-            print(
-                "[conftest] Redis, Postgres and Qdrant are reachable on localhost. Kafka unavailable - some tests may be skipped."
-            )
-        return
-
-    # On Docker Desktop (macOS) containers may be reachable at host.docker.internal
-    # if localhost checks fail, try that as a fallback before attempting to start compose.
-    try_alternate = os.uname().sysname.lower().startswith("darwin")
-    if try_alternate:
-        alt_host = "host.docker.internal"
-        print(f"[conftest] Localhost unreachable; trying alternate host {alt_host}...")
-        alt_ok_redis = _tcp_open(alt_host, redis_port)
-        alt_ok_pg = _tcp_open(alt_host, pg_port)
-        alt_ok_q = _tcp_open(alt_host, q_port)
-        alt_ok_kafka = _tcp_open(alt_host, kafka_port)
-        if alt_ok_redis and alt_ok_pg and alt_ok_q:
-            if alt_ok_kafka:
-                print(f"[conftest] Services reachable via {alt_host}; updating env vars.")
-            else:
-                print(
-                    f"[conftest] Core services reachable via {alt_host}; updating env vars. Kafka unavailable."
-                )
-            os.environ["REDIS_URL"] = os.environ["REDIS_URL"].replace(redis_host, alt_host)
-            os.environ["POSTGRES_URL"] = os.environ["POSTGRES_URL"].replace(pg_host, alt_host)
-            os.environ["QDRANT_HOST"] = alt_host
-            if alt_ok_kafka:
-                os.environ["KAFKA_BOOTSTRAP_SERVERS"] = os.environ[
-                    "KAFKA_BOOTSTRAP_SERVERS"
-                ].replace(kafka_host, alt_host)
-            return
-
-    print(
-        "[conftest] One or more infra services are unreachable. Attempting to start missing services via docker compose..."
-    )
-    # Only start services that are not reachable to avoid port conflicts with existing containers
-    missing = []
-    if not ok_redis:
-        missing.append("redis")
-    if not ok_pg:
-        missing.append("postgres")
-    if not ok_q:
-        missing.append("qdrant")
-    if not ok_kafka:
-        missing.append("redpanda")
-
-    if missing:
-        try:
-            _start_compose_services(missing)
-        except Exception as exc:
-            print(f"[conftest] docker compose up reported an error: {exc}")
-    else:
-        print("[conftest] No missing services to start (ports already in use).")
-
-    # Wait for services (give Docker Desktop a bit longer on macOS)
-    deadline = time.time() + 90
-    while time.time() < deadline:
-        ok_redis = _tcp_open(redis_host, redis_port)
-        ok_pg = _tcp_open(pg_host, pg_port)
-        ok_q = _tcp_open(q_host, q_port)
-        ok_kafka = _tcp_open(kafka_host, kafka_port)
-        if ok_redis and ok_pg and ok_q:
-            if ok_kafka:
-                print("[conftest] Services are now reachable.")
-            else:
-                print(
-                    "[conftest] Core services are now reachable. Kafka unavailable - some tests may be skipped."
-                )
-            return
-        time.sleep(2)
-
-    # If we reach here, attempt one last graceful check: maybe compose failed due to port bind but services are present
-    ok_redis = _tcp_open(redis_host, redis_port)
-    ok_pg = _tcp_open(pg_host, pg_port)
-    ok_q = _tcp_open(q_host, q_port)
-    ok_kafka = _tcp_open(kafka_host, kafka_port)
-    if ok_redis and ok_pg and ok_q:
-        if ok_kafka:
-            print("[conftest] Services are reachable after final check.")
-        else:
-            print(
-                "[conftest] Core services are reachable after final check. Kafka unavailable - some tests may be skipped."
-            )
-        return
-
-    pytest.exit(
-        "Required infra (Redis/Postgres/Qdrant) not reachable after timeout. Start them and re-run tests."
-    )
+    if not (ok_redis and ok_pg and ok_q and ok_kafka):
+        missing = []
+        if not ok_redis:
+            missing.append("Redis")
+        if not ok_pg:
+            missing.append("Postgres")
+        if not ok_q:
+            missing.append("Qdrant")
+        if not ok_kafka:
+            missing.append("Kafka")
+        pytest.exit(
+            f"[conftest] Required infra not reachable: {', '.join(missing)}. "
+            "Ensure `docker compose up -d` is running and ports are correct."
+        )
+    # All services reachable – continue with tests.
+    print("[conftest] All required infra reachable.")
+    return

@@ -1,0 +1,68 @@
+# Test values: production persistence with reduced resource requests for local Kind cluster
+image:
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "512Mi"
+  limits:
+    cpu: "800m"
+    memory: "1Gi"
+
+consumer:
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "384Mi"
+    limits:
+      cpu: "600m"
+      memory: "768Mi"
+
+postgres:
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "1Gi"
+    limits:
+      cpu: "500m"
+      memory: "2Gi"
+
+qdrant:
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "2Gi"
+    limits:
+      cpu: "500m"
+      memory: "4Gi"
+
+redis:
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "300m"
+      memory: "512Mi"
+
+redpanda:
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "1Gi"
+    limits:
+      cpu: "500m"
+      memory: "2Gi"

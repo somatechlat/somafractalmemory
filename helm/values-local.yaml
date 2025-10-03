@@ -1,0 +1,10 @@
+image:
+  repository: somafractalmemory
+  tag: local
+  pullPolicy: IfNotPresent
+
+consumer:
+  image:
+    repository: somafractalmemory
+    tag: local
+    pullPolicy: IfNotPresent

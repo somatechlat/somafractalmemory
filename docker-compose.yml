@@ -1,6 +1,5 @@
 services:
   redis:
-    env_file: .env
     image: redis:7
     container_name: soma_redis
     # Enable AOF persistence (append‑only file) for absolute durability.
@@ -8,22 +7,20 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
+      - "6381:6379"  # expose container port on static host port (changed to avoid conflict)
     restart: unless-stopped
 
   qdrant:
-    env_file: .env
     image: qdrant/qdrant:latest
     container_name: soma_qdrant
     ports:
-      - "${QDRANT_HOST_PORT:-6333}:6333"
+      - "6333:6333"  # static host port for tests
     volumes:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
   # PostgreSQL service – minimal image for development/testing.
   postgres:
-    env_file: .env
     image: postgres:15-alpine   # lightweight official image
     container_name: soma_postgres
     environment:
@@ -33,7 +30,7 @@ services:
       # Convenience env var that the Python code can read directly.
       POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
     ports:
-      - "${POSTGRES_HOST_PORT:-5433}:5432"
+      - "5433:5432"  # static host port for tests
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -44,16 +41,18 @@ services:
   # All configuration is passed via environment variables; defaults match the
   # development‑friendly settings already used in the code base.
   api:
-    env_file: .env
     build:
       context: .
       dockerfile: Dockerfile
     container_name: soma_api
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "9595:9595"
+      - "9595:9595"  # host 9595 → container 9595 (fixed host port)
     environment:
       # Choose the memory mode (development|test|evented_enterprise|cloud_managed)
-      MEMORY_MODE: development
+      MEMORY_MODE: evented_enterprise
       SOMA_RATE_LIMIT_MAX: "5000"
       UVICORN_WORKERS: "4"
       UVICORN_TIMEOUT_GRACEFUL: "60"
@@ -66,40 +65,15 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
       # Kafka / Redpanda broker – used in EVENTED_ENTERPRISE / CLOUD_MANAGED modes.
-      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Toggle event publishing (true/false). In TEST mode this is forced off.
       EVENTING_ENABLED: "true"
+      USE_REAL_INFRA: "1"
     depends_on:
       - redis
       - qdrant
       - postgres
-      - redpanda
-    restart: unless-stopped
-
-  # -----------------------------------------------------------------
-  # Consumer – reads memory.events from Kafka/Redpanda and updates Postgres & Qdrant.
-  consumer:
-    env_file: .env
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: soma_consumer
-    command: ["python", "scripts/run_consumers.py"]
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      KAFKA_MEMORY_EVENTS_TOPIC: memory.events
-      KAFKA_CONSUMER_GROUP: soma-consumer-group
-      # The same connection settings the API uses.
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-    depends_on:
-      - redis
-      - qdrant
-      - postgres
-      - redpanda
+      - kafka
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
@@ -109,41 +83,99 @@ services:
       retries: 3
 
   # -----------------------------------------------------------------
-  # Test API – dedicated sandbox instance exposed on host port 8888.
-  test_api:
-    env_file: .env
+  # Kafka – KRaft‑only broker (replaces Redpanda)
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_CFG_MIN_INSYNC_REPLICAS: 1
+      KAFKA_CFG_NUM_PARTITIONS: 1
+      KAFKA_CFG_LOG_DIRS: /bitnami/kafka/data
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "19092:9092"
+      - "19093:9093"
+    restart: unless-stopped
+
+  # -----------------------------------------------------------------
+  # Consumer – update bootstrap server to point to kafka service
+  consumer:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: soma_test_api
-    ports:
-      - "8888:9595"
+    container_name: soma_consumer
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["sh", "-c", "until nc -z kafka 9092; do echo 'Waiting for Kafka...'; sleep 2; done; exec python scripts/run_consumers.py"]
     environment:
-      MEMORY_MODE: evented_enterprise
-      SOMA_RATE_LIMIT_MAX: "5000"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_MEMORY_EVENTS_TOPIC: memory.events
+      KAFKA_CONSUMER_GROUP: soma-consumer-group
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      USE_REAL_INFRA: "1"
     depends_on:
       - redis
       - qdrant
       - postgres
-      - redpanda
+      - kafka
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   # -----------------------------------------------------------------
-  # Redpanda – lightweight Kafka‑compatible broker. Persists logs to a volume.
-  redpanda:
-    env_file: .env
-    image: redpandadata/redpanda:latest
-    container_name: soma_redpanda
-    command: ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "1G", "--reserve-memory", "0M", "--advertise-kafka-addr", "redpanda:9092", "--advertise-rpc-addr", "redpanda:33145"]
-    ports:
-      - "9092:9092"   # Kafka API for producers/consumers
-      - "9644:9644"   # Optional admin UI (exposed for debugging)
+  # Test API – update dependency to kafka
+  test_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soma_test_api
     volumes:
-      - redpanda_data:/var/lib/redpanda/data
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8888:9595"
+    environment:
+      MEMORY_MODE: evented_enterprise
+      SOMA_RATE_MAX: "5000"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      USE_REAL_INFRA: "1"
+    depends_on:
+      - redis
+      - qdrant
+      - postgres
+      - kafka
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   qdrant_storage:
   postgres_data:
   redis_data:
-  redpanda_data:
+  # Kafka/Zookeeper use ephemeral storage for tests

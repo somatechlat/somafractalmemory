@@ -2,6 +2,7 @@
 
 # Standard library imports
 import json
+import os
 import time
 
 # Third‑party imports
@@ -16,19 +17,43 @@ from somafractalmemory.implementations.storage import (
     RedisKeyValueStore,
 )
 
+USE_REAL = os.getenv("USE_REAL_INFRA", "0").lower() in ("1", "true", "yes")
+
 
 @pytest.fixture(scope="module")
 def postgres_container():
-    with PostgresContainer("postgres:15-alpine") as postgres:
-        time.sleep(2)
-        yield postgres
+    if USE_REAL:
+        # Use already running compose postgres service
+        class _PgDummy:
+            def get_connection_url(self):
+                return os.getenv(
+                    "POSTGRES_URL",
+                    "postgresql://postgres:postgres@postgres:5432/somamemory",
+                )
+
+        yield _PgDummy()
+    else:
+        with PostgresContainer("postgres:15-alpine") as postgres:
+            time.sleep(2)
+            yield postgres
 
 
 @pytest.fixture(scope="module")
 def redis_container():
-    with RedisContainer("redis:7-alpine") as redis:
-        time.sleep(2)
-        yield redis
+    if USE_REAL:
+
+        class _RedisDummy:
+            def get_container_host_ip(self):
+                return os.getenv("REDIS_HOST", "redis")
+
+            def get_exposed_port(self, port):  # noqa: ARG002
+                return os.getenv("REDIS_PORT", "6379")
+
+        yield _RedisDummy()
+    else:
+        with RedisContainer("redis:7-alpine") as redis:
+            time.sleep(2)
+            yield redis
 
 
 def test_hybrid_store_set_get(postgres_container, redis_container):

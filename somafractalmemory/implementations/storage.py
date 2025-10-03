@@ -340,13 +340,67 @@ class QdrantVectorStore(IVectorStore):
 
     def setup(self, vector_dim: int, namespace: str):
         self.collection_name = namespace
+        # Modern (non-deprecated) collection creation logic:
+        # 1. Prefer collection_exists + create_collection
+        # 2. Fallback to get_collection (older clients) to detect presence
+        # 3. Do NOT blindly drop existing collection to preserve data in real deployments
+        # 4. If dimension mismatch occurs, we log (if logger available) and proceed – tests assume fresh start
         try:
-            self.client.recreate_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
-            )
-        except Exception:  # Catch if collection already exists
-            pass
+            exists = False
+            try:
+                # Newer qdrant-client
+                if hasattr(self.client, "collection_exists"):
+                    exists = bool(self.client.collection_exists(self.collection_name))  # type: ignore[arg-type]
+                else:  # pragma: no cover - older client path
+                    self.client.get_collection(collection_name=self.collection_name)
+                    exists = True
+            except Exception:
+                exists = False
+
+            if not exists:
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
+                )
+            else:
+                # Optional: verify dimension; skip heavy reconciliation for now
+                try:
+                    info = self.client.get_collection(collection_name=self.collection_name)
+                    current_dim = None
+                    # Structure differs by client version; attempt best-effort extraction
+                    if hasattr(info, "config") and hasattr(info.config, "params"):
+                        try:
+                            current_dim = info.config.params.size  # type: ignore[attr-defined]
+                        except Exception:  # pragma: no cover - defensive
+                            current_dim = None
+                    if current_dim and current_dim != vector_dim:
+                        # Best-effort remediation: create an alternate collection name with correct dim
+                        # (Avoid destructive recreate). Downstream code always references self.collection_name,
+                        # so we only adjust name if mismatch discovered.
+                        alt_name = f"{self.collection_name}_dim{vector_dim}"
+                        if not (
+                            hasattr(self.client, "collection_exists")
+                            and self.client.collection_exists(alt_name)
+                        ):
+                            self.client.create_collection(
+                                collection_name=alt_name,
+                                vectors_config=VectorParams(
+                                    size=vector_dim, distance=Distance.COSINE
+                                ),
+                            )
+                        self.collection_name = alt_name
+                except Exception:
+                    # Non-fatal; continue with existing collection
+                    pass
+        except Exception:
+            # Final fallback: attempt deprecated recreate_collection for extremely old clients
+            try:  # pragma: no cover - legacy path
+                self.client.recreate_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
+                )
+            except Exception:
+                pass
 
     def upsert(self, points: list[dict[str, Any]]):
         point_structs = [
@@ -355,10 +409,25 @@ class QdrantVectorStore(IVectorStore):
         self.client.upsert(collection_name=self.collection_name, wait=True, points=point_structs)
 
     def search(self, vector: list[float], top_k: int) -> list[Any]:
-        hits = self.client.search(
+        # Prefer modern query_points API; fallback to deprecated search for older clients
+        try:
+            if hasattr(self.client, "query_points"):
+                response = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=vector,  # type: ignore[arg-type]
+                    limit=top_k,
+                    with_payload=True,
+                )
+                # Newer client returns a QueryResponse with .points; older may already be a list
+                points = getattr(response, "points", response)
+                return points
+        except Exception:
+            # If modern path fails unexpectedly, fall back below
+            pass
+        # Legacy path
+        return self.client.search(
             collection_name=self.collection_name, query_vector=vector, limit=top_k
         )
-        return hits
 
     def delete(self, ids: list[str]):
         # Qdrant point IDs can be strings or UUIDs. We'll stick to strings as passed.
