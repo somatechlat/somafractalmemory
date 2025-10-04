@@ -308,6 +308,14 @@ class SomaFractalMemoryEnterprise:
         if self.decay_enabled:
             threading.Thread(target=self._decay_memories, daemon=True).start()
 
+        # Enable hybrid recall by default (can be disabled via env)
+        self.hybrid_recall_default = os.getenv("SOMA_HYBRID_RECALL_DEFAULT", "1").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
     def _decay_memories(self):
         """
         Periodic background task that applies basic decay rules to memories.
@@ -690,9 +698,36 @@ class SomaFractalMemoryEnterprise:
                 query, context, top_k=top_k, memory_type=memory_type
             )
         else:
-            results = self.find_hybrid_by_type(query, top_k=top_k, memory_type=memory_type)
+            if getattr(self, "hybrid_recall_default", True):
+                # Use hybrid scoring by default for best overall recall quality
+                scored = self.hybrid_recall_with_scores(query, top_k=top_k, memory_type=memory_type)
+                results = [r.get("payload") for r in scored if r.get("payload")]
+            else:
+                # Legacy vector-only path
+                results = self.find_hybrid_by_type(query, top_k=top_k, memory_type=memory_type)
         self._call_hook("after_recall", query, context, top_k, memory_type, results)
         return results
+
+    def hybrid_recall(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        memory_type: Optional[MemoryType] = None,
+        exact: bool = True,
+        case_sensitive: bool = False,
+        terms: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return payload-only results from hybrid scoring (vector + keyword boosts)."""
+        scored = self.hybrid_recall_with_scores(
+            query,
+            terms=terms,
+            top_k=top_k,
+            memory_type=memory_type,
+            exact=exact,
+            case_sensitive=case_sensitive,
+        )
+        return [r.get("payload") for r in scored if r.get("payload")]
 
     def forget(self, coordinate: Tuple[float, ...]):
         self._call_hook("before_forget", coordinate)
@@ -759,13 +794,259 @@ class SomaFractalMemoryEnterprise:
 
         return sorted(results, key=score, reverse=True)
 
-    def recall_with_scores(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def recall_with_scores(
+        self,
+        query: str,
+        top_k: int = 5,
+        memory_type: Optional[MemoryType] = None,
+    ) -> List[Dict[str, Any]]:
         query_vector = self.embed_text(query)
-        results = self.vector_store.search(query_vector.flatten().tolist(), top_k=top_k)
-        return [
-            {"payload": getattr(r, "payload", None), "score": getattr(r, "score", None)}
-            for r in results
-        ]
+        # Fetch a bit more when filtering by type to avoid empty results due to post-filtering
+        search_k = top_k * 2 if memory_type is not None else top_k
+        results = self.vector_store.search(query_vector.flatten().tolist(), top_k=search_k)
+        out: List[Dict[str, Any]] = []
+        for r in results:
+            payload = getattr(r, "payload", None)
+            score = getattr(r, "score", None)
+            if memory_type is not None:
+                try:
+                    if not payload or payload.get("memory_type") != memory_type.value:
+                        continue
+                except Exception:
+                    # If payload is malformed, skip it when filtering
+                    continue
+            out.append({"payload": payload, "score": score})
+            if len(out) >= top_k:
+                break
+        return out
+
+    # --- Keyword and Hybrid Search helpers ---
+    def _iter_string_fields(self, obj: Any):
+        """Yield all string fields from nested dict/list payloads.
+
+        Defensive recursion with depth and count guards to avoid pathological payloads.
+        """
+        max_items = 4096
+        max_depth = 6
+
+        def _walk(o: Any, depth: int):
+            nonlocal max_items
+            if max_items <= 0 or depth > max_depth:
+                return
+            if isinstance(o, str):
+                max_items -= 1
+                yield o
+            elif isinstance(o, dict):
+                for v in o.values():
+                    yield from _walk(v, depth + 1)
+            elif isinstance(o, list):
+                for v in o:
+                    yield from _walk(v, depth + 1)
+
+        yield from _walk(obj, 0)
+
+    def keyword_search(
+        self,
+        term: str,
+        *,
+        exact: bool = True,
+        case_sensitive: bool = False,
+        top_k: int = 50,
+        memory_type: Optional[MemoryType] = None,
+    ) -> List[Dict[str, Any]]:
+        """Scan payloads and return those matching the term in any string field.
+
+        Notes:
+        - This is an initial implementation that scans in-memory payloads via
+          vector_store scroll (or KV fallback through iter_memories). For large
+          datasets, consider adding a Postgres JSONB index path.
+        """
+        if not case_sensitive:
+            term_cmp = term.lower()
+        else:
+            term_cmp = term
+
+        def matches(payload: Dict[str, Any]) -> bool:
+            try:
+                for s in self._iter_string_fields(payload):
+                    if s is None:
+                        continue
+                    s_cmp = s if case_sensitive else s.lower()
+                    if exact:
+                        if s_cmp == term_cmp:
+                            return True
+                    else:
+                        if term_cmp in s_cmp:
+                            return True
+            except Exception:
+                return False
+            return False
+
+        # Attempt optimized Postgres path if available and search is substring or exact match of a full field
+        # For exact==True, we still use LIKE, but it will only match full-field equality rarely; used as a prefilter.
+        try:
+            from .implementations.storage import PostgresKeyValueStore  # type: ignore
+
+            if isinstance(getattr(self.kv_store, "pg_store", self.kv_store), PostgresKeyValueStore):
+                pg: PostgresKeyValueStore = getattr(self.kv_store, "pg_store", self.kv_store)
+                memtype_str = memory_type.value if memory_type else None
+                # Use substring search at the DB layer when exact is False; otherwise still leverage LIKE prefilter.
+                db_hits = pg.search_text(
+                    self.namespace,
+                    term if case_sensitive else term.lower(),
+                    case_sensitive=case_sensitive,
+                    limit=top_k * 5,
+                    memory_type=memtype_str,
+                )
+                # Apply exact/substring refining in Python
+                filtered: List[Dict[str, Any]] = []
+                for p in db_hits:
+                    if memory_type and p.get("memory_type") != memtype_str:
+                        continue
+                    if matches(p):
+                        filtered.append(p)
+                        if len(filtered) >= top_k:
+                            break
+                if filtered:
+                    return filtered[:top_k]
+        except Exception:
+            pass
+
+        # Fallback in-memory scan
+        out: List[Dict[str, Any]] = []
+        for payload in self.iter_memories():
+            if memory_type and payload.get("memory_type") != memory_type.value:
+                continue
+            if matches(payload):
+                out.append(payload)
+                if len(out) >= top_k:
+                    break
+        return out
+
+    def hybrid_recall_with_scores(
+        self,
+        query: str,
+        *,
+        terms: Optional[List[str]] = None,
+        boost: float = 2.0,
+        top_k: int = 5,
+        memory_type: Optional[MemoryType] = None,
+        exact: bool = True,
+        case_sensitive: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Hybrid retrieval combining vector similarity with exact/substring term boosts.
+
+        Scoring:
+        - Base score from vector similarity (if available; falls back to cosine via embedding).
+        - For each matching term found within any string field of a payload, add `boost`.
+        - Results are sorted by combined score and truncated to `top_k`.
+        """
+        # Optional: derive candidate terms from query when not provided
+        if not terms:
+            try:
+                import re
+
+                derived: List[str] = []
+                # 1) Quoted phrases
+                derived += re.findall(r'"([^"]+)"|\'([^\']+)\'', query)
+                # re.findall above returns tuples due to alternation; flatten
+                flat: List[str] = []
+                for tup in derived:
+                    if isinstance(tup, tuple):
+                        for s in tup:
+                            if s:
+                                flat.append(s)
+                    elif tup:
+                        flat.append(tup)
+                derived = flat
+                # 2) Hex-like tokens (e.g., 0xabc123...)
+                derived += re.findall(r"0x[0-9a-fA-F]+", query)
+                # 3) Long-ish alnum words (>=4 chars)
+                derived += [w for w in re.findall(r"[A-Za-z0-9_\-]+", query) if len(w) >= 4]
+                # Deduplicate preserving order
+                seen: set[str] = set()
+                terms = [x for x in derived if not (x in seen or seen.add(x))]
+            except Exception:
+                terms = []
+
+        # Step 1: vector candidates (fetch more to allow post-filtering and boosting)
+        qv = self.embed_text(query)
+        search_k = top_k * 4
+        vec_hits = []
+        try:
+            vec_hits = self.vector_store.search(qv.flatten().tolist(), top_k=search_k)
+        except Exception:
+            vec_hits = []
+
+        # Prepare case handling for term matches
+        terms = terms or []
+        if not case_sensitive:
+            terms_cmp = [t.lower() for t in terms]
+        else:
+            terms_cmp = terms
+
+        def term_match_count(payload: Dict[str, Any]) -> int:
+            if not terms_cmp:
+                return 0
+            cnt = 0
+            try:
+                for s in self._iter_string_fields(payload):
+                    if s is None:
+                        continue
+                    s_cmp = s if case_sensitive else s.lower()
+                    for t in terms_cmp:
+                        if exact:
+                            if s_cmp == t:
+                                cnt += 1
+                        else:
+                            if t in s_cmp:
+                                cnt += 1
+            except Exception:
+                return cnt
+            return cnt
+
+        # Index by coordinate when available to merge duplicates
+        def coord_key(payload: Dict[str, Any]) -> str:
+            c = payload.get("coordinate")
+            return repr(tuple(c)) if isinstance(c, list) else json.dumps(payload, sort_keys=True)
+
+        combined: Dict[str, Dict[str, Any]] = {}
+
+        # Step 2: incorporate vector hits with boost
+        for h in vec_hits:
+            payload = getattr(h, "payload", {}) or {}
+            if memory_type and payload.get("memory_type") != memory_type.value:
+                continue
+            base = float(getattr(h, "score", 0.0) or 0.0)
+            b = boost * term_match_count(payload)
+            key = coord_key(payload)
+            cur = combined.get(key)
+            score = base + b
+            if not cur or score > float(cur.get("score", -1e9)):
+                combined[key] = {"payload": payload, "score": score}
+
+        # Step 3: ensure any exact keyword-only matches are considered
+        # Note: we compute an approximate vector score for these by embedding the payload JSON.
+        if terms_cmp:
+            for payload in self.iter_memories():
+                if memory_type and payload.get("memory_type") != memory_type.value:
+                    continue
+                if term_match_count(payload) > 0:
+                    try:
+                        pv = self.embed_text(json.dumps(payload))
+                        # cosine since embed_text normalizes
+                        base = float(np.dot(pv.flatten(), qv.flatten()))
+                    except Exception:
+                        base = 0.0
+                    score = base + boost * term_match_count(payload)
+                    key = coord_key(payload)
+                    cur = combined.get(key)
+                    if not cur or score > float(cur.get("score", -1e9)):
+                        combined[key] = {"payload": payload, "score": score}
+
+        # Step 4: rank and truncate
+        ranked = sorted(combined.values(), key=lambda x: float(x.get("score", 0.0)), reverse=True)
+        return ranked[:top_k]
 
     def link_memories(
         self,

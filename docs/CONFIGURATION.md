@@ -39,6 +39,7 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `SOMA_MODEL_NAME` | HuggingFace model used for embeddings. | `microsoft/codebert-base` |
 | `SOMA_API_TOKEN` | Optional bearer token required by the FastAPI example. | *(unset)* |
 | `SFM_FAST_CORE` | Enable flat in-process contiguous vector slabs (fast path). Accepts `1/true/yes`. | `0` |
+| `SOMA_HYBRID_RECALL_DEFAULT` | Make hybrid recall (vector + keyword boosts) the default for `/recall`. Accepts `1/true/yes` to enable or `0/false/no` to disable. | `1` |
 
 Langfuse options read from Dynaconf or the same prefix:
 - `SOMA_LANGFUSE_PUBLIC`
@@ -104,6 +105,8 @@ config = {
 ```
 * When both Redis and Postgres are provided in development or enterprise modes, `PostgresRedisHybridStore` caches writes in Redis while keeping Postgres canonical.
 * When only one is configured, the factory falls back to the available backend. In test mode, Redis always runs in fakeredis mode.
+
+When `POSTGRES_URL` is configured, the API attempts to enable the `pg_trgm` extension and create supporting indexes (`value::text` trigram GIN, memory_type expression, key prefix) to accelerate substring keyword search. If permissions are restricted, these steps are skipped and the system falls back to in-memory scanning for `keyword_search` and the keyword phase of hybrid recall.
 
 TLS-related variables for Postgres are honoured when present:
 - `POSTGRES_SSL_MODE`

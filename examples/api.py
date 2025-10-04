@@ -166,6 +166,7 @@ class RecallRequest(BaseModel):
     top_k: int = 5
     type: str | None = None
     filters: dict[str, Any] | None = None
+    hybrid: bool | None = None
 
 
 class ExportMemoriesRequest(BaseModel):
@@ -203,6 +204,7 @@ class RecallBatchRequest(BaseModel):
     top_k: int = 5
     type: str | None = None
     filters: dict[str, Any] | None = None
+    hybrid: bool | None = None
 
 
 # --- Response models ---
@@ -229,6 +231,28 @@ class ScoresResponse(BaseModel):
 
 class ResultsResponse(BaseModel):
     results: list[dict[str, Any]]
+
+
+class HybridScoresResponse(BaseModel):
+    results: list[ScoreItem]
+
+
+class KeywordSearchRequest(BaseModel):
+    term: str
+    exact: bool = True
+    case_sensitive: bool = False
+    top_k: int = 50
+    type: str | None = None
+
+
+class HybridRecallRequest(BaseModel):
+    query: str
+    terms: list[str] | None = None
+    boost: float = 2.0
+    top_k: int = 5
+    exact: bool = True
+    case_sensitive: bool = False
+    type: str | None = None
 
 
 class NeighborsResponse(BaseModel):
@@ -324,7 +348,11 @@ async def recall(req: RecallRequest) -> MatchesResponse:
             req.query, top_k=req.top_k, memory_type=mtype, filters=req.filters
         )
     else:
-        res = mem.recall(req.query, top_k=req.top_k, memory_type=mtype)
+        if req.hybrid is True:
+            res = mem.hybrid_recall(req.query, top_k=req.top_k, memory_type=mtype)
+        else:
+            # Default recall now uses hybrid scoring in core (env-controllable)
+            res = mem.recall(req.query, top_k=req.top_k, memory_type=mtype)
     return MatchesResponse(matches=res)
 
 
@@ -348,7 +376,10 @@ def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
                 q, top_k=req.top_k, memory_type=mtype, filters=req.filters
             )
         else:
-            batch = mem.recall(q, top_k=req.top_k, memory_type=mtype)
+            if req.hybrid is True:
+                batch = mem.hybrid_recall(q, top_k=req.top_k, memory_type=mtype)
+            else:
+                batch = mem.recall(q, top_k=req.top_k, memory_type=mtype)
         batches.append(batch)
     return BatchesResponse(batches=batches)
 
@@ -433,7 +464,14 @@ def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_scores"))],
 )
-def recall_with_scores(query: str, top_k: int = 5, type: str | None = None) -> ScoresResponse:
+def recall_with_scores(
+    query: str,
+    top_k: int = 5,
+    type: str | None = None,
+    hybrid: bool | None = None,
+    exact: bool = True,
+    case_sensitive: bool = False,
+) -> ScoresResponse:
     from somafractalmemory.core import MemoryType
 
     mtype = (
@@ -441,8 +479,68 @@ def recall_with_scores(query: str, top_k: int = 5, type: str | None = None) -> S
         if type == "semantic"
         else (MemoryType.EPISODIC if type == "episodic" else None)
     )
-    res = mem.recall_with_scores(query, top_k=top_k, memory_type=mtype)
+    if hybrid is True:
+        res = mem.hybrid_recall_with_scores(
+            query,
+            top_k=top_k,
+            memory_type=mtype,
+            exact=exact,
+            case_sensitive=case_sensitive,
+        )
+    else:
+        res = mem.recall_with_scores(query, top_k=top_k, memory_type=mtype)
     return ScoresResponse(results=res)
+
+
+@app.post(
+    "/keyword_search",
+    response_model=ResultsResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/keyword_search"))],
+)
+def keyword_search(req: KeywordSearchRequest) -> ResultsResponse:
+    from somafractalmemory.core import MemoryType
+
+    mtype = (
+        MemoryType.SEMANTIC
+        if req.type == "semantic"
+        else (MemoryType.EPISODIC if req.type == "episodic" else None)
+    )
+    res = mem.keyword_search(
+        req.term,
+        exact=req.exact,
+        case_sensitive=req.case_sensitive,
+        top_k=req.top_k,
+        memory_type=mtype,
+    )
+    return ResultsResponse(results=res)
+
+
+@app.post(
+    "/hybrid_recall_with_scores",
+    response_model=HybridScoresResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/hybrid_recall_with_scores"))],
+)
+def hybrid_recall_with_scores(req: HybridRecallRequest) -> HybridScoresResponse:
+    from somafractalmemory.core import MemoryType
+
+    mtype = (
+        MemoryType.SEMANTIC
+        if req.type == "semantic"
+        else (MemoryType.EPISODIC if req.type == "episodic" else None)
+    )
+    results = mem.hybrid_recall_with_scores(
+        req.query,
+        terms=req.terms,
+        boost=req.boost,
+        top_k=req.top_k,
+        memory_type=mtype,
+        exact=req.exact,
+        case_sensitive=req.case_sensitive,
+    )
+    # results are dicts {payload, score}
+    return HybridScoresResponse(results=[ScoreItem(**r) for r in results])
 
 
 @app.post(

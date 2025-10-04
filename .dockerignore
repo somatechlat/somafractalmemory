@@ -1,30 +1,64 @@
+# VCS & CI
 .git
+.github/
+.gitignore
+
+# Python caches & bytecode
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Virtual environments & local env
 venv/
 .venv/
+.venv-test/
 .env
-#.env
-#-.env.*
+.env.*
+
+# OS cruft
 .DS_Store
 .tmp
 tmp/
+
+# Local DBs / indices
 qdrant.db/
 qdrant.db/**
+*_qdrant/
+*.index
+
+# Node / JS
 node_modules/
+
+# Tests & docs (excluded from image)
 tests/
 docs/
+site/
 meta/
+
+# Logs & coverage
 *.log
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.hypothesis/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Build & packaging
 *.egg-info
+somafractalmemory.egg-info/
+pip-wheel-metadata/
+wheels/
 build/
 dist/
-.gitignore
-.idea/
-.vscode/
-__pycache__/
 *.egg
 *.bak
 archive/
+
+# IDE/editor
+.idea/
+.vscode/

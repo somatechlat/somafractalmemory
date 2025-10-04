@@ -511,6 +511,31 @@ class PostgresKeyValueStore(IKeyValueStore):
                     "CREATE TABLE IF NOT EXISTS {} (key TEXT PRIMARY KEY, value JSONB NOT NULL);"
                 ).format(Identifier(self._TABLE_NAME))
             )
+        # Best-effort: enable pg_trgm and add helpful indexes for keyword search
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+                # Trigram index on text representation for fast ILIKE searches
+                cur.execute(
+                    SQL(
+                        "CREATE INDEX IF NOT EXISTS idx_{}_val_trgm ON {} USING gin ((value::text) gin_trgm_ops);"
+                    ).format(Identifier(self._TABLE_NAME), Identifier(self._TABLE_NAME))
+                )
+                # Memory type expression index for optional filtering
+                cur.execute(
+                    SQL(
+                        "CREATE INDEX IF NOT EXISTS idx_{}_memtype ON {} ((value->>'memory_type'));"
+                    ).format(Identifier(self._TABLE_NAME), Identifier(self._TABLE_NAME))
+                )
+                # Namespace prefix on key to shrink scan for LIKE 'namespace:%:data'
+                cur.execute(
+                    SQL(
+                        "CREATE INDEX IF NOT EXISTS idx_{}_key_prefix ON {} (key text_pattern_ops);"
+                    ).format(Identifier(self._TABLE_NAME), Identifier(self._TABLE_NAME))
+                )
+        except Exception:
+            # Non-fatal if permissions are restricted
+            pass
 
     def set(self, key: str, value: bytes):
         # value is expected to be JSON-encoded bytes
@@ -578,3 +603,36 @@ class PostgresKeyValueStore(IKeyValueStore):
                 return True
         except Exception:
             return False
+
+    # ---- Optional optimized keyword search (used opportunistically by core) ----
+    def search_text(
+        self,
+        namespace: str,
+        term: str,
+        *,
+        case_sensitive: bool = False,
+        limit: int = 100,
+        memory_type: str | None = None,
+    ) -> list[dict]:
+        pattern = f"{namespace}:%:data"
+        like_op = "LIKE" if case_sensitive else "ILIKE"
+        term_pattern = f"%{term}%"
+        params: list[Any] = [pattern, term_pattern]
+        where = ["key LIKE %s", f"value::text {like_op} %s"]
+        if memory_type:
+            where.append("(value->>'memory_type') = %s")
+            params.append(memory_type)
+        sql = f"SELECT value FROM {self._TABLE_NAME} WHERE " + " AND ".join(where) + " LIMIT %s;"
+        params.append(limit)
+        out: list[dict] = []
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(sql, tuple(params))
+                for (val,) in cur.fetchall():
+                    # val is dict from psycopg2 jsonb
+                    if isinstance(val, dict):
+                        out.append(val)
+        except Exception:
+            # Fallback silence – caller will use in-memory scan
+            return []
+        return out

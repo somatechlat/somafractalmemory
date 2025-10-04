@@ -169,10 +169,10 @@ The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, an
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/store` | Persist a memory (coordinate + payload). |
-| `POST` | `/recall` | Recall top matches for a text query (hybrid semantic search). |
+| `POST` | `/recall` | Recall top matches for a text query (hybrid semantic + keyword; default). |
 | `POST` | `/recall_batch` | Issue multiple recall queries in one call. |
 | `POST` | `/store_bulk` | Bulk-ingest memories from a payload list. |
-| `POST` | `/recall_with_scores` | Return matches with similarity scores. |
+| `POST` | `/recall_with_scores` | Return matches with similarity scores; add `hybrid=true` for hybrid scoring. |
 | `POST` | `/recall_with_context` | Context-aware hybrid recall with caller filters. |
 | `GET`  | `/range` | Find memories whose coordinates fall within a bounding box. |
 | `POST` | `/link` | Create a semantic edge between two coordinates. |
@@ -237,7 +237,37 @@ For methodology and troubleshooting, see `docs/CANONICAL_DOCUMENTATION.md#61-syn
 
 ---
 
-## 📈 Observability & Eventing
+## � Hybrid Recall (Default) and Keyword Search
+SFM recalls are hybrid by default: vector similarity is combined with keyword/phrase boosts so exact literals (IDs, tokens, names, quoted phrases) surface above purely semantic neighbors when present.
+
+- Toggle default via environment: `SOMA_HYBRID_RECALL_DEFAULT=1|0` (default `1`).
+- Force hybrid per-call (no route changes):
+  - `/recall` body flag: `{ "query": "...", "hybrid": true }`
+  - `/recall_with_scores?query=...&hybrid=true`
+- Matching controls for hybrid and keyword endpoints:
+  - `exact=true|false` (default true), `case_sensitive=true|false` (default false)
+
+PostgreSQL JSONB + trigram indexes accelerate substring search when `POSTGRES_URL` is configured. On startup the API attempts to enable `pg_trgm` and create supporting indexes; if permissions are restricted, it falls back to in-memory scanning.
+
+Examples
+```bash
+# Default recall (hybrid is default)
+curl -sS -X POST http://127.0.0.1:9595/recall \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"amaguaña and baudelaire","top_k":10}' | jq .
+
+# Force hybrid scoring with scores and substring boosts
+curl -sS -X POST "http://127.0.0.1:9595/recall_with_scores?query=0xb3a6e0719442594&top_k=10&hybrid=true&exact=false" | jq .
+
+# Exact keyword search (no vectors)
+curl -sS -X POST http://127.0.0.1:9595/keyword_search \
+  -H 'Content-Type: application/json' \
+  -d '{"term":"Aagu1OCoQd","exact":true,"top_k":20}' | jq .
+```
+
+---
+
+## �📈 Observability & Eventing
 * **Prometheus metrics** – The API exports `api_requests_total`, `api_request_latency_seconds`, and `http_404_requests_total` on `/metrics`. Hit at least one endpoint after startup so counters appear. The consumer process serves `consumer_*` counters on `http://localhost:8001/metrics`.
 * **OpenTelemetry** – Optional instrumentation for FastAPI wires in via `opentelemetry-instrumentation-fastapi`. Configure exporters with the standard OTEL environment variables; when the packages are absent, instrumentation is a no-op.
 * **Langfuse** – Credentials load from Dynaconf (`config.yaml`) or the `SOMA_LANGFUSE_*` environment variables. Without the package installed, the stub simply drops events.
