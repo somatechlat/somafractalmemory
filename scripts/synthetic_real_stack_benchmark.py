@@ -175,11 +175,16 @@ def store_bulk(base: str, token: str | None, items: list[dict[str, Any]]) -> Non
 def recall_with_scores(
     base: str, token: str | None, query: str, top_k: int, type_: str | None
 ) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {"query": query, "top_k": top_k}
+    payload: dict[str, Any] = {"query": query, "top_k": top_k}
     if type_:
-        params["type"] = type_
+        payload["type"] = type_
     url = f"{base}/recall_with_scores"
-    r = _post_with_retry(url, headers=_headers(token), params=params, timeout=30)
+    r = _post_with_retry(
+        url,
+        headers=_headers(token),
+        json_payload=payload,
+        timeout=30,
+    )
     r.raise_for_status()
     body = r.json()
     return body.get("results", [])
