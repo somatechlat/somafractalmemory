@@ -165,15 +165,17 @@ class QueryMetrics:
         return sum(self.rr) / len(self.rr) if self.rr else float("nan")
 
 
-def store_bulk(base: str, token: str | None, items: list[dict[str, Any]]) -> None:
+def store_bulk(
+    base: str, token: str | None, items: list[dict[str, Any]], http_timeout: float
+) -> None:
     url = f"{base}/store_bulk"
     payload = {"items": items}
-    r = _post_with_retry(url, headers=_headers(token), json_payload=payload, timeout=30)
+    r = _post_with_retry(url, headers=_headers(token), json_payload=payload, timeout=http_timeout)
     r.raise_for_status()
 
 
 def recall_with_scores(
-    base: str, token: str | None, query: str, top_k: int, type_: str | None
+    base: str, token: str | None, query: str, top_k: int, type_: str | None, http_timeout: float
 ) -> list[dict[str, Any]]:
     payload: dict[str, Any] = {"query": query, "top_k": top_k, "hybrid": True}
     if type_:
@@ -183,7 +185,7 @@ def recall_with_scores(
         url,
         headers=_headers(token),
         json_payload=payload,
-        timeout=30,
+        timeout=http_timeout,
     )
     r.raise_for_status()
     body = r.json()
@@ -191,7 +193,7 @@ def recall_with_scores(
 
 
 def do_inserts(
-    base: str, token: str | None, N: int, batch_size: int, type_: str | None
+    base: str, token: str | None, N: int, batch_size: int, type_: str | None, http_timeout: float
 ) -> InsertMetrics:
     t0 = time.time()
     i = 0
@@ -210,14 +212,14 @@ def do_inserts(
                     "type": type_ or "episodic",
                 }
             )
-        store_bulk(base, token, batch)
+        store_bulk(base, token, batch, http_timeout=http_timeout)
         i += len(batch)
     seconds = time.time() - t0
     return InsertMetrics(inserted=N, seconds=seconds)
 
 
 def do_queries(
-    base: str, token: str | None, N: int, Q: int, top_k: int, type_: str | None
+    base: str, token: str | None, N: int, Q: int, top_k: int, type_: str | None, http_timeout: float
 ) -> QueryMetrics:
     latencies: list[float] = []
     rr: list[float] = []
@@ -231,7 +233,7 @@ def do_queries(
     for idx in indices:
         query = f"item-{idx}"
         s = time.perf_counter()
-        results = recall_with_scores(base, token, query, top_k, type_)
+        results = recall_with_scores(base, token, query, top_k, type_, http_timeout)
         latencies.append((time.perf_counter() - s) * 1000.0)
 
         # Evaluate Recall@K and Reciprocal Rank
@@ -260,6 +262,7 @@ def run(
     batch_size: int,
     type_: str | None,
     out: str | None,
+    http_timeout: float,
 ) -> int:
     base = _detect_base_url(base_url)
     token = token or os.getenv("SOMA_API_TOKEN")
@@ -277,8 +280,10 @@ def run(
         f"[health] kv_store={health.get('kv_store')} vector_store={health.get('vector_store')} graph_store={health.get('graph_store')} prediction_provider={health.get('prediction_provider')}"
     )
 
-    ins = do_inserts(base, token, N=N, batch_size=batch_size, type_=type_)
-    qry = do_queries(base, token, N=N, Q=Q, top_k=top_k, type_=type_)
+    ins = do_inserts(
+        base, token, N=N, batch_size=batch_size, type_=type_, http_timeout=http_timeout
+    )
+    qry = do_queries(base, token, N=N, Q=Q, top_k=top_k, type_=type_, http_timeout=http_timeout)
 
     p50 = _percentile(qry.latencies_ms, 0.50)
     p90 = _percentile(qry.latencies_ms, 0.90)
@@ -346,6 +351,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Memory type to store/query",
     )
     p.add_argument("--out", help="Optional path to write a JSON report")
+    p.add_argument(
+        "--http-timeout",
+        type=float,
+        default=60.0,
+        help="HTTP timeout in seconds for insert/recall requests (default: 60)",
+    )
     return p.parse_args(argv)
 
 
@@ -361,6 +372,7 @@ def main(argv: list[str]) -> int:
             batch_size=args.batch_size,
             type_=args.type_,
             out=args.out,
+            http_timeout=args.http_timeout,
         )
     except requests.HTTPError as e:
         print(f"HTTP error: {e}", file=sys.stderr)
