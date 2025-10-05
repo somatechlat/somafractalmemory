@@ -175,7 +175,7 @@ def store_bulk(base: str, token: str | None, items: list[dict[str, Any]]) -> Non
 def recall_with_scores(
     base: str, token: str | None, query: str, top_k: int, type_: str | None
 ) -> list[dict[str, Any]]:
-    payload: dict[str, Any] = {"query": query, "top_k": top_k}
+    payload: dict[str, Any] = {"query": query, "top_k": top_k, "hybrid": True}
     if type_:
         payload["type"] = type_
     url = f"{base}/recall_with_scores"
