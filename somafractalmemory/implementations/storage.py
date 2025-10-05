@@ -14,7 +14,11 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 # Third‑party imports (alphabetical)
-import fakeredis
+# fakeredis is optional and only used for testing; make it optional for production images
+try:
+    import fakeredis as _fakeredis  # type: ignore
+except Exception:  # pragma: no cover
+    _fakeredis = None  # type: ignore
 import psycopg2
 import qdrant_client
 import redis
@@ -175,7 +179,7 @@ class InMemoryKeyValueStore(IKeyValueStore):
 
 class RedisKeyValueStore(IKeyValueStore):
     def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
-        if self._testing or isinstance(self.client, fakeredis.FakeRedis):
+        if self._testing or (_fakeredis and isinstance(self.client, _fakeredis.FakeRedis)):
             return self._inproc_locks[name]
         return self.client.lock(name, timeout=timeout)
 
@@ -193,8 +197,8 @@ class RedisKeyValueStore(IKeyValueStore):
         self._testing = testing
         # Always prepare an in-proc lock map for tests and fakeredis
         self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
-        if testing:
-            self.client = fakeredis.FakeRedis()
+        if testing and _fakeredis is not None:
+            self.client = _fakeredis.FakeRedis()
         else:
             self.client = redis.Redis(host=host, port=port, db=db)
 

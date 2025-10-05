@@ -13,6 +13,7 @@ consumer health can be monitored.
 """
 
 import asyncio
+import json
 import logging
 import os
 import ssl
@@ -75,6 +76,12 @@ async def consume() -> None:
         bootstrap_servers=BROKER_URL,
         group_id=GROUP_ID,
         enable_auto_commit=False,
+        # Decode JSON values into Python dicts
+        value_deserializer=lambda v: (
+            json.loads(v.decode("utf-8"))
+            if isinstance(v, (bytes | bytearray))
+            else (v if isinstance(v, dict) else json.loads(v))
+        ),
         # TLS/SSL configuration
         security_protocol=os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
         ssl_context=(
@@ -91,7 +98,13 @@ async def consume() -> None:
     try:
         async for msg in consumer:
             MESSAGES_CONSUMED.labels(topic=TOPIC).inc()
-            record: dict[str, Any] = msg.value
+            record: dict[str, Any] = msg.value if isinstance(msg.value, dict) else {}
+            if not record:
+                try:
+                    record = json.loads(msg.value)
+                except Exception:
+                    log.warning("Skipping non-JSON message: %r", msg.value)
+                    continue
             with PROCESS_LATENCY.labels(component="kv_writer").time():
                 ok_kv = process_message(record)
             with PROCESS_LATENCY.labels(component="vector_indexer").time():

@@ -233,6 +233,22 @@ class ResultsResponse(BaseModel):
     results: list[dict[str, Any]]
 
 
+class RecallWithScoresBody(BaseModel):
+    query: str
+    top_k: int = 5
+    type: str | None = None
+    hybrid: bool | None = None
+    exact: bool = True
+    case_sensitive: bool = False
+
+
+class RecallWithContextBody(BaseModel):
+    query: str
+    context: dict
+    top_k: int = 5
+    type: str | None = None
+
+
 class HybridScoresResponse(BaseModel):
     results: list[ScoreItem]
 
@@ -306,17 +322,22 @@ API_LATENCY = Histogram(
 )
 
 
-# Helper decorator to instrument endpoints
-def instrument(endpoint_name: str, method: str):
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            API_REQUESTS.labels(endpoint=endpoint_name, method=method).inc()
-            with API_LATENCY.labels(endpoint=endpoint_name, method=method).time():
-                return await func(*args, **kwargs)
+# Lightweight global middleware for metrics to avoid signature issues from wrappers
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    path = request.url.path
+    method = request.method
+    API_REQUESTS.labels(endpoint=path, method=method).inc()
+    import time as _t
 
-        return wrapper
-
-    return decorator
+    start = _t.perf_counter()
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        dur = max(_t.perf_counter() - start, 0.0)
+        # Observe duration
+        API_LATENCY.labels(endpoint=path, method=method).observe(dur)
 
 
 @app.post(
@@ -325,7 +346,6 @@ def instrument(endpoint_name: str, method: str):
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store"))],
 )
-@instrument(endpoint_name="store", method="POST")
 async def store(req: StoreRequest) -> OkResponse:
     mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
     mem.store_memory(parse_coord(req.coord), req.payload, memory_type=mtype)
@@ -338,7 +358,6 @@ async def store(req: StoreRequest) -> OkResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall"))],
 )
-@instrument(endpoint_name="recall", method="POST")
 async def recall(req: RecallRequest) -> MatchesResponse:
     mtype = None
     if req.type:
@@ -353,6 +372,48 @@ async def recall(req: RecallRequest) -> MatchesResponse:
         else:
             # Default recall now uses hybrid scoring in core (env-controllable)
             res = mem.recall(req.query, top_k=req.top_k, memory_type=mtype)
+    return MatchesResponse(matches=res)
+
+
+@app.get(
+    "/recall",
+    response_model=MatchesResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall"))],
+)
+def recall_get(
+    query: str,
+    top_k: int = 5,
+    type: str | None = None,
+    hybrid: bool | None = None,
+    filters: str | None = None,
+) -> MatchesResponse:
+    """Compatibility endpoint for clients that pass parameters via query string.
+
+    Returns the same shape as POST /recall: {"matches": [...]}
+    """
+    from somafractalmemory.core import MemoryType
+
+    mtype = None
+    if type:
+        mtype = MemoryType.SEMANTIC if type == "semantic" else MemoryType.EPISODIC
+    parsed_filters: dict[str, Any] | None = None
+    if filters:
+        try:
+            import json as _json
+
+            parsed = _json.loads(filters)
+            if isinstance(parsed, dict):
+                parsed_filters = parsed
+        except Exception:
+            parsed_filters = None
+    if parsed_filters:
+        res = mem.find_hybrid_by_type(query, top_k=top_k, memory_type=mtype, filters=parsed_filters)
+    else:
+        if hybrid is True:
+            res = mem.hybrid_recall(query, top_k=top_k, memory_type=mtype)
+        else:
+            res = mem.recall(query, top_k=top_k, memory_type=mtype)
     return MatchesResponse(matches=res)
 
 
@@ -464,31 +525,24 @@ def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_scores"))],
 )
-def recall_with_scores(
-    query: str,
-    top_k: int = 5,
-    type: str | None = None,
-    hybrid: bool | None = None,
-    exact: bool = True,
-    case_sensitive: bool = False,
-) -> ScoresResponse:
+def recall_with_scores(req: RecallWithScoresBody) -> ScoresResponse:
     from somafractalmemory.core import MemoryType
 
     mtype = (
         MemoryType.SEMANTIC
-        if type == "semantic"
-        else (MemoryType.EPISODIC if type == "episodic" else None)
+        if req.type == "semantic"
+        else (MemoryType.EPISODIC if req.type == "episodic" else None)
     )
-    if hybrid is True:
+    if req.hybrid is True:
         res = mem.hybrid_recall_with_scores(
-            query,
-            top_k=top_k,
+            req.query,
+            top_k=req.top_k,
             memory_type=mtype,
-            exact=exact,
-            case_sensitive=case_sensitive,
+            exact=req.exact,
+            case_sensitive=req.case_sensitive,
         )
     else:
-        res = mem.recall_with_scores(query, top_k=top_k, memory_type=mtype)
+        res = mem.recall_with_scores(req.query, top_k=req.top_k, memory_type=mtype)
     return ScoresResponse(results=res)
 
 
@@ -549,17 +603,15 @@ def hybrid_recall_with_scores(req: HybridRecallRequest) -> HybridScoresResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_context"))],
 )
-def recall_with_context(
-    query: str, context: dict, top_k: int = 5, type: str | None = None
-) -> ResultsResponse:  # noqa: F811 – suppress redefinition warning if any
+def recall_with_context(req: RecallWithContextBody) -> ResultsResponse:  # noqa: F811
     from somafractalmemory.core import MemoryType
 
     mtype = (
         MemoryType.SEMANTIC
-        if type == "semantic"
-        else (MemoryType.EPISODIC if type == "episodic" else None)
+        if req.type == "semantic"
+        else (MemoryType.EPISODIC if req.type == "episodic" else None)
     )
-    res = mem.find_hybrid_with_context(query, context, top_k=top_k, memory_type=mtype)
+    res = mem.find_hybrid_with_context(req.query, req.context, top_k=req.top_k, memory_type=mtype)
     return ResultsResponse(results=res)
 
 

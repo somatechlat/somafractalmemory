@@ -1,25 +1,32 @@
-.PHONY: setup test lint api metrics cli
+.PHONY: setup test lint api metrics cli bench clean uv-install lock
 
-setup:
-	python3 -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt && pip install -e .
+uv-install:
+	@which uv >/dev/null 2>&1 || (curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y)
+	@~/.local/bin/uv --version
+
+setup: uv-install
+	~/.local/bin/uv sync --extra api --extra events
+
+lock: uv-install
+	~/.local/bin/uv lock
 
 test:
-	. .venv/bin/activate && pytest -q
+	~/.local/bin/uv run pytest -q
 
 lint:
-	. .venv/bin/activate && mypy somafractalmemory
+	~/.local/bin/uv run mypy somafractalmemory
 
 api:
-	. .venv/bin/activate && uvicorn examples.api:app --reload
+	~/.local/bin/uv run uvicorn examples.api:app --reload
 
 metrics:
-	. .venv/bin/activate && python examples/metrics_server.py
+	~/.local/bin/uv run python examples/metrics_server.py
 
 cli:
-	. .venv/bin/activate && soma -h
+	~/.local/bin/uv run soma -h
 
 bench:
-	. .venv/bin/activate && python examples/benchmark.py --n 2000 --dim 256
+	~/.local/bin/uv run python examples/benchmark.py --n 2000 --dim 256
 
 .PHONY: clean
 clean:

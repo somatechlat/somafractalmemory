@@ -44,10 +44,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        ENABLE_REAL_EMBEDDINGS: "1"
     container_name: soma_api
-    volumes:
-      - .:/app
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "9595:9595"  # host 9595 → container 9595 (fixed host port)
     environment:
@@ -55,6 +54,8 @@ services:
       MEMORY_MODE: evented_enterprise
       SOMA_RATE_LIMIT_MAX: "5000"
       SOMA_FAST_START: "0"
+      # Increase keep-alive so long-lived agent clients don't hit idle resets
+      UVICORN_TIMEOUT_KEEP_ALIVE: "120"
       UVICORN_WORKERS: "4"
       UVICORN_TIMEOUT_GRACEFUL: "60"
       # Redis connection (host is the service name defined below)
@@ -126,11 +127,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        ENABLE_REAL_EMBEDDINGS: "0"
     container_name: somafractalmemory_kube
     profiles: [consumer]
-    volumes:
-      - .:/app
-      - /var/run/docker.sock:/var/run/docker.sock
     command: ["sh", "-c", "until nc -z kafka 9092; do echo 'Waiting for Kafka...'; sleep 2; done; exec python scripts/run_consumers.py"]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -141,6 +141,7 @@ services:
       POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      QDRANT_URL: http://qdrant:6333
       USE_REAL_INFRA: "1"
     depends_on:
       - redis
@@ -161,15 +162,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        ENABLE_REAL_EMBEDDINGS: "1"
     container_name: soma_test_api
-    volumes:
-      - .:/app
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8888:9595"
     environment:
       MEMORY_MODE: evented_enterprise
       SOMA_RATE_MAX: "5000"
+      UVICORN_TIMEOUT_KEEP_ALIVE: "120"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       USE_REAL_INFRA: "1"
     depends_on:

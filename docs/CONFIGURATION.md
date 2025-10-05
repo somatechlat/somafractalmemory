@@ -69,6 +69,18 @@ Environment variables consumed by the producer (`eventing/producer.py`) and cons
 ---
 
 ## Qdrant Configuration Options
+## Dependency Management (uv)
+This repository uses Astral’s uv for dependency management to ensure fast and reproducible installs.
+
+- Runtime installs (API + Kafka events):
+  - `uv sync --extra api --extra events`
+- With developer tooling (pytest, linters):
+  - `uv sync --extra dev --extra api --extra events`
+- Locking for CI/CD:
+  - `uv lock` produces `uv.lock` (no extras supported for lock). Builds will honor it in frozen mode; select extras at install time via `uv sync --extra ...`.
+
+Docker images use uv inside the container. If `uv.lock` is present at the repo root, builds run `uv sync --frozen`; otherwise, the image build will resolve and create a lock on the fly.
+
 When passing a `config` dict to `create_memory_system`, Qdrant supports:
 
 ```python

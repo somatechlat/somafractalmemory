@@ -35,6 +35,13 @@ dependencies = [
 [project.optional-dependencies]
 events = ["confluent-kafka", "aiokafka"]
 hash-embeddings = ["transformers", "Pillow", "tenacity"]
+api = [
+  "fastapi",
+  "uvicorn",
+  "opentelemetry-sdk",
+  "opentelemetry-instrumentation-fastapi",
+  "jsonschema",
+]
 observability = ["langfuse"]
 dev = [
   "pytest",
@@ -68,10 +75,12 @@ target-version = ["py310"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["somafractalmemory"]
 
 [tool.mypy]

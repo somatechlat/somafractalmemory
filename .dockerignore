@@ -4,12 +4,29 @@
 .gitignore
 
 # Python caches & bytecode
+.gitattributes
+.gitmodules
+.pre-commit-config.yaml
+.pre-commit/
+.ci/
+
+# CI Artifacts
+artifacts/
+reports/
+test-results/
+JUnit.xml
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
 # Virtual environments & local env
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.tox/
+.venv-cache/
 venv/
 .venv/
 .venv-test/
@@ -17,9 +34,12 @@ venv/
 .env.*
 
 # OS cruft
+.python-version
 .DS_Store
 .tmp
 tmp/
+.AppleDouble
+.LSOverride
 
 # Local DBs / indices
 qdrant.db/
@@ -28,19 +48,34 @@ qdrant.db/**
 *.index
 
 # Node / JS
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
 node_modules/
 
 # Tests & docs (excluded from image)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
 tests/
 docs/
 site/
 meta/
 
 # Logs & coverage
+
+# Notebooks & datasets
+**/*.ipynb
+notebooks/
+data/
+datasets/
+samples/
+sample_data/
+
+# Logs & coverage
 *.log
-.pytest_cache/
-.mypy_cache/
-.pyright/
 .hypothesis/
 .cache/
 .coverage
@@ -58,7 +93,40 @@ dist/
 *.egg
 *.bak
 archive/
+eggs/
+parts/
+sdist/
+var/
+develop-eggs/
+lib/
+lib64/
+__pypackages__/
 
 # IDE/editor
 .idea/
 .vscode/
+.history/
+.gradle/
+.classpath
+.project
+.settings/
+
+# Docker & Compose extras
+docker-compose.override.yml
+docker-compose.local.yml
+compose.*.yaml
+compose.*.yml
+
+# Misc large files
+*.pth
+*.pt
+*.bin
+*.model
+*.onnx
+*.tar
+*.tar.gz
+*.zip
+*.7z
+*.gz
+*.xz
+*.bz2

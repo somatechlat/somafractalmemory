@@ -65,13 +65,31 @@ Advanced tuning is documented in `docs/CONFIGURATION.md`.
 ---
 
 ## 📦 Installation
-### 1️⃣ Python (editable mode)
+### 1️⃣ Python with uv (recommended)
+Use Astral’s uv for fast, reproducible installs. No manual venv activation is required—`uv run` handles it.
+
+```bash
+# Install uv (once)
+curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
+uv --version
+
+# Sync runtime dependencies for API + events (Kafka)
+uv sync --extra api --extra events
+
+# Optional: include developer tools
+uv sync --extra dev --extra api --extra events
+
+# Verify CLI
+uv run soma --help
+```
+
+Fallback: Classic venv + pip
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e .[dev]
 ```
-This installs the `somafractalmemory` package and makes the `soma` CLI available on your PATH.
+The uv path is preferred for reliability and speed.
 
 ### 2️⃣ Docker Compose (full stack)
 ```bash
@@ -185,6 +203,8 @@ The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, an
 | `GET`  | `/` | Simple banner that links to `/metrics`. |
 
 Swagger UI is available at **`/docs`**, and the generated spec is published as `openapi.json` in the repo root each time the API boots.
+
+For detailed endpoint-by-endpoint usage, parameters, and examples, see `docs/USAGE_GUIDE.md`.
 
 ---
 

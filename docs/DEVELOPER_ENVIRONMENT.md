@@ -41,22 +41,31 @@ cd somafractalmemory
 
 ## 3. Python Development Environment
 
-### 3.1 Create a virtual environment
+### 3.1 Recommended: Use uv for dependency management (fast and reproducible)
+We manage dependencies with Astral's uv. It creates a virtual environment, resolves extras, and locks versions for reliable installs.
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # Bash/Zsh
-# On fish: source .venv/bin/activate.fish
+# Install uv (once per machine)
+curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
+uv --version
+
+# Sync project dependencies with extras for API and Kafka events
+uv sync --extra api --extra events
+
+# Optional developer tools (linters, tests):
+uv sync --extra dev --extra api --extra events
+
+# Run commands via uv (no need to activate venv)
+uv run soma --help
+uv run pytest -q
+uv run uvicorn examples.api:app --reload
 ```
 
-### 3.2 Install the package in editable mode
-```bash
-pip install -e .[dev]
-# The optional "dev" extra pulls testing and linting tools (ruff, black, mypy, pytest, etc.)
-```
+> Fallback (pip): If you cannot install uv, you can still use a classic venv and `pip install -e .[dev]`, but uv is the supported path for deterministic installs.
 
 ### 3.3 Verify the CLI works
 ```bash
-soma --help
+uv run soma --help
 ```
 You should see the help output with commands like `store`, `recall`, `store-bulk`, etc.
 
