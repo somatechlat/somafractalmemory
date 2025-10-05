@@ -307,8 +307,9 @@ curl -sS -X POST http://127.0.0.1:9595/keyword_search \
 * Architecture deep dive – `docs/ARCHITECTURE.md`
 * Canonical operations guide – `docs/CANONICAL_DOCUMENTATION.md`
 * Configuration reference – `docs/CONFIGURATION.md`
-* API reference – `docs/api.md`
+* API usage guide – `docs/USAGE_GUIDE.md`
 * Quickstart tutorial – `docs/QUICKSTART.md`
+* API reference – `docs/api.md`
 * Cognitive / adaptive design spec – `docs/COGNITIVE_MEMORY_DESIGN.md`
 
 ---

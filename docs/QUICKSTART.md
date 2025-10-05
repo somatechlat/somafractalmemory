@@ -4,15 +4,17 @@ Follow these steps to get SomaFractalMemory running locally in minutes. All comm
 
 ---
 
-## 1. Clone & Install
+## 1. Clone & Install (uv recommended)
 ```bash
 git clone https://github.com/somatechlat/somafractalmemory.git
 cd somafractalmemory
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
+curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
+uv sync --extra api --extra events
 ```
-This installs the `somafractalmemory` package and the `soma` CLI entry point.
+This installs the `somafractalmemory` package (editable) and the `soma` CLI into a managed virtualenv. If you prefer pip:
+```bash
+python -m venv .venv && source .venv/bin/activate && pip install -e .
+```
 
 ---
 
@@ -21,7 +23,7 @@ This installs the `somafractalmemory` package and the `soma` CLI entry point.
 cp .env.example .env
 docker compose up -d
 ```
-The compose file launches Redis, Postgres, Qdrant, Redpanda, the API (`http://localhost:9595`), the background consumer, and a sandbox API (`http://localhost:8888`).
+The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the API (`http://localhost:9595`), the background consumer, and a sandbox API (`http://localhost:8888`).
 
 Stop the stack with `docker compose down` (add `-v` to wipe volumes).
 

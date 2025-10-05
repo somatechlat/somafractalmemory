@@ -9,12 +9,12 @@ This document is the operational source of truth for developers and operators. I
    ```bash
    cp .env.example .env
    ```
-2. (Optional) Create a Python virtual environment and install the package in editable mode:
+2. (Preferred) Use uv for a fast, reproducible environment:
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -e .
+   curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
+   uv sync --extra api --extra events
    ```
+    Or create a classic venv and install editable: `python -m venv .venv && source .venv/bin/activate && pip install -e .`
 3. Adjust `.env` to match the target mode (`MEMORY_MODE`, ports, credentials). The file is consumed by every Docker service via `env_file: .env` in `docker-compose.yml`.
 
 ---
@@ -24,7 +24,7 @@ This document is the operational source of truth for developers and operators. I
    ```bash
    docker compose build
    ```
-2. **Start everything** (Redis, Postgres, Qdrant, Redpanda, API, consumer, sandbox API):
+2. **Start everything** (Redis, Postgres, Qdrant, Kafka, API, consumer, sandbox API):
    ```bash
    docker compose up -d
    ```
@@ -42,7 +42,7 @@ This document is the operational source of truth for developers and operators. I
    docker compose down -v
    ```
 
-Named volumes created by the compose file: `redis_data`, `qdrant_storage`, `postgres_data`, `redpanda_data`.
+Named volumes created by the compose file: `redis_data`, `qdrant_storage`, `postgres_data`, `kafka_data`.
 
 
 ## 3. Local Kubernetes Stack (Kind + Helm)
@@ -122,7 +122,7 @@ Stop the forward with `./scripts/port_forward_api.sh stop`.
 ```
 
 The script waits for the API pod, recreates port-forwards (API, Postgres, Redis,
-Qdrant, Redpanda), and runs the pytest suite against the live services. If a pod
+Qdrant, Kafka), and runs the pytest suite against the live services. If a pod
 is missing, the script prints the failing component and exits non-zero.
 
 ### 3.6 Persistence checklist
@@ -130,8 +130,9 @@ is missing, the script prints the failing component and exits non-zero.
    ```bash
    kubectl get pvc -n soma-memory
    ```
-- Verify Redpanda retains data across restarts by scaling its deployment down
-   and back up (`kubectl -n soma-memory scale deploy/soma-memory-somafractalmemory-redpanda --replicas=0/1`).
+- Verify the broker retains data across restarts by scaling its deployment down
+   and back up. If your deployment still uses a `redpanda`-named deployment for
+   backward compatibility, patch that; otherwise patch the Kafka deployment.
 - For cloud clusters override the `storageClass` values in
    `helm/values-production.yaml` (e.g., `gp3`, `premium-rwo`, `managed-csi`).
 
@@ -142,8 +143,8 @@ is missing, the script prints the failing component and exits non-zero.
 
 | Mode | Services | Notes |
 |------|----------|-------|
-| `development` | Postgres + Qdrant (optionally Redpanda/Apicurio with `--with-broker`) | Fast to start for local work. |
-| `evented_enterprise` / `cloud_managed` | Redpanda, Apicurio, Postgres, Qdrant | Mirrors the evented production setup. |
+| `development` | Postgres + Qdrant (optionally Kafka with `--with-broker`) | Fast to start for local work. |
+| `evented_enterprise` / `cloud_managed` | Kafka, Postgres, Qdrant | Mirrors the evented production setup. |
 | `test` | No external services | Unit tests rely on in-memory stores. |
 
 Example usage:
@@ -161,7 +162,7 @@ Key environment variables (see `docs/CONFIGURATION.md` for the full list):
 - `POSTGRES_URL` – DSN for canonical storage.
 - `QDRANT_HOST` / `QDRANT_PORT` (or `qdrant.path` in config) – vector store.
 - `KAFKA_BOOTSTRAP_SERVERS` – broker location for event publishing.
-- `EVENTING_ENABLED` – set to `false` to disable Kafka emission when Redpanda is absent.
+- `EVENTING_ENABLED` – set to `false` to disable Kafka emission when a broker is absent.
 - `SOMA_API_TOKEN` – optional bearer token required by the FastAPI dependencies.
 - `SOMA_RATE_LIMIT_MAX` / `SOMA_RATE_LIMIT_WINDOW_SECONDS` – rate limiter budget and window for API endpoints (defaults 60 requests per 60 s).
 
@@ -194,11 +195,11 @@ The FastAPI example regenerates `openapi.json` in the repository root during sta
 ---
 
 ## 7. Kubernetes Deployment
-The Helm chart at `helm/` provisions the full topology (API, consumer, Postgres, Redis, Qdrant, Redpanda). Key values:
+The Helm chart at `helm/` provisions the full topology (API, consumer, Postgres, Redis, Qdrant, Kafka). Key values:
 - `image.repository` / `image.tag` – override container images.
 - `env.*` – configure the API service (mirrors `.env`).
 - `consumer.enabled` – toggle the background worker deployment.
-- `postgres`, `redis`, `qdrant`, `redpanda` – enable/disable embedded dependencies or point to managed services.
+- `postgres`, `redis`, `qdrant`, `redpanda` – enable/disable embedded dependencies or point to managed services. The broker block may still be named `redpanda` for backward compatibility even when using a Confluent Kafka image.
 
 Install (or upgrade) the stack like so:
 ```bash

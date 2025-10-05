@@ -3,12 +3,14 @@ site_url: https://example.com
 nav:
   - Home: index.md
   - Quickstart: QUICKSTART.md
+  - Usage Guide: USAGE_GUIDE.md
   - Guides:
       - Canonical Ops: CANONICAL_DOCUMENTATION.md
       - Developer Guide: DEVELOPER_GUIDE.md
   - Architecture: ARCHITECTURE.md
   - Configuration: CONFIGURATION.md
   - API: api.md
+  - Production: PRODUCTION_READINESS.md
   - Ops:
       - Kafka (Open Source): ops/KAFKA_OPEN_SOURCE.md
       - Kubernetes Deploy: ops/KUBERNETES.md

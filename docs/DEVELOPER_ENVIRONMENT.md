@@ -85,13 +85,6 @@ docker compose build
 docker compose up -d
 ```
 This will start:
-- **Redis** (`redis:7`)
-- **PostgreSQL** (`postgres:15-alpine`)
-- **Qdrant** (`qdrant/qdrant:latest`)
-- **Redpanda** (`redpandadata/redpanda:latest`)
-- **FastAPI** (`soma-memory-somafractalmemory`)
-- **Consumer** (event processor)
-
 ### 4.3 Verify services are healthy
 ```bash
 # API health check (exposed on localhost:9595)
@@ -111,12 +104,6 @@ docker compose down   # Keeps volumes (data) – add -v to delete them
 ---
 
 ## 5. Kind + Helm – Near‑Production Cluster
-
-For a more realistic Kubernetes environment (useful for testing operators, Helm charts, and pod‑level resources) we use **Kind**.
-
-### 5.1 Create a Kind cluster
-```bash
-# Create a cluster named "soma-cluster" with 2 nodes (control‑plane + worker)
 kind create cluster --name soma-cluster --config=- <<EOF
 kind: Cluster
 apiVersion: kind.x‑k8s.io/v1alpha4
@@ -164,7 +151,7 @@ The Helm chart creates the following resources in namespace `soma-memory`:
 - PostgreSQL Deployment
 - Redis Deployment
 - Qdrant Deployment
-- Redpanda Deployment
+- Kafka Broker Deployment (value block name may remain `redpanda`)
 - Service objects for each component
 
 ### 5.4 Port‑forward the API for local testing
@@ -200,7 +187,7 @@ uvicorn examples.api:app --reload --host 0.0.0.0 --port 9595
 If you run this **outside** of Kubernetes, you can skip the Helm/Kind steps and hit the API directly at `http://localhost:9595`.
 
 ### 6.2 Working with the Consumer
-The consumer reads from Redpanda and writes to Postgres/Qdrant. To run it locally (without Helm) use:
+The consumer reads from Kafka and writes to Postgres/Qdrant. To run it locally (without Helm) use:
 ```bash
 python -m scripts.run_consumers
 ```
@@ -257,7 +244,7 @@ The repo uses **ruff**, **black**, **isort**, **mypy**, and **bandit**.
 | Symptom | Likely Cause | How to Investigate |
 |---------|--------------|--------------------|
 | **API returns 502 / connection refused** | Port‑forward not running or API pod crashed | `./scripts/port_forward_api.sh status`; `kubectl -n soma-memory get pods`; `kubectl -n soma-memory logs pod/<api-pod>` |
-| **Consumer not processing events** | Wrong `KAFKA_BOOTSTRAP_SERVERS` or Redpanda not reachable | `kubectl -n soma-memory exec -it pod/<redpanda-pod> -- rpk cluster info`; check consumer logs |
+| **Consumer not processing events** | Wrong `KAFKA_BOOTSTRAP_SERVERS` or broker not reachable | From inside the broker pod, run `kafka-topics --bootstrap-server localhost:9092 --list`; check consumer logs |
 | **Postgres rows missing** | Event schema mismatch (timestamp) or `kv_store` not called | Look at `workers/kv_writer.py` logs; verify the `timestamp` field is ISO8601 (the recent fix) |
 | **Qdrant points count stays at 0** | Consumer failed to index vectors, or vector dimension mismatch | Inspect `workers/vector_indexer.py` logs; run a manual scroll query as shown in the README |
 | **Tests fail on CI but pass locally** | Missing Docker‑Compose services in CI environment | Ensure the CI workflow brings up the stack (`docker compose up -d`), or use the `testcontainers` based tests that spin up containers automatically |
@@ -289,7 +276,7 @@ You now have a fully documented, reproducible developer environment for Soma Fra
 ### 11.1 Why latency matters
 The **store** endpoint (`POST /store_bulk` or `POST /store`) is the critical path for any agent that needs to persist a memory quickly. High latency can:
 - Slow down downstream reasoning loops.
-- Cause back‑pressure on the eventing pipeline (Kafka/Redpanda).
+- Cause back‑pressure on the eventing pipeline (Kafka).
 - Increase the chance of time‑outs when the API is called from a remote client.
 
 ### 11.2 Typical numbers (observed on a local macOS/Kind setup)
@@ -380,7 +367,7 @@ Below are concrete knobs you can turn in a development or production deployment 
 ### Async Qdrant Indexing
 - Vector upserts to Qdrant are currently performed synchronously in the API request. To reduce latency, move this work to a background worker:
   1. Store the raw payload in PostgreSQL.
-  2. Publish a lightweight event (e.g., `vector_index_needed`) to Redpanda.
+  2. Publish a lightweight event (e.g., `vector_index_needed`) to Kafka.
   3. A dedicated consumer reads the event, computes the embedding, and upserts to Qdrant.
 - This decouples the fast path from the slower vector computation.
 
