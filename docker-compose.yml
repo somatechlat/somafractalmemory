@@ -1,7 +1,10 @@
 services:
   redis:
     image: redis:7
-    container_name: soma_redis
+    container_name: somafractalmemory_redis
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=redis"
     # Enable AOF persistence (append‑only file) for absolute durability.
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
@@ -12,7 +15,10 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: soma_qdrant
+    container_name: somafractalmemory_qdrant
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=qdrant"
     ports:
       - "6333:6333"  # static host port for tests
     volumes:
@@ -22,7 +28,10 @@ services:
   # PostgreSQL service – minimal image for development/testing.
   postgres:
     image: postgres:15-alpine   # lightweight official image
-    container_name: soma_postgres
+    container_name: somafractalmemory_postgres
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=postgres"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -46,7 +55,10 @@ services:
       dockerfile: Dockerfile
       args:
         ENABLE_REAL_EMBEDDINGS: "1"
-    container_name: soma_api
+    container_name: somafractalmemory_api
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=api"
     ports:
       - "9595:9595"  # host 9595 → container 9595 (fixed host port)
     environment:
@@ -88,7 +100,10 @@ services:
   # Kafka – Confluent single-broker (KRaft) replacing Redpanda for stability
   kafka:
     image: confluentinc/cp-kafka:7.6.1
-    container_name: kafka
+    container_name: somafractalmemory_kafka
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=kafka"
     environment:
       KAFKA_PROCESS_ROLES: 'broker,controller'
       KAFKA_NODE_ID: 1
@@ -129,7 +144,10 @@ services:
       dockerfile: Dockerfile
       args:
         ENABLE_REAL_EMBEDDINGS: "0"
-    container_name: somafractalmemory_kube
+    container_name: somafractalmemory_consumer
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=consumer"
     profiles: [consumer]
     command: ["sh", "-c", "until nc -z kafka 9092; do echo 'Waiting for Kafka...'; sleep 2; done; exec python scripts/run_consumers.py"]
     environment:
@@ -164,7 +182,10 @@ services:
       dockerfile: Dockerfile
       args:
         ENABLE_REAL_EMBEDDINGS: "1"
-    container_name: soma_test_api
+    container_name: somafractalmemory_test_api
+    labels:
+      - "com.soma.project=somafractalmemory"
+      - "com.soma.service=test_api"
     ports:
       - "8888:9595"
     environment:
