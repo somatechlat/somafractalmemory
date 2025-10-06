@@ -7,6 +7,8 @@ SomaFractalMemory can be configured through three mechanisms, evaluated in the f
 
 Unless stated otherwise, every option is optional and falls back to sensible defaults for local development.
 
+> **Secret management:** Never commit production credentials to `.env` files. Inject `SOMA_API_TOKEN`, Langfuse keys, Fernet encryption keys, and database passwords via your secret manager (AWS Secrets Manager, Google Secret Manager, HashiCorp Vault, etc.) or CI/CD-provisioned Kubernetes/Docker secrets. The samples in this repository are placeholders only.
+
 ---
 
 ## Core Environment Variables

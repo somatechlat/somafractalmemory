@@ -12,17 +12,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
-COPY requirements.txt api-requirements.txt ./
-RUN pip install --upgrade pip && pip wheel --no-cache-dir -r requirements.txt -r api-requirements.txt -w /wheels
+COPY requirements-runtime.txt ./
+RUN pip install --upgrade pip && pip wheel --no-cache-dir -r requirements-runtime.txt -w /wheels
 
 FROM base AS runtime
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
-# Copy only necessary application code (excluding tests, docs, etc.)
+# Copy runtime application code (API, CLI, consumers)
 COPY somafractalmemory ./somafractalmemory
+COPY workers ./workers
+COPY eventing ./eventing
+COPY langfuse ./langfuse
 COPY scripts/docker-entrypoint.sh scripts/docker-entrypoint.sh
-RUN chmod +x scripts/docker-entrypoint.sh
+RUN chmod +x scripts/docker-entrypoint.sh && \
+    useradd --system --uid 1000 --home /home/appuser --create-home appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 9595
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

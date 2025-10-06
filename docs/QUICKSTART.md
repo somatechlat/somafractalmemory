@@ -20,10 +20,10 @@ python -m venv .venv && source .venv/bin/activate && pip install -e .
 
 ## 2. Start Supporting Services (Docker Compose)
 ```bash
-cp .env.example .env
 docker compose up -d
+docker compose --profile consumer up -d somafractalmemory_kube
 ```
-The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the API (`http://localhost:9595`), the background consumer, and a sandbox API (`http://localhost:8888`).
+The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the FastAPI service on `http://localhost:9595`, and a sandbox API on `http://localhost:8888`. The consumer runs in its own profile, so make sure to keep the second command. If you also run the CLI/tests outside Docker, copy `.env.example` to `.env` so those processes see the same defaults.
 
 Stop the stack with `docker compose down` (add `-v` to wipe volumes).
 
@@ -73,7 +73,7 @@ curl -X POST http://localhost:9595/recall \
   -H 'Content-Type: application/json' \
   -d '{"query": "API"}'
 ```
-Enable bearer auth by setting `SOMA_API_TOKEN` in `.env`; include `Authorization: Bearer <token>` headers when enabled.
+Enable bearer auth by setting `SOMA_API_TOKEN` in the API service environment (edit `docker-compose.yml` or an override file); include `Authorization: Bearer <token>` headers when enabled.
 
 Docs and metrics:
 - Swagger UI: <http://localhost:9595/docs>
@@ -82,11 +82,11 @@ Docs and metrics:
 ---
 
 ## 6. Explore Events & Consumers
-1. Ensure `EVENTING_ENABLED=true` in `.env`.
+1. Ensure `EVENTING_ENABLED` remains `true` in the API and consumer environment blocks (the compose file sets this by default).
 2. Produce a memory (CLI or API).
 3. Observe consumer logs:
    ```bash
-   docker compose logs -f consumer
+  docker compose --profile consumer logs -f somafractalmemory_kube
    ```
 4. Check consumer metrics at <http://localhost:8001/metrics>.
 

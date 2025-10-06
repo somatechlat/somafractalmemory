@@ -15,7 +15,7 @@ This document is the operational source of truth for developers and operators. I
    uv sync --extra api --extra events
    ```
     Or create a classic venv and install editable: `python -m venv .venv && source .venv/bin/activate && pip install -e .`
-3. Adjust `.env` to match the target mode (`MEMORY_MODE`, ports, credentials). The file is consumed by every Docker service via `env_file: .env` in `docker-compose.yml`.
+3. Adjust `.env` to match the target mode (`MEMORY_MODE`, ports, credentials) when running the CLI or scripts directly. Docker Compose now inlines service environment blocks, so edit `docker-compose.yml` (or an override file) if you need different container settings.
 
 ---
 
@@ -24,20 +24,24 @@ This document is the operational source of truth for developers and operators. I
    ```bash
    docker compose build
    ```
-2. **Start everything** (Redis, Postgres, Qdrant, Kafka, API, consumer, sandbox API):
+2. **Start core services** (Redis, Postgres, Qdrant, Kafka, API, sandbox API):
    ```bash
    docker compose up -d
    ```
-3. **Access endpoints**:
+3. **Start the consumer profile** (required for event reconciliation):
+   ```bash
+   docker compose --profile consumer up -d somafractalmemory_kube
+   ```
+4. **Access endpoints**:
    * API: <http://localhost:9595>
    * Sandbox API (`test_api`): <http://localhost:8888>
    * Prometheus metrics: `/metrics`
    * Swagger UI: `/docs`
-4. **Stop services** while preserving data:
+5. **Stop services** while preserving data:
    ```bash
    docker compose down
    ```
-5. **Wipe volumes** when you need a clean slate:
+6. **Wipe volumes** when you need a clean slate:
    ```bash
    docker compose down -v
    ```
@@ -151,7 +155,7 @@ Example usage:
 ```bash
 ./scripts/start_stack.sh development --with-broker
 ```
-Follow up with `docker compose up -d api consumer` to launch the application containers against those services.
+Follow up with `docker compose up -d api` and `docker compose --profile consumer up -d somafractalmemory_kube` to launch the application containers against those services.
 
 ---
 

@@ -1,21 +1,21 @@
-# Kafka / Redpanda Operations
+# Kafka / Kafka-Compatible Operations
 
-SomaFractalMemory uses Redpanda (Kafka-compatible) for event streaming. This guide explains how to run the open-source stack that ships with the repository and how the workers consume events.
+SomaFractalMemory ships with a single-node Confluent Kafka broker (previously Redpanda) for event streaming. This guide explains how to run the open-source stack that ships with the repository and how the workers consume events.
 
 ---
 
 ## Services
 | Component | Source | Purpose |
 |-----------|--------|---------|
-| Redpanda | `docker-compose.yml` (`soma_redpanda`) | Kafka-compatible broker storing `memory.events`. |
-| Consumer | `docker-compose.yml` (`soma_consumer`) | Runs `python scripts/run_consumers.py`, subscribing to `memory.events`. |
+| Kafka broker | `docker-compose.yml` (`kafka`) | Kafka-compatible broker storing `memory.events`. |
+| Consumer | `docker-compose.yml` (`somafractalmemory_kube`, profile `consumer`) | Runs `python scripts/run_consumers.py`, subscribing to `memory.events`. |
 | Registry (optional) | `docker-compose.dev.yml` (`apicurio`) | Schema registry started via `start_stack.sh --with-broker`. |
 
 ---
 
 ## Environment Variables
-Set in `.env` (shared by API and consumer):
-- `KAFKA_BOOTSTRAP_SERVERS` – broker address, defaults to `redpanda:9092` inside Docker.
+Set inline in `docker-compose.yml` (mirror in `.env` when running locally):
+- `KAFKA_BOOTSTRAP_SERVERS` – broker address, defaults to `kafka:9092` inside Docker.
 - `KAFKA_MEMORY_EVENTS_TOPIC` – topic used by producers/consumers (`memory.events`).
 - `KAFKA_CONSUMER_GROUP` – consumer group id (`soma-consumer-group`).
 - `EVENTING_ENABLED` – turn event publishing on/off in the API layer.
@@ -44,26 +44,26 @@ The producer validates each payload against `schemas/memory.event.json` and uses
 3. Record Prometheus metrics (`consumer_messages_consumed_total`, success/failure counters, latency histograms).
 4. Expose metrics on `http://localhost:8001/metrics` (override with `CONSUMER_METRICS_PORT`).
 
-This consumer runs inside the `consumer` service defined in `docker-compose.yml`. Start it manually with:
+This consumer runs inside the `somafractalmemory_kube` service (profile `consumer`) defined in `docker-compose.yml`. Start it manually with:
 ```bash
-docker compose up -d consumer
+docker compose --profile consumer up -d somafractalmemory_kube
 ```
-Logs are available via `docker compose logs -f consumer`.
+Logs are available via `docker compose --profile consumer logs -f somafractalmemory_kube`.
 
 ---
 
 ## Local Broker with `start_stack.sh`
 To run only the messaging layer without the full compose stack:
 ```bash
-./scripts/start_stack.sh development --with-broker   # starts Redpanda + Apicurio
+./scripts/start_stack.sh development --with-broker   # starts the docker-compose broker (Kafka; legacy Redpanda if defined)
 ```
 Combine this with a locally running API (e.g., `uvicorn examples.api:app`) after exporting the matching environment variables (such as `KAFKA_BOOTSTRAP_SERVERS=localhost:9092`).
 
 ---
 
 ## Operational Tips
-- The API and consumer depend on the same environment variables; keep `.env` in sync.
-- If you disable eventing (`EVENTING_ENABLED=false`), you may also stop the `consumer` service to save resources.
+- The API and consumer depend on the same environment variables; edit them together in `docker-compose.yml` and keep `.env` in sync for local CLI/tests.
+- If you disable eventing (`EVENTING_ENABLED=false`), you may also stop the `somafractalmemory_kube` service to save resources.
 - When running outside Docker, install `confluent-kafka` and `aiokafka` locally and adjust `KAFKA_BOOTSTRAP_SERVERS` accordingly.
 - For TLS/SASL clusters, populate the corresponding environment variables. The producer and consumer pass them straight to `confluent_kafka`/`aiokafka`.
 

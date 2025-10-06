@@ -35,7 +35,7 @@
 ---
 
 ## ⚙️ Settings & Configuration
-All runtime services share a `.env` file (Docker Compose loads it via `env_file:`). The key variables are:
+These are the key environment variables consumed by the API, CLI, and consumer processes. The Docker Compose stack sets them inline in `docker-compose.yml`; copy `.env.example` when you need them available to local scripts or direct process runs.
 
 | Variable | Description | Default / Example |
 |----------|-------------|--------------------|
@@ -99,7 +99,7 @@ docker compose build
 # Start Redis, Postgres, Qdrant, Kafka (single Confluent broker), API, and workers
 docker compose up -d
 ```
-The API listens on **http://localhost:9595**. A sandbox copy runs on **http://localhost:8888** when the `test_api` service is started.
+The API listens on **http://localhost:9595**. Start the background consumer with `docker compose --profile consumer up -d somafractalmemory_kube`. A sandbox copy runs on **http://localhost:8888** when the `test_api` service is started.
 
 ---
 
@@ -113,9 +113,10 @@ The API listens on **http://localhost:9595**. A sandbox copy runs on **http://lo
 * **Full parity stack** – Mirror production wiring with Kafka and workers:
   ```bash
   ./scripts/start_stack.sh evented_enterprise
-  docker compose up -d api consumer
+  docker compose up -d api
+  docker compose --profile consumer up -d somafractalmemory_kube
   ```
-* **Environment changes** – Edit `.env`, then restart the affected services (`docker compose up -d api consumer`). Containers read configuration on startup.
+* **Environment changes** – Adjust the environment block in `docker-compose.yml` (or an override file), then restart the affected services. For example: `docker compose up -d api` and `docker compose --profile consumer up -d somafractalmemory_kube`.
 * **Stopping** – Preserve data with named volumes:
   ```bash
   docker compose down

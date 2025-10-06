@@ -15,7 +15,7 @@ qdrant:
   # url: "http://localhost:6333"
 
 eventing:
-  # Kafka / Redpanda connection settings (examples)
+  # Kafka connection settings (defaults target docker-compose service `kafka`)
   bootstrap_servers: "localhost:9092"
   # Optional schema registry (Apicurio/Karapace) endpoint
   schema_registry_url: "http://localhost:8080"
