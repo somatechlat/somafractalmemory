@@ -21,10 +21,10 @@
 ├─────────────────────────────────────────────────────────────────┤
 │           Infrastructure Services (All Running)                  │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │ PostgreSQL  │ │    Redis    │ │   Qdrant    │ │ Redpanda/   │ │
-│  │ (Primary    │ │ (Cache +    │ │ (Vector     │ │ Kafka       │ │
-│  │ Database)   │ │ Sessions)   │ │ Search)     │ │ (Events)    │ │
-│  │ Port: 5432  │ │ Port: 6379  │ │ Port: 6333  │ │ Port: 9092  │ │
+│  │ PostgreSQL  │ │    Redis    │ │   Qdrant    │ │ Kafka       │ │
+│  │ (Primary    │ │ (Cache +    │ │ (Vector     │ │ (Events)    │ │
+│  │ Database)   │ │ Sessions)   │ │ Search)     │ │ Port: 9092  │ │
+│  │ Port: 5432  │ │ Port: 6379  │ │ Port: 6333  │ │ (KRaft)     │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -38,13 +38,13 @@
 | **PostgreSQL** | ✅ Running | 5432 | Primary data storage |
 | **Redis** | ✅ Running | 6379 | Caching and session management |
 | **Qdrant** | ✅ Running | 6333 | Vector database for embeddings |
-| **Redpanda** | ✅ Running | 9092 | Kafka-compatible event streaming |
+| **Kafka (Confluent KRaft)** | ✅ Running | 9092 | Kafka-compatible event streaming |
 | **Consumers** | ✅ Running | N/A | Event processing (Kafka connectivity healthy) |
 
 #### **✅ Resource Configuration**
 - **API Server**: 2GB memory, 1.2 CPU cores (resolved OOMKill issues)
 - **PostgreSQL**: 2GB memory, optimized for OLTP workloads
-- **Redpanda**: 2GB memory limit, 1GB request
+- **Kafka**: 2GB memory limit, 1GB request (single-node KRaft broker)
 - **All services**: Proper resource limits and requests configured
 
 ## 🔧 **Changes Made for Perfect Deployment**
@@ -72,7 +72,7 @@
 - **PostgreSQL**: Primary database with connection pooling (15 connections)
 - **Redis**: Caching layer for session management
 - **Qdrant**: Vector database for semantic search capabilities
-- **Redpanda**: Kafka-compatible event streaming platform
+- **Kafka**: Confluent single-broker KRaft runtime for event streaming
 - **Background Workers**: Async event processing consumers
 
 ## 🛠️ **Build & Deploy From Source (Oct 1, 2025)**
@@ -150,7 +150,7 @@ kubectl get pods -l app.kubernetes.io/instance=soma-memory
 # soma-memory-somafractalmemory-postgres-6956578ffd-tnwmg   1/1     Running  ✅
 # soma-memory-somafractalmemory-qdrant-65bbc5f45f-cmn69     1/1     Running  ✅
 # soma-memory-somafractalmemory-redis-5956b8cc79-9j4bs      1/1     Running  ✅
-# soma-memory-somafractalmemory-redpanda-79bfd646f5-vcpgp   1/1     Running  ✅
+# soma-memory-somafractalmemory-kafka-79bfd646f5-vcpgp      1/1     Running  ✅
 ```
 
 ## ✅ **Validation Summary (October 1, 2025)**

@@ -180,7 +180,7 @@ curl -s http://127.0.0.1:9595/healthz | jq .
 ./scripts/port_forward_api.sh stop
 ```
 
-The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, and the Kafka broker (value block still named `redpanda`), plus PVCs when persistence is enabled. Environment variables match the table above; consult `docs/CANONICAL_DOCUMENTATION.md` for the full day-two workflow and `docs/PRODUCTION_READINESS.md` for a production checklist.
+The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, and the Kafka broker (value block still named `redpanda`), plus PVCs when persistence is enabled. Environment variables match the table above; consult `docs/CANONICAL_DOCUMENTATION.md` for the full day-two workflow (including [§ 9 Storage & Persistence](docs/CANONICAL_DOCUMENTATION.md#9-storage--persistence-reference)) and `docs/PRODUCTION_READINESS.md` for a deployment checklist.
 
 ---
 

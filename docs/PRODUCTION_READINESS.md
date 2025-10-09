@@ -3,7 +3,9 @@
 This guide documents how to prepare, deploy and validate a production-capable
 Soma Fractal Memory cluster. It combines operational best-practices, the
 Helm-based deployment steps used for local Kind clusters and explicit
-verification steps for eventing, persistence and vector indexing.
+verification steps for eventing, persistence and vector indexing. Refer to
+[§ 9 Storage & Persistence Reference](CANONICAL_DOCUMENTATION.md#9-storage--persistence-reference)
+for a component-by-component map of where data lives across Docker, Helm, and raw Kubernetes manifests.
 
 > Note: this guide is intentionally prescriptive so operators can reproduce
 > deployments reliably. For development flows (quick iteration) see

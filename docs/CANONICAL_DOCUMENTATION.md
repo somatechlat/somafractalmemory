@@ -91,7 +91,8 @@ kubectl get pods -n soma-memory
 ```
 
 For production-grade persistence, pass the hardened override file and adjust
-storage classes for your cluster:
+storage classes for your cluster (see [§ 9 Storage & Persistence Reference](#9-storage--persistence-reference)
+for a detailed breakdown of each volume):
 
 ```bash
 helm upgrade --install soma-memory ./helm \
@@ -139,6 +140,8 @@ is missing, the script prints the failing component and exits non-zero.
    backward compatibility, patch that; otherwise patch the Kafka deployment.
 - For cloud clusters override the `storageClass` values in
    `helm/values-production.yaml` (e.g., `gp3`, `premium-rwo`, `managed-csi`).
+- Review [§ 9 Storage & Persistence Reference](#9-storage--persistence-reference) for Docker volume locations,
+  Helm flags, and backup strategies.
 
 ---
 
@@ -238,6 +241,92 @@ Add `--values helm/values-production.yaml` (plus `postgres/qdrant/redis/redpanda
 | Stop + delete data volumes | `docker compose down -v` |
 | Remove local Qdrant file | `rm -rf qdrant.db` |
 | Reset `.env` | Re-copy from `.env.example` |
+
+---
+
+## 9. Storage & Persistence Reference
+
+Use this section to locate stateful data across Docker Compose, Helm, and the raw Kubernetes manifests, and to plan backups for each environment.
+
+### 9.1 Docker Compose stacks
+
+**Primary stack (`docker-compose.yml`)**
+
+| Service | Docker volume | Container mount | Purpose |
+| --- | --- | --- | --- |
+| `redis` | `redis_data` | `/data` | Redis append-only file (AOF). |
+| `qdrant` | `qdrant_storage` | `/qdrant/storage` | Vector index collections. |
+| `postgres` | `postgres_data` | `/var/lib/postgresql/data` | PostgreSQL data directory. |
+| `kafka` | `kafka_data` | `/var/lib/kafka/data` | KRaft log segments and metadata. |
+
+- The API and worker containers are stateless; durability lives in the services above.
+- Docker manages the volumes; back up with `docker run --rm -v <name>:/data busybox tar -C /data -cf backup.tar .`.
+
+**Development overlay (`docker-compose.dev.yml`)**
+
+- Adds bind mounts (`.:/app`, Docker socket) for hot reload and Testcontainers.
+- Persistent stores continue to rely on the named volumes listed above.
+
+**Test stack (`docker-compose.test.yml`)**
+
+| Service | Volume | Mount |
+| --- | --- | --- |
+| `postgres` | `postgres_test_data` | `/var/lib/postgresql/data` |
+| `redis` | `redis_test_data` | `/data` |
+| `qdrant` | `qdrant_test_storage` | `/qdrant/storage` |
+| `kafka` | `redpanda_test_data` | `/bitnami/kafka` |
+
+Dedicated volumes keep CI/test data isolated. Reset them with `docker compose -f docker-compose.test.yml down -v`.
+
+### 9.2 Raw Kubernetes manifests (`k8s/`)
+
+The baseline manifests target single-node Kind clusters with `hostPath` persistent volumes:
+
+| Component | PVC | Host path |
+| --- | --- | --- |
+| PostgreSQL | `pvc-postgres` | `/var/lib/somafractalmemory/postgres` |
+| Redis | `pvc-redis` | `/var/lib/somafractalmemory/redis` |
+| Qdrant | `pvc-qdrant` | `/var/lib/somafractalmemory/qdrant` |
+
+These host-local paths survive pod restarts but are node-bound. Backups require copying data from the Kind node (for example, `docker cp <node>:/var/lib/somafractalmemory/postgres ./backup`). Reserve this setup for local testing, not production clusters.
+
+### 9.3 Helm chart (`helm/`)
+
+Persistence toggles live under `*.persistence.enabled`. Defaults keep everything ephemeral (`emptyDir`) in `values.yaml`, while `values-production.yaml` enables PVCs and larger sizes.
+
+| Component | Values key | Default | Production override |
+| --- | --- | --- | --- |
+| PostgreSQL | `postgres.persistence.enabled` | `false` | `true`, 50 Gi |
+| Redis | `redis.persistence.enabled` | `false` | `true`, 20 Gi |
+| Qdrant | `qdrant.persistence.enabled` | `false` | `true`, 200 Gi |
+| Redpanda/Kafka | `redpanda.persistence.enabled` | `false` | `true`, 200 Gi |
+
+Enable PVCs with:
+
+```bash
+helm upgrade --install soma-memory ./helm \
+   -n soma-memory \
+   --values helm/values-production.yaml \
+   --set postgres.persistence.storageClass=fast-ssd \
+   --set qdrant.persistence.storageClass=fast-ssd \
+   --set redpanda.persistence.storageClass=throughput \
+   --wait
+```
+
+Templates create PVCs named `<release>-<component>-data` (or `-storage`). Specify storage classes that match your cloud or on-prem tier.
+
+### 9.4 Backup & inspection tips
+
+- **Docker named volumes** – `docker run --rm -v <vol>:/data busybox ls /data` to inspect, `tar` for full backups.
+- **HostPath PVs** – exec into pods for logical dumps (`pg_dump`, `redis-cli --rdb`, Qdrant exports) or copy data directly from the host path.
+- **Helm PVCs** – rely on storage snapshots or scheduled backup jobs inside the cluster; document `kubectl exec` workflows for Postgres and Qdrant.
+
+### 9.5 Recommended follow-ups
+
+1. **Local dev:** document volume backup commands in onboarding and add a `make clean-volumes` helper to prune stale volumes when resetting the stack.
+2. **Production:** deploy with `helm/values-production.yaml`, override storage classes, and ensure a backup policy exists for each PVC.
+3. **Testing:** keep test compose volumes isolated; prune them automatically in CI after each run.
+4. **Monitoring:** track disk usage across Redis/Postgres/Qdrant/Kafka volumes and alert at 80 % utilization.
 
 ---
 

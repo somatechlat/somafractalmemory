@@ -60,7 +60,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-lock.yaml
 tests/
-docs/
 site/
 meta/
 

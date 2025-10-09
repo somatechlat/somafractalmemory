@@ -198,7 +198,21 @@ class RedisKeyValueStore(IKeyValueStore):
         # Always prepare an in-proc lock map for tests and fakeredis
         self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
         if testing and _fakeredis is not None:
-            self.client = _fakeredis.FakeRedis()
+            # Fakeredis >=2.30 running with redis-py 5+ requires an explicit RESP protocol
+            # to populate the attribute accessed inside FakeConnection._connect.
+            try:
+                self.client = _fakeredis.FakeRedis(protocol=3, decode_responses=False)
+            except TypeError:  # pragma: no cover - older fakeredis releases
+                self.client = _fakeredis.FakeRedis(decode_responses=False)
+            # Ensure future connections carry the protocol attribute when fakeredis
+            # falls back silently (defensive for mixed redis-py versions).
+            try:
+                conn = self.client.connection_pool.get_connection("PING")
+                if not hasattr(conn, "protocol"):
+                    conn.protocol = 3
+                self.client.connection_pool.release(conn)
+            except Exception:  # pragma: no cover - safe best-effort guard
+                pass
         else:
             self.client = redis.Redis(host=host, port=port, db=db)
 
