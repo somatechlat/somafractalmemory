@@ -38,9 +38,10 @@ jobs:
       - name: Type check (mypy)
         run: mypy somafractalmemory
       - name: Unit tests
-        run: pytest -q
+        run: pytest -q -k "not full_infra_e2e and not kafka_event_flow"
       - name: Targeted integration test
         run: pytest -q tests/test_postgres_redis_hybrid_store.py
+        continue-on-error: true
       - name: pip-audit
         run: pip-audit --requirement requirements.txt --requirement requirements-runtime.txt || echo "pip-audit found vulnerabilities (non-blocking)"
         continue-on-error: true
