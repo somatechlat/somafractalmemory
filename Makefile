@@ -1,7 +1,8 @@
 .PHONY: setup test lint api metrics cli bench clean uv-install lock \
         help prereqs prereqs-docker prereqs-k8s settings \
         compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health compose-consumer-up compose-consumer-down compose-print-ports \
-        runtime-build kind-up kind-down kind-load helm-dev-install helm-dev-uninstall helm-dev-health
+	runtime-build kind-up kind-down kind-load helm-dev-install helm-dev-uninstall helm-dev-health \
+	setup-dev setup-dev-k8s quickstart docs-build
 
 # ------------------------------------------------------------
 # Variables and dynamic detection
@@ -66,6 +67,28 @@ settings: ## Print detected settings (ports, images, helm values)
 	echo "  service.port:     $(DEV_SERVICE_PORT)" && \
 	echo "  service.nodePort: $(DEV_NODEPORT)" && \
 	echo "  health:           http://127.0.0.1:$(DEV_NODEPORT)/healthz"
+
+# Aggregated canonical setups
+setup-dev: prereqs-docker ## Canonical local setup: build (optional), up, wait for health, print endpoints
+	@echo "→ Starting Docker Compose stack (API on http://127.0.0.1:$(API_PORT))"; \
+	$(MAKE) -s compose-up; \
+	$(MAKE) -s compose-health; \
+	$(MAKE) -s settings
+
+setup-dev-k8s: prereqs-k8s ## Canonical Kind+Helm dev slice: create cluster, build runtime, load, install, health, print endpoints
+	@echo "→ Ensuring Kind cluster 'sfm' is running"; \
+	$(MAKE) -s kind-up; \
+	$(MAKE) -s runtime-build; \
+	$(MAKE) -s kind-load; \
+	$(MAKE) -s helm-dev-install; \
+	$(MAKE) -s helm-dev-health; \
+	$(MAKE) -s settings
+
+quickstart: setup-dev ## Alias for setup-dev
+
+docs-build: ## Build MkDocs documentation (if mkdocs is installed)
+	@command -v mkdocs >/dev/null 2>&1 || { echo "mkdocs not found, skipping"; exit 0; }
+	mkdocs build -q
 
 uv-install:
 	@which uv >/dev/null 2>&1 || (curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y)

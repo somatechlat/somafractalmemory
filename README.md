@@ -93,13 +93,10 @@ The uv path is preferred for reliability and speed.
 
 ### 2️⃣ Docker Compose (full stack)
 ```bash
-# Build images after local changes
-docker compose build
-
-# Start Redis, Postgres, Qdrant, Kafka (single Confluent broker), API, and workers
-docker compose up -d
+# Canonical entrypoint (build, start, wait for health, print endpoints)
+make setup-dev
 ```
-The API listens on **http://localhost:9595**. Start the background consumer with `docker compose --profile consumer up -d somafractalmemory_kube`. A sandbox copy runs on **http://localhost:8888** when the `test_api` service is started.
+The API listens on **http://localhost:9595**. Start the background consumer with `make compose-consumer-up`. A sandbox API can be reached at **http://localhost:8888** when `test_api` is running.
 
 ---
 
@@ -131,21 +128,11 @@ The API listens on **http://localhost:9595**. Start the background consumer with
 ---
 
 ## ☸️ Kubernetes Deployment
-The Helm chart in `helm/` deploys the API, consumer, and all backing services into a namespace (defaults to `soma-memory`). The default `values.yaml` is tuned for local Kind clusters: it pins the application image to `somatechlat/soma-memory-api:dev-local-20251002` and uses `image.pullPolicy=Never` so the node consumes the image you loaded with `kind load`.
+The Helm chart in `helm/` deploys the API, consumer, and all backing services into a namespace (defaults to `soma-memory`). For local development on Kind, use the canonical entrypoint:
 
 ```bash
-# Load the local image into Kind (skip when pointing at a remote registry)
-kind load docker-image somatechlat/soma-memory-api:dev-local-20251002 \
-  --name soma-fractal-memory
-
-helm upgrade --install soma-memory ./helm \
-  --namespace soma-memory \
-  --create-namespace \
-  --wait --timeout=600s
-
-kubectl get pods -n soma-memory
+make setup-dev-k8s
 ```
-
 When deploying to a real cluster, override the image coordinates and pull policy:
 
 ```bash
@@ -172,12 +159,12 @@ helm upgrade --install soma-memory ./helm \
   --wait --timeout=600s
 ```
 
-Expose the API locally with the idempotent helper (wraps `kubectl port-forward` and keeps logs under `/tmp/port-forward-*.log`):
+Expose the API locally with NodePort health (dev slice) or the port-forward helper:
 
 ```bash
-./scripts/port_forward_api.sh start
-curl -s http://127.0.0.1:9595/healthz | jq .
-./scripts/port_forward_api.sh stop
+make helm-dev-health   # NodePort 30797 for dev slice
+# or
+./scripts/port_forward_api.sh start && curl -s http://127.0.0.1:9595/healthz | jq . && ./scripts/port_forward_api.sh stop
 ```
 
 The chart renders Deployments for the API, consumer, Redis, Qdrant, Postgres, and the Kafka broker (value block still named `redpanda`), plus PVCs when persistence is enabled. Environment variables match the table above; consult `docs/CANONICAL_DOCUMENTATION.md` for the full day-two workflow (including [§ 9 Storage & Persistence](docs/CANONICAL_DOCUMENTATION.md#9-storage--persistence-reference)) and `docs/PRODUCTION_READINESS.md` for a deployment checklist.
