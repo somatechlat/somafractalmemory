@@ -22,17 +22,17 @@ pip install -e .[api,events,dev]
 
 ## 2. Start Supporting Services (Docker Compose)
 ```bash
-docker compose up -d
+make setup-dev
 # optional: start the consumer profile when you need background reconciliation
-docker compose --profile consumer up -d somafractalmemory_kube
+make compose-consumer-up
 ```
 The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the FastAPI service on `http://localhost:9595`, and an auxiliary API on `http://localhost:8888`. Configuration lives directly in `docker-compose.yml`; no `.env` copy is required.
 
 Health check and teardown:
 ```bash
-curl -s http://localhost:9595/healthz | jq .
-docker compose logs -f api  # stop with Ctrl+C when ready
-docker compose down          # add -v to wipe volumes
+make compose-health
+make compose-logs  # stop with Ctrl+C when ready
+make compose-down  # add '-v' equivalent: make compose-down-v
 ```
 
 ---
@@ -91,6 +91,15 @@ Docs and metrics:
 
 Kubernetes alternative (dev):
 - Use the Helm chart with `helm/values-dev-port9797.yaml` to run the API on 9797 and expose it on your host via NodePort 30797. Then hit `http://127.0.0.1:30797/healthz`.
+ - Canonical entrypoint:
+   ```bash
+   make setup-dev-k8s
+   make helm-dev-health
+   ```
+ - Inspect resolved ports and endpoints:
+   ```bash
+   make settings
+   ```
 
 ---
 

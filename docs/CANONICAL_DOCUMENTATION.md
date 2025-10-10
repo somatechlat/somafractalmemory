@@ -21,30 +21,28 @@ This document is the operational source of truth for developers and operators. I
 ---
 
 ## 2. Build and Run the Stack
-1. **Build images** after code changes:
+1. **Canonical entrypoint (Compose)** after code changes:
    ```bash
-   docker compose build
+   make setup-dev
    ```
-2. **Start core services** (Redis, Postgres, Qdrant, Kafka, API, sandbox API):
+2. **Start the consumer profile** (required for event reconciliation):
    ```bash
-   docker compose up -d
+   make compose-consumer-up
    ```
-3. **Start the consumer profile** (required for event reconciliation):
-   ```bash
-   docker compose --profile consumer up -d somafractalmemory_kube
-   ```
-4. **Access endpoints**:
+3. **Access endpoints**:
    * API: <http://localhost:9595>
    * Sandbox API (`test_api`): <http://localhost:8888>
    * Prometheus metrics: `/metrics`
    * Swagger UI: `/docs`
+4. (Tip) Print resolved ports and NodePort: `make settings`.
+
 5. **Stop services** while preserving data:
    ```bash
-   docker compose down
+   make compose-down
    ```
 6. **Wipe volumes** when you need a clean slate:
    ```bash
-   docker compose down -v
+   make compose-down-v
    ```
 
 Named volumes created by the compose file: `redis_data`, `qdrant_storage`, `postgres_data`, `kafka_data`.
@@ -77,18 +75,7 @@ kind create cluster --config helm/kind-config.yaml
 ### 3.3 Load images and deploy the Helm chart
 
 ```bash
-# Load the API/worker image into the Kind node (repeat for any custom builds)
-kind load docker-image somatechlat/soma-memory-api:dev-local-20251002 \
-   --name soma-fractal-memory
-
-# Install/upgrade the full stack
-helm upgrade --install soma-memory ./helm \
-   --namespace soma-memory \
-   --create-namespace \
-   --wait --timeout=600s
-
-# Confirm everything is running
-kubectl get pods -n soma-memory
+make setup-dev-k8s
 ```
 
 For production-grade persistence, pass the hardened override file and adjust
@@ -109,14 +96,15 @@ helm upgrade --install soma-memory ./helm \
 kubectl get pvc -n soma-memory
 ```
 
-### 3.4 Expose the API on `localhost:9595`
+### 3.4 Expose or verify the API locally
 Use the idempotent helper (it runs `kubectl port-forward` via `nohup`, so it
 stays in the background and writes logs to `/tmp/port-forward-*.log` instead of
 blocking the terminal):
 
 ```bash
-./scripts/port_forward_api.sh start
-curl -s http://127.0.0.1:9595/healthz | jq .
+make helm-dev-health   # NodePort 30797 in the dev slice
+# or port-forward the default service port 9595
+./scripts/port_forward_api.sh start && curl -s http://127.0.0.1:9595/healthz | jq .
 ```
 
 Stop the forward with `./scripts/port_forward_api.sh stop`.
@@ -124,7 +112,7 @@ Stop the forward with `./scripts/port_forward_api.sh stop`.
 ### 3.5 Run the clustered CI checks
 
 ```bash
-./scripts/run_ci.sh
+make ci-verify-k8s
 ```
 
 The script waits for the API pod, recreates port-forwards (API, Postgres, Redis,
@@ -159,7 +147,7 @@ Example usage:
 ```bash
 ./scripts/start_stack.sh development --with-broker
 ```
-Follow up with `docker compose up -d api` and `docker compose --profile consumer up -d somafractalmemory_kube` to launch the application containers against those services.
+Follow up with `make compose-up` and `make compose-consumer-up` (or the equivalent `docker compose` commands) to launch the application containers against those services.
 
 ---
 
@@ -196,7 +184,7 @@ Important: keep `UVICORN_PORT=9595` in `.env` (or override the Helm value `env.U
 - **Unit tests** – `pytest -q` (no services required).
 - **Hybrid store integration** – `pytest -q tests/test_postgres_redis_hybrid_store.py` spins up containers via Testcontainers.
 - **Static checks** – `ruff check .`, `black --check .`, `bandit`, and `mypy` mirror the GitHub Actions pipeline.
-- **Documentation build** – `mkdocs build` (requires `mkdocs` and `mkdocs-material`).
+- **Documentation build** – `make docs-build` (requires `mkdocs` and `mkdocs-material`), `make docs-serve` to preview locally.
 
 ### 6.1 Async gRPC server (new)
 
