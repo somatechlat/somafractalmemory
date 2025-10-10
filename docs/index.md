@@ -7,3 +7,7 @@ Welcome to the documentation portal for **SomaFractalMemory (SFM)**. This site m
 - **Looking for deeper context?** Use the navigation bar to jump to architecture notes, configuration references, operational runbooks, and the API surface.
 
 All pages are generated from the checked-in Markdown files—no manual steps are required beyond keeping the docs up to date when code changes. If you spot discrepancies, update both the documentation and the relevant code/tests in the same change.
+
+> WARNING
+>
+> This project does NOT allow mocking, mimicking, or changing production values for tests. All agents must operate against real configurations and real services. Any test that requires altering live settings is prohibited. Use dedicated test environments and real data fixtures instead.

@@ -85,7 +85,7 @@ All commands accept `--mode`, `--namespace`, and optional `--config-json` to pro
 
 ---
 
-## FastAPI Surface (`examples/api.py`)
+## FastAPI Surface (`somafractalmemory/http_api.py`)
 The example application wires the selected `MEMORY_MODE` (default DEVELOPMENT) with Redis/Postgres/Qdrant based on environment, instruments endpoints for Prometheus, and serves OpenAPI at `/openapi.json`. Key routes:
 
 ### Memory Operations

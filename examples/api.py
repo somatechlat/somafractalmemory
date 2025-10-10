@@ -24,15 +24,29 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
+try:
+    # Prefer centralized settings and shared tracing if available
+    from common.config.settings import load_settings
+    from common.utils.trace import configure_tracer
+except Exception:  # pragma: no cover - optional in some environments
+    load_settings = None  # type: ignore
+    configure_tracer = None  # type: ignore
+
 
 def parse_coord(text: str) -> tuple[float, ...]:
     parts = [p.strip() for p in text.split(",") if p.strip()]
     return tuple(float(p) for p in parts)
 
 
-# Set up a basic tracer provider with console exporter
-trace.set_tracer_provider(TracerProvider())
-trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+# Configure tracing: prefer shared tracer if present, else fallback to console exporter
+if configure_tracer:
+    try:
+        configure_tracer("somafractalmemory-api")
+    except Exception:
+        pass
+else:
+    trace.set_tracer_provider(TracerProvider())
+    trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
 app = FastAPI(title="SomaFractalMemory API")
 # Instrument the FastAPI app for tracing
@@ -84,6 +98,17 @@ def _qdrant_config() -> dict[str, Any]:
 
 
 memory_mode = _resolve_memory_mode()
+
+# Load centralized settings (optional). Fallback to environment if not available.
+settings = None
+namespace_default = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+try:
+    if load_settings:
+        settings = load_settings()
+        namespace_default = getattr(settings, "namespace", namespace_default)
+except Exception:
+    settings = None
+
 config: dict[str, Any] = {
     "postgres": {"url": os.getenv("POSTGRES_URL")},
     "vector": {"backend": "qdrant"},
@@ -98,7 +123,7 @@ eventing_env = os.getenv("EVENTING_ENABLED")
 if eventing_env is not None:
     config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
 
-mem = create_memory_system(memory_mode, os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns"), config=config)
+mem = create_memory_system(memory_mode, namespace_default, config=config)
 print("[DEBUG] Memory mode:", memory_mode.value)
 print("[DEBUG] POSTGRES_URL used:", os.getenv("POSTGRES_URL"))
 if redis_host := redis_cfg.get("host"):

@@ -115,3 +115,7 @@ Re-run the quickstart anytime—fake Redis and local Qdrant make it easy to iter
 ---
 
 *Need more detail? Dive into `docs/CONFIGURATION.md` for tunables and `docs/api.md` for the full method reference.*
+
+> WARNING
+>
+> For team compliance, prefer running against the real Docker Compose or Kind stack for integration and contract tests. Avoid mocks and altered production values in tests. Use dedicated test environments and realistic fixtures.

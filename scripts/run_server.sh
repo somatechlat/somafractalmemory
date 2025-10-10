@@ -8,4 +8,4 @@ if [ -f ".venv/bin/activate" ]; then
 fi
 
 # Run uvicorn
-exec uvicorn examples.api:app --host 0.0.0.0 --port 9595 "$@"
+exec uvicorn somafractalmemory.http_api:app --host 0.0.0.0 --port 9595 "$@"

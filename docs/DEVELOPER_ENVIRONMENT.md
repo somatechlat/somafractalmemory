@@ -58,7 +58,7 @@ uv sync --extra dev --extra api --extra events
 # Run commands via uv (no need to activate venv)
 uv run soma --help
 uv run pytest -q
-uv run uvicorn examples.api:app --reload
+uv run uvicorn somafractalmemory.http_api:app --reload
 ```
 
 > Fallback (pip): If you cannot install uv, you can still use a classic venv and `pip install -e .[dev]`, but uv is the supported path for deterministic installs.
@@ -183,7 +183,7 @@ kubectl -n soma-memory logs pod/<consumer-pod> -c somafractalmemory-consumer   #
 During active development you may want the FastAPI server to restart automatically on code changes.
 ```bash
 # Inside the repo (with the venv activated)
-uvicorn examples.api:app --reload --host 0.0.0.0 --port 9595
+uvicorn somafractalmemory.http_api:app --reload --host 0.0.0.0 --port 9595
 ```
 If you run this **outside** of Kubernetes, you can skip the Helm/Kind steps and hit the API directly at `http://localhost:9595`.
 

@@ -1,6 +1,6 @@
 import json
 
-from examples.api import app
+from somafractalmemory.http_api import app
 
 
 def main() -> None:

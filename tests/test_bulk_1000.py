@@ -1,7 +1,7 @@
 # tests/test_bulk_1000.py
 """Load 1000 memories via the FastAPI API and verify they are stored.
 
-The test uses the example FastAPI app (examples/api.py) which runs in
+The test uses the FastAPI app (somafractalmemory/http_api.py) which runs in
 DEVELOPMENT mode. We point the app at the real Redis, Postgres and Qdrant
 services that are started by `docker compose up`.
 """

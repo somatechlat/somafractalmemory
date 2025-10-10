@@ -21,7 +21,7 @@ flowchart LR
 ---
 
 ## Data Flow Narrative
-1. **Entry points** – Applications call the factory from the CLI (`somafractalmemory/cli.py`) or the FastAPI service (`examples/api.py`). Both paths resolve to `create_memory_system(mode, namespace, config)`.
+1. **Entry points** – Applications call the factory from the CLI (`somafractalmemory/cli.py`) or the FastAPI service (`somafractalmemory/http_api.py`). Both paths resolve to `create_memory_system(mode, namespace, config)`.
 2. **Factory wiring** – The factory inspects the requested `MemoryMode`:
    * `DEVELOPMENT` – optional Redis cache, optional Postgres backing store, Qdrant or in-memory vectors; eventing off unless explicitly enabled.
    * `TEST` – fully in-memory backends (`fakeredis` and `InMemoryVectorStore`), eventing forced off.
@@ -47,7 +47,7 @@ flowchart LR
 | Graph Interface | `somafractalmemory/interfaces/graph.py` | Contract for graph backends; default is NetworkX. |
 | Storage Implementations | `somafractalmemory/implementations/storage.py` | Redis/Postgres/Qdrant clients, plus an in-memory vector store for tests. |
 | Eventing | `eventing/producer.py`, `workers/*` | Schema-validated event builder, Kafka producer, and consumer workers. |
-| API Example | `examples/api.py` | FastAPI surface used for local testing and documentation builds. |
+| API Service | `somafractalmemory/http_api.py` | FastAPI surface used for local testing and documentation builds. |
 | CLI | `somafractalmemory/cli.py` | Command-line interface wrapping the same factory as the API. |
 
 ---

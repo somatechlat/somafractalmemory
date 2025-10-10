@@ -19,7 +19,7 @@ This guide is aimed at contributors working directly with the codebase. It compl
 | Path | Purpose |
 |------|---------|
 | `somafractalmemory/` | Core library (factory, enterprise class, interfaces, implementations, CLI). |
-| `examples/api.py` | FastAPI example used for local runs and OpenAPI generation. |
+| `somafractalmemory/http_api.py` | FastAPI service used for local runs and OpenAPI generation. |
 | `eventing/` | Kafka event producer and schema definition. |
 | `workers/` | Consumers that reconcile events into Postgres/Qdrant. |
 | `scripts/` | Operational helpers (`start_stack.sh`, `run_consumers.py`, etc.). |
@@ -142,7 +142,7 @@ Use this path when you only need the API plus storage without Kafka:
 ```
 The script prints connection strings for each component. After it completes, run the example API with auto‑reload:
 ```bash
-uv run uvicorn examples.api:app --reload --host 0.0.0.0 --port 9595
+uv run uvicorn somafractalmemory.http_api:app --reload --host 0.0.0.0 --port 9595
 ```
 
 ---
@@ -160,7 +160,7 @@ Supply `--config-json` to point at a JSON file mirroring the `config` dictionary
 ### FastAPI Example
 Run the example app directly for rapid iteration:
 ```bash
-uvicorn examples.api:app --reload
+uvicorn somafractalmemory.http_api:app --reload
 ```
 On startup it:
 - Creates a development-mode memory system (`redis.testing=True`, Qdrant pointed at the configured host/port).

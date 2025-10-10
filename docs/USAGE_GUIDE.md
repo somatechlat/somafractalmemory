@@ -1,6 +1,6 @@
 # SomaFractalMemory API Usage Guide
 
-This guide explains how to use every public endpoint of the SomaFractalMemory (SFM) API, including inputs/outputs, parameters, environment settings, and real examples. It reflects the live server at port 9595 and the FastAPI app in `examples/api.py`.
+This guide explains how to use every public endpoint of the SomaFractalMemory (SFM) API, including inputs/outputs, parameters, environment settings, and real examples. It reflects the live server at port 9595 and the FastAPI app in `somafractalmemory/http_api.py`.
 
 - Base URL: http://localhost:9595
 - Auth: Optional Bearer token via `SOMA_API_TOKEN` (when set, required on all endpoints except health/ready/metrics).
@@ -186,4 +186,4 @@ This guide explains how to use every public endpoint of the SomaFractalMemory (S
 
 ---
 
-This guide mirrors the current live API’s OpenAPI (see `/openapi.json`) and the server code in `examples/api.py`.
+This guide mirrors the current live API’s OpenAPI (see `/openapi.json`) and the server code in `somafractalmemory/http_api.py`.

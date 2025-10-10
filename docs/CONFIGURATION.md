@@ -15,7 +15,7 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `MEMORY_MODE` | Selects backend wiring (`development`, `test`, `evented_enterprise`, `cloud_managed`). | `development` |
-| `SOMA_MEMORY_NAMESPACE` | Namespace passed to `create_memory_system` by `examples/api.py`. | `api_ns` |
+| `SOMA_MEMORY_NAMESPACE` | Namespace passed to `create_memory_system` by `somafractalmemory/http_api.py`. | `api_ns` |
 | `POSTGRES_URL` | PostgreSQL DSN read by the factory, API, CLI, and consumers. | *(unset)* |
 | `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints (host/port/db override URL when provided). | `redis://localhost:6379/0` (Compose exposes Redis on host 6381) |
 | `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint when not using a local file path. | `localhost` / `6333` |
@@ -50,7 +50,7 @@ Langfuse options (loaded by Pydantic settings via `common/config/settings.py`, e
 
 If Langfuse is not installed these values are ignored.
 
-> **Namespace layering:** `examples/api.py` reads `SOMA_MEMORY_NAMESPACE` (default `api_ns`) when it builds the factory config. Inside `SomaFractalMemoryEnterprise`, `SOMA_NAMESPACE` still overrides whatever the caller passed—use it for last-mile overrides when embedding the library directly.
+> **Namespace layering:** `somafractalmemory/http_api.py` reads `SOMA_MEMORY_NAMESPACE` (default `api_ns`) when it builds the factory config. Inside `SomaFractalMemoryEnterprise`, `SOMA_NAMESPACE` still overrides whatever the caller passed—use it for last-mile overrides when embedding the library directly.
 
 ---
 

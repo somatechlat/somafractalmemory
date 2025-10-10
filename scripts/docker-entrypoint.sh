@@ -3,7 +3,7 @@ set -euo pipefail
 
 log() { echo "[ENTRYPOINT] $(date -u +'%Y-%m-%dT%H:%M:%SZ') $*"; }
 
-APP_MODULE=${UVICORN_APP:-examples.api:app}
+APP_MODULE=${UVICORN_APP:-somafractalmemory.http_api:app}
 HOST=${UVICORN_HOST:-0.0.0.0}
 PORT=${UVICORN_PORT:-9595}
 WORKERS=${UVICORN_WORKERS:-4}
