@@ -2,7 +2,7 @@
         help prereqs prereqs-docker prereqs-k8s settings \
         compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health compose-consumer-up compose-consumer-down compose-print-ports \
 	runtime-build kind-up kind-down kind-load helm-dev-install helm-dev-uninstall helm-dev-health \
-	setup-dev setup-dev-k8s quickstart docs-build
+	setup-dev setup-dev-k8s quickstart docs-build docs-serve ci-verify ci-verify-k8s k8s-verify
 
 # ------------------------------------------------------------
 # Variables and dynamic detection
@@ -89,6 +89,29 @@ quickstart: setup-dev ## Alias for setup-dev
 docs-build: ## Build MkDocs documentation (if mkdocs is installed)
 	@command -v mkdocs >/dev/null 2>&1 || { echo "mkdocs not found, skipping"; exit 0; }
 	mkdocs build -q
+
+docs-serve: ## Serve MkDocs site locally (if mkdocs is installed)
+	@command -v mkdocs >/dev/null 2>&1 || { echo "mkdocs not found, install via 'uv run pip install mkdocs mkdocs-material'"; exit 1; }
+	mkdocs serve -a 127.0.0.1:8008
+
+ci-verify: prereqs-docker ## CI-style verify with Compose: up, wait for health, basic curls, tear down
+	$(MAKE) -s compose-up
+	$(MAKE) -s compose-health
+	@echo "→ Curl endpoints"; \
+	curl -fsS http://127.0.0.1:$(API_PORT)/healthz >/dev/null && echo "✓ /healthz"; \
+	curl -fsS http://127.0.0.1:$(API_PORT)/readyz >/dev/null && echo "✓ /readyz"; \
+	curl -fsS http://127.0.0.1:$(API_PORT)/metrics >/dev/null && echo "✓ /metrics"; \
+	echo "→ Stats (may rely on backends):"; \
+	curl -fsS http://127.0.0.1:$(API_PORT)/stats || true; \
+	$(MAKE) -s compose-down
+
+k8s-verify: prereqs-k8s ## Verify Helm dev via NodePort health
+	$(MAKE) -s helm-dev-health
+
+ci-verify-k8s: ## Run the repo's CI script for k8s if available
+	@command -v kubectl >/dev/null 2>&1 || { echo "kubectl not found"; exit 1; }
+	@[ -x scripts/run_ci.sh ] || { echo "scripts/run_ci.sh not found or not executable"; exit 1; }
+	bash scripts/run_ci.sh
 
 uv-install:
 	@which uv >/dev/null 2>&1 || (curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y)

@@ -199,6 +199,8 @@ For detailed endpoint-by-endpoint usage, parameters, and examples, see `docs/USA
 ## 🧪 Testing & CI
 * **Unit tests** – `pytest -q` can use lightweight in-memory/ephemeral paths.
 * **Integration & E2E** – Full infra tests (e.g., `tests/test_full_infra_e2e.py`) exercise API → Kafka → consumer → Postgres/Qdrant/Redis with `USE_REAL_INFRA=1`.
+* **CI quick checks** – `make ci-verify` (Compose: up → health → curls → down), `make ci-verify-k8s` (uses `scripts/run_ci.sh`).
+* **Docs** – `make docs-build` to build, `make docs-serve` to preview at http://127.0.0.1:8008.
 * **CI** – GitHub Actions run pytest, Ruff, Black, Bandit, mypy, and build the MkDocs documentation.
 * **Pre-commit** – A `.pre-commit-config.yaml` is provided; run `pre-commit install` to mirror the GitHub checks locally.
 
