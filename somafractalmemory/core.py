@@ -12,30 +12,14 @@ from enum import Enum
 from typing import Any, ContextManager, Dict, List, Optional, Tuple
 
 from cryptography.fernet import Fernet
-from dynaconf import Dynaconf
+from common.config.settings import load_settings
 import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Histogram
 from sklearn.ensemble import IsolationForest
 import structlog
 from transformers import AutoModel, AutoTokenizer
 
-# optional Langfuse import – provides stub when package missing
-try:
-    from langfuse import Langfuse
-except ImportError:  # pragma: no cover
-
-    class Langfuse:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def log(self, *args, **kwargs):
-            pass
-
-        def __getattr__(self, name):
-            def _noop(*a, **k):
-                return None
-
-            return _noop
+from langfuse import Langfuse
 
 
 from .interfaces.graph import IGraphStore
@@ -252,7 +236,8 @@ class SomaFractalMemoryEnterprise:
             self._fast_timestamps = np.zeros(self._fast_capacity, dtype="float64")
             self._fast_payloads: List[Optional[Dict[str, Any]]] = [None] * self._fast_capacity
 
-        config = Dynaconf(settings_files=[config_file], environments=True, envvar_prefix="SOMA")
+        # Load centralized settings via Pydantic-based loader from common/
+        config = load_settings(config_file=config_file)
 
         # Allow forcing hash-only embeddings (fast, deterministic) for tests/dev
         force_hash = os.getenv("SOMA_FORCE_HASH_EMBEDDINGS", "0").lower() in (
@@ -296,9 +281,16 @@ class SomaFractalMemoryEnterprise:
             registry=self.registry,
         )
 
-        lf_public = getattr(config, "langfuse_public", "pk-lf-123")
-        lf_secret = getattr(config, "langfuse_secret", "sk-lf-456")
-        lf_host = getattr(config, "langfuse_host", "http://localhost:3000")
+        # Langfuse configuration is provided via the shared SMFSettings.langfuse
+        try:
+            lf_public = getattr(config.langfuse, "public_key", "pk-lf-123")
+            lf_secret = getattr(config.langfuse, "secret_key", "sk-lf-456")
+            lf_host = getattr(config.langfuse, "host", "http://localhost:3000")
+        except Exception:
+            # Defensive fallback if config structure is unexpected
+            lf_public = "pk-lf-123"
+            lf_secret = "sk-lf-456"
+            lf_host = "http://localhost:3000"
         self.langfuse = Langfuse(public_key=lf_public, secret_key=lf_secret, host=lf_host)
 
         self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)

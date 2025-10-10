@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package somafractalmemory;
+
+import "google/protobuf/empty.proto";
+
+message Coordinate {
+  repeated double values = 1;
+}
+
+message Memory {
+  Coordinate coord = 1;
+  string payload_json = 2;
+  string memory_type = 3;
+}
+
+message StoreRequest {
+  Memory memory = 1;
+}
+
+message StoreResponse {
+  bool ok = 1;
+  string id = 2;
+}
+
+message RetrieveRequest {
+  Coordinate query = 1;
+  int32 top_k = 2;
+  string memory_type = 3;
+}
+
+message RecallResult {
+  repeated Memory memories = 1;
+}
+
+message DeleteRequest {
+  Coordinate coord = 1;
+}
+
+message DeleteResponse {
+  bool ok = 1;
+}
+
+message HealthResponse {
+  string status = 1;
+}
+
+service MemoryService {
+  rpc Store(StoreRequest) returns (StoreResponse);
+  rpc Recall(RetrieveRequest) returns (RecallResult);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Health(google.protobuf.Empty) returns (HealthResponse);
+}

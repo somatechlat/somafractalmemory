@@ -58,11 +58,16 @@ else
 fi
 
 log "Starting uvicorn app=$APP_MODULE host=$HOST port=$PORT workers=$WORKERS"
-exec uvicorn "$APP_MODULE" \
-  --host "$HOST" \
-  --port "$PORT" \
-  --workers "$WORKERS" \
-  --backlog "$BACKLOG" \
-  --timeout-keep-alive "$KEEP_ALIVE" \
-  --timeout-graceful-shutdown "$GRACEFUL" \
-  $EXTRA_ARGS
+if [[ "${START_ASYNC_GRPC:-0}" == "1" ]]; then
+  log "Starting async gRPC server"
+  exec python -m somafractalmemory.async_grpc_server
+else
+  exec uvicorn "$APP_MODULE" \
+    --host "$HOST" \
+    --port "$PORT" \
+    --workers "$WORKERS" \
+    --backlog "$BACKLOG" \
+    --timeout-keep-alive "$KEEP_ALIVE" \
+    --timeout-graceful-shutdown "$GRACEFUL" \
+    $EXTRA_ARGS
+fi

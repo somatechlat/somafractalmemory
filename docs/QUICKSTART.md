@@ -9,11 +9,13 @@ Follow these steps to get SomaFractalMemory running locally in minutes. All comm
 git clone https://github.com/somatechlat/somafractalmemory.git
 cd somafractalmemory
 curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
-uv sync --extra api --extra events
+uv sync --extra api --extra events --extra dev
 ```
-This installs the `somafractalmemory` package (editable) and the `soma` CLI into a managed virtualenv. If you prefer pip:
+This installs the `somafractalmemory` package (editable), the `soma` CLI, and developer tooling into `.venv`. Prefer `uv run …` to execute commands without manual activation. If you cannot use `uv`:
 ```bash
-python -m venv .venv && source .venv/bin/activate && pip install -e .
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[api,events,dev]
 ```
 
 ---
@@ -21,42 +23,50 @@ python -m venv .venv && source .venv/bin/activate && pip install -e .
 ## 2. Start Supporting Services (Docker Compose)
 ```bash
 docker compose up -d
+# optional: start the consumer profile when you need background reconciliation
 docker compose --profile consumer up -d somafractalmemory_kube
 ```
-The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the FastAPI service on `http://localhost:9595`, and a sandbox API on `http://localhost:8888`. The consumer runs in its own profile, so make sure to keep the second command. If you also run the CLI/tests outside Docker, copy `.env.example` to `.env` so those processes see the same defaults.
+The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the FastAPI service on `http://localhost:9595`, and an auxiliary API on `http://localhost:8888`. Configuration lives directly in `docker-compose.yml`; no `.env` copy is required.
 
-Stop the stack with `docker compose down` (add `-v` to wipe volumes).
+Health check and teardown:
+```bash
+curl -s http://localhost:9595/healthz | jq .
+docker compose logs -f api  # stop with Ctrl+C when ready
+docker compose down          # add -v to wipe volumes
+```
 
 ---
 
 ## 3. Store & Recall From Python
-```python
+```bash
+uv run python - <<'PY'
 from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
 
 mem = create_memory_system(
-    MemoryMode.DEVELOPMENT,
-    "quickstart",
-    config={
-        "redis": {"testing": True},
-        "qdrant": {"path": "./qdrant.db"},
-    },
+  MemoryMode.DEVELOPMENT,
+  "quickstart",
+  config={
+    "redis": {"testing": True},
+    "qdrant": {"path": "./qdrant.db"},
+  },
 )
 
 mem.store_memory((0.0, 0.0, 0.0), {"task": "quickstart", "importance": 4}, MemoryType.EPISODIC)
 print(mem.recall("quickstart"))
+PY
 ```
-Run the snippet from a Python shell with your virtual environment activated.
+This snippet exercises the in-process development mode (fakeredis + file-based Qdrant) without needing Docker.
 
 ---
 
 ## 4. Try the CLI
 ```bash
-soma --mode development --namespace quickstart store \
+uv run soma --mode development --namespace quickstart store \
   --coord "1,2,3" \
   --payload '{"note": "CLI demo", "importance": 2}'
 
-soma --mode development --namespace quickstart recall --query "CLI"
+uv run soma --mode development --namespace quickstart recall --query "CLI"
 ```
 Use `--config-json` if you need to specify Redis/Postgres/Qdrant endpoints explicitly.
 
@@ -67,7 +77,7 @@ With Docker Compose running, send requests to the FastAPI example:
 ```bash
 curl -X POST http://localhost:9595/store \
   -H 'Content-Type: application/json' \
-  -d '{"coord": "2,4,6", "payload": {"note": "API"}}
+  -d '{"coord": "2,4,6", "payload": {"note": "API"}}'
 
 curl -X POST http://localhost:9595/recall \
   -H 'Content-Type: application/json' \
@@ -82,13 +92,16 @@ Docs and metrics:
 ---
 
 ## 6. Explore Events & Consumers
-1. Ensure `EVENTING_ENABLED` remains `true` in the API and consumer environment blocks (the compose file sets this by default).
+1. Ensure `docker compose --profile consumer up -d somafractalmemory_kube` is running (consumer depends on Kafka and will retry until ready).
 2. Produce a memory (CLI or API).
 3. Observe consumer logs:
-   ```bash
+  ```bash
   docker compose --profile consumer logs -f somafractalmemory_kube
-   ```
-4. Check consumer metrics at <http://localhost:8001/metrics>.
+  ```
+4. Inspect Kafka topics if needed:
+  ```bash
+  docker compose exec kafka kafka-topics --bootstrap-server kafka:9092 --list
+  ```
 
 ---
 

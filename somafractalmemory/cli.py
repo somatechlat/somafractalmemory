@@ -1,6 +1,9 @@
 import argparse
+import asyncio
 import json
 from typing import Any
+
+from common.utils.logger import configure_logging
 
 from .core import MemoryType
 from .factory import MemoryMode, create_memory_system
@@ -77,11 +80,70 @@ def get_mode(mode_str: str) -> MemoryMode:
         ) from exc
 
 
+async def _run_command_async(args) -> None:
+    # Run the synchronous memory system functions in a thread to avoid blocking
+    # the async loop while keeping compatibility with current store/recall APIs.
+    config = load_config_json(args.config_json)
+    # configure logging for CLI
+    configure_logging("smf-cli")
+    mem = await asyncio.to_thread(create_memory_system, get_mode(args.mode), args.namespace, config)
+
+    if args.cmd == "store":
+        coord = parse_coord(args.coord)
+        payload = json.loads(args.payload)
+        mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
+        await asyncio.to_thread(mem.store_memory, coord, payload, memory_type=mtype)
+        print("OK")
+    elif args.cmd == "recall":
+        mtype = None
+        if args.mem_type:
+            mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
+        res = await asyncio.to_thread(mem.recall, args.query, top_k=args.top_k, memory_type=mtype)
+        print(json.dumps(res, indent=2))
+    elif args.cmd == "link":
+        fc = parse_coord(args.from_coord)
+        tc = parse_coord(args.to_coord)
+        await asyncio.to_thread(
+            mem.link_memories, fc, tc, link_type=args.link_type, weight=args.weight
+        )
+        print("OK")
+    elif args.cmd == "path":
+        fc = parse_coord(args.from_coord)
+        tc = parse_coord(args.to_coord)
+        path = await asyncio.to_thread(mem.find_shortest_path, fc, tc, link_type=args.link_type)
+        print(json.dumps([list(c) for c in path]))
+    elif args.cmd == "neighbors":
+        c = parse_coord(args.coord)
+        pairs = await asyncio.to_thread(
+            mem.graph_store.get_neighbors, c, link_type=args.link_type, limit=args.limit
+        )
+        coords = [list(co) for co, _ in pairs]
+        print(json.dumps(coords))
+    elif args.cmd == "stats":
+        print(json.dumps(await asyncio.to_thread(mem.memory_stats), indent=2))
+    elif args.cmd == "export-memories":
+        n = await asyncio.to_thread(mem.export_memories, args.path)
+        print(json.dumps({"exported": n}))
+    elif args.cmd == "import-memories":
+        n = await asyncio.to_thread(mem.import_memories, args.path, replace=args.replace)
+        print(json.dumps({"imported": n}))
+    elif args.cmd == "delete-many":
+        coords = [parse_coord(s) for s in args.coords.split(";") if s.strip()]
+        await asyncio.to_thread(mem.delete_many, coords)
+        print("OK")
+    elif args.cmd == "store-bulk":
+        items = json.load(open(args.file))
+        await asyncio.to_thread(mem.store_memories_bulk, items)
+        print("OK")
+    elif args.cmd == "range":
+        minc = parse_coord(args.min_coord)
+        maxc = parse_coord(args.max_coord)
+        res = await asyncio.to_thread(mem.range_query, minc, maxc, memory_type=args.mem_type)
+        print(json.dumps(res))
+
+
 def main() -> None:
-    """
-    Entry point for the SomaFractalMemory CLI.
-    Parses arguments and dispatches commands to the memory system.
-    """
+    """Entry point for the SomaFractalMemory CLI that dispatches to an async runner."""
     parser = argparse.ArgumentParser(prog="soma", description="SomaFractalMemory CLI")
     parser.add_argument(
         "--mode",
@@ -159,77 +221,8 @@ def main() -> None:
     p_range.add_argument("--type", dest="mem_type", default=None, choices=["episodic", "semantic"])
 
     args = parser.parse_args()
-    config = load_config_json(args.config_json)
-    mem = create_memory_system(get_mode(args.mode), args.namespace, config=config)
-
-    if args.cmd == "store":
-        coord = parse_coord(args.coord)
-        payload = json.loads(args.payload)
-        mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
-        mem.store_memory(coord, payload, memory_type=mtype)
-        print("OK")
-    elif args.cmd == "recall":
-        mtype = None
-        if args.mem_type:
-            mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
-        res = mem.recall(args.query, top_k=args.top_k, memory_type=mtype)
-        print(json.dumps(res, indent=2))
-    elif args.cmd == "link":
-        fc = parse_coord(args.from_coord)
-        tc = parse_coord(args.to_coord)
-        mem.link_memories(fc, tc, link_type=args.link_type, weight=args.weight)
-        print("OK")
-    elif args.cmd == "path":
-        fc = parse_coord(args.from_coord)
-        tc = parse_coord(args.to_coord)
-        path = mem.find_shortest_path(fc, tc, link_type=args.link_type)
-        print(json.dumps([list(c) for c in path]))
-    elif args.cmd == "neighbors":
-        c = parse_coord(args.coord)
-        pairs = mem.graph_store.get_neighbors(c, link_type=args.link_type, limit=args.limit)
-        coords = [list(co) for co, _ in pairs]
-        print(json.dumps(coords))
-    elif args.cmd == "stats":
-        print(json.dumps(mem.memory_stats(), indent=2))
-    # Removed export-graph and import-graph commands: not implemented in SomaFractalMemoryEnterprise
-    elif args.cmd == "export-memories":
-        n = mem.export_memories(args.path)
-        print(json.dumps({"exported": n}))
-    elif args.cmd == "import-memories":
-        n = mem.import_memories(args.path, replace=args.replace)
-        print(json.dumps({"imported": n}))
-    elif args.cmd == "delete-many":
-        coords = []
-        for part in args.coords.split(";"):
-            part = part.strip()
-            if not part:
-                continue
-            coords.append(parse_coord(part))
-        n = mem.delete_many(coords)
-        print(json.dumps({"deleted": n}))
-    elif args.cmd == "store-bulk":
-        import json as _json
-
-        with open(args.file, encoding="utf-8") as f:
-            items_raw = _json.load(f)
-        items = []
-        for it in items_raw:
-            coord = parse_coord(it["coord"])
-            payload = it["payload"]
-            tstr = it.get("type", "episodic")
-            mtype = MemoryType.SEMANTIC if tstr == "semantic" else MemoryType.EPISODIC
-            items.append((coord, payload, mtype))
-        mem.store_memories_bulk(items)
-        print(_json.dumps({"stored": len(items)}))
-    elif args.cmd == "range":
-        mi = parse_coord(args.min_coord)
-        ma = parse_coord(args.max_coord)
-        mtype = None
-        if args.mem_type:
-            mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
-        res = mem.find_by_coordinate_range(mi, ma, memory_type=mtype)
-        coords = [m.get("coordinate") for m in res if m.get("coordinate")]
-        print(json.dumps(coords))
+    # Run the async command runner
+    asyncio.run(_run_command_async(args))
 
 
 if __name__ == "__main__":

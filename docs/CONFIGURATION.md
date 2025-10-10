@@ -3,7 +3,7 @@
 SomaFractalMemory can be configured through three mechanisms, evaluated in the following order:
 1. Explicit `config` dictionaries passed to `create_memory_system`.
 2. Environment variables (with and without the `SOMA_` prefix).
-3. Dynaconf settings files (e.g., `config.yaml`, based on `config.example.yaml`).
+3. Centralised Pydantic settings file (`config.yaml` or `config.json`) loaded by `common/config/settings.py` via `load_settings`.
 
 Unless stated otherwise, every option is optional and falls back to sensible defaults for local development.
 
@@ -17,9 +17,9 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `MEMORY_MODE` | Selects backend wiring (`development`, `test`, `evented_enterprise`, `cloud_managed`). | `development` |
 | `SOMA_MEMORY_NAMESPACE` | Namespace passed to `create_memory_system` by `examples/api.py`. | `api_ns` |
 | `POSTGRES_URL` | PostgreSQL DSN read by the factory, API, CLI, and consumers. | *(unset)* |
-| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints (host/port/db override URL when provided). | `redis://localhost:6379/0` |
+| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints (host/port/db override URL when provided). | `redis://localhost:6379/0` (Compose exposes Redis on host 6381) |
 | `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint when not using a local file path. | `localhost` / `6333` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Broker address for event publishing/consumption. | `localhost:9092` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Broker address for event publishing/consumption. | `localhost:19092` (Compose external) |
 | `EVENTING_ENABLED` | When set (e.g. `false`), overrides the factory toggle via `config["eventing"]["enabled"]`. | `true` |
 | `SOMA_API_TOKEN` | Optional bearer token required by the FastAPI dependencies. | *(unset)* |
 | `SOMA_RATE_LIMIT_MAX` | Requests per endpoint per minute for the sample API (minimum 1; set `0` to disable). | `60` |
@@ -27,7 +27,7 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `UVICORN_PORT` | API process port (kept at `9595` in charts/Compose). | `9595` |
 | `UVICORN_WORKERS` | Worker count for the FastAPI container images. | `4` |
 | `UVICORN_TIMEOUT_GRACEFUL` | Graceful shutdown timeout for the API. | `60` |
-| `UVICORN_TIMEOUT_KEEP_ALIVE` | Keep-alive timeout override. | `30` |
+| `UVICORN_TIMEOUT_KEEP_ALIVE` | Keep-alive timeout override. | `120` (Compose default) |
 
 ---
 
@@ -43,7 +43,7 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `SFM_FAST_CORE` | Enable flat in-process contiguous vector slabs (fast path). Accepts `1/true/yes`. | `0` |
 | `SOMA_HYBRID_RECALL_DEFAULT` | Make hybrid recall (vector + keyword boosts) the default for `/recall`. Accepts `1/true/yes` to enable or `0/false/no` to disable. | `1` |
 
-Langfuse options read from Dynaconf or the same prefix:
+Langfuse options (loaded by Pydantic settings via `common/config/settings.py`, env prefix `SOMA_`):
 - `SOMA_LANGFUSE_PUBLIC`
 - `SOMA_LANGFUSE_SECRET`
 - `SOMA_LANGFUSE_HOST`
@@ -54,7 +54,7 @@ If Langfuse is not installed these values are ignored.
 
 ---
 
-## Kafka / Redpanda Settings
+## Kafka Settings
 Environment variables consumed by the producer (`eventing/producer.py`) and consumer (`scripts/run_consumers.py`):
 
 | Variable | Purpose |
@@ -113,14 +113,14 @@ config = {
         "enabled": True,   # only relevant in DEVELOPMENT mode
     },
     "postgres": {
-        "url": "postgresql://postgres:postgres@postgres:5433/somamemory",
+  "url": "postgresql://postgres:postgres@postgres:5432/somamemory",
     },
 }
 ```
 * When both Redis and Postgres are provided in development or enterprise modes, `PostgresRedisHybridStore` caches writes in Redis while keeping Postgres canonical.
 * When only one is configured, the factory falls back to the available backend. In test mode, Redis always runs in fakeredis mode.
 
-When `POSTGRES_URL` is configured, the API attempts to enable the `pg_trgm` extension and create supporting indexes (`value::text` trigram GIN, memory_type expression, key prefix) to accelerate substring keyword search. If permissions are restricted, these steps are skipped and the system falls back to in-memory scanning for `keyword_search` and the keyword phase of hybrid recall.
+When `POSTGRES_URL` is configured, the API and core will attempt to leverage Postgres features (e.g., pg_trgm) when present for faster keyword paths. If permissions are restricted, the system falls back gracefully to KV scanning for `keyword_search` and the keyword phase of hybrid recall.
 
 TLS-related variables for Postgres are honoured when present:
 - `POSTGRES_SSL_MODE`
@@ -132,8 +132,8 @@ To disable Kafka publishing without editing source, set `EVENTING_ENABLED=false`
 
 ---
 
-## Dynaconf (`config.yaml`)
-`SomaFractalMemoryEnterprise` initialises Dynaconf with `envvar_prefix="SOMA"`. A typical `config.yaml` derived from `config.example.yaml` looks like:
+## Centralised Settings File (`config.yaml` or `config.json`)
+The service loads Pydantic settings via `common/config/settings.py::load_settings`, which supports JSON or YAML files merged with environment variables (env prefix `SOMA_`). A minimal YAML example:
 ```yaml
 langfuse_public: "pk-lf-123"
 langfuse_secret: "sk-lf-456"
@@ -146,12 +146,9 @@ qdrant:
   path: "./qdrant.db"
 
 eventing:
-  bootstrap_servers: "localhost:9092"
-  schema_registry_url: "http://localhost:8080"
+  bootstrap_servers: "localhost:19092"
   topics:
     memory_events: "memory.events"
-    memory_audit: "memory.audit"
-    memory_dlq: "memory.dlq"
 
 memory_enterprise:
   vector_dim: 768
@@ -161,7 +158,7 @@ memory_enterprise:
     - ["scratch", "temp_notes"]
     - ["low_importance"]
 ```
-Dynaconf values are merged with environment variables; any explicit `config` dict passed to the factory overrides both.
+Settings file values are merged with environment variables; any explicit `config` dict passed to the factory overrides both.
 
 ---
 

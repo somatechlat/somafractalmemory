@@ -5,16 +5,17 @@ This document provides a high-level view of **SomaFractalMemory** (SFM): the cor
 ---
 
 ## Component Diagram (conceptual)
-```
-Client (CLI / FastAPI) ──▶ Factory (`somafractalmemory.factory.create_memory_system`)
-                             │
-                             ▼
-                    `SomaFractalMemoryEnterprise` (core orchestrator)
-                  ┌──────────────┬────────────┬───────────────┐
-        │              │            │               │
-        ▼              ▼            ▼               ▼
-     Key-Value Store   Vector Store   Graph Store   Event Producer
-       (Postgres + Redis)   (Qdrant | Fast)  (NetworkX)   (Kafka/Redpanda)
+```mermaid
+flowchart LR
+   Client[CLI / FastAPI] -->|Factory| Factory(create_memory_system)
+   Factory --> Core[SomaFractalMemoryEnterprise]
+   Core --> KV[(Postgres + Redis)]
+   Core --> Vec[(Qdrant or Fast Core)]
+   Core --> Graph[(NetworkX Graph)]
+   Core -->|publish| Kafka[(Kafka broker)]
+   Consumer[Worker Consumers] -->|read| Kafka
+   Consumer -->|upsert| KV
+   Consumer -->|index| Vec
 ```
 
 ---
@@ -22,7 +23,7 @@ Client (CLI / FastAPI) ──▶ Factory (`somafractalmemory.factory.create_memo
 ## Data Flow Narrative
 1. **Entry points** – Applications call the factory from the CLI (`somafractalmemory/cli.py`) or the FastAPI service (`examples/api.py`). Both paths resolve to `create_memory_system(mode, namespace, config)`.
 2. **Factory wiring** – The factory inspects the requested `MemoryMode`:
-   * `DEVELOPMENT` – optional Redis cache, optional Postgres backing store, Qdrant or in-memory vectors, eventing enabled by default.
+   * `DEVELOPMENT` – optional Redis cache, optional Postgres backing store, Qdrant or in-memory vectors; eventing off unless explicitly enabled.
    * `TEST` – fully in-memory backends (`fakeredis` and `InMemoryVectorStore`), eventing forced off.
    * `EVENTED_ENTERPRISE` / `CLOUD_MANAGED` – Postgres + Redis hybrid KV store, Qdrant vector store, eventing enabled.
 3. **Core orchestration** – `SomaFractalMemoryEnterprise` owns the public API (`store_memory`, `recall`, graph helpers, decay, bulk import/export). It:
@@ -52,7 +53,7 @@ Client (CLI / FastAPI) ──▶ Factory (`somafractalmemory.factory.create_memo
 ---
 
 ## Production Guarantees
-* **Real clients** – PostgreSQL (`psycopg2`), Redis, Qdrant, and Kafka are first-class dependencies. Test mode swaps in `fakeredis` and the in-memory vector store without altering code paths.
+* **Real clients** – PostgreSQL, Redis, Qdrant, and Kafka are first-class dependencies. Test mode swaps in `fakeredis` and the in-memory vector store without altering code paths.
 * **JSON-first persistence** – All payloads are serialised as JSON; legacy pickle-based storage has been removed.
 * **Event schema enforcement** – Every produced message is validated against `schemas/memory.event.json`.
 * **TLS/SASL hooks** – Environment variables (`POSTGRES_SSL_*`, `QDRANT_TLS`, `KAFKA_SECURITY_PROTOCOL`, etc.) are plumbed through to the respective clients.

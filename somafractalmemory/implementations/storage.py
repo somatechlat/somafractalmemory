@@ -14,37 +14,10 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 # Third‑party imports (alphabetical)
-# fakeredis is optional and only used for testing; make it optional for production images
-try:
-    import fakeredis as _fakeredis  # type: ignore
-except Exception:  # pragma: no cover
-    _fakeredis = None  # type: ignore
 import psycopg2
 import qdrant_client
 import redis
-
-# Optional OpenTelemetry instrumentation imports – may be unavailable in minimal environments.
-try:
-    from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
-except Exception:  # pragma: no cover
-
-    class Psycopg2Instrumentor:  # type: ignore
-        @staticmethod
-        def instrument() -> None:
-            """No‑op fallback when OpenTelemetry is not installed."""
-            return None
-
-
-try:
-    from opentelemetry.instrumentation.qdrant import QdrantInstrumentor
-except Exception:  # pragma: no cover
-
-    class QdrantInstrumentor:  # type: ignore
-        @staticmethod
-        def instrument() -> None:
-            """No‑op fallback when OpenTelemetry is not installed."""
-            return None
-
+from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 
 # Specific third‑party imports
 from psycopg2.extras import Json
@@ -58,7 +31,6 @@ from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
 # Initialise instrumentation (executed at import time). These calls are safe even if the
 # instrumentors are the no‑op stubs defined above.
 Psycopg2Instrumentor().instrument()
-QdrantInstrumentor().instrument()
 
 
 # Minimal InMemoryVectorStore for testing
@@ -179,8 +151,9 @@ class InMemoryKeyValueStore(IKeyValueStore):
 
 class RedisKeyValueStore(IKeyValueStore):
     def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
-        if self._testing or (_fakeredis and isinstance(self.client, _fakeredis.FakeRedis)):
-            return self._inproc_locks[name]
+        if self._testing:
+            # Testing mode unsupported in no-mock deployments
+            raise RuntimeError("Testing mode is unsupported: use a real Redis instance")
         return self.client.lock(name, timeout=timeout)
 
     def health_check(self) -> bool:
@@ -197,24 +170,11 @@ class RedisKeyValueStore(IKeyValueStore):
         self._testing = testing
         # Always prepare an in-proc lock map for tests and fakeredis
         self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
-        if testing and _fakeredis is not None:
-            # Fakeredis >=2.30 running with redis-py 5+ requires an explicit RESP protocol
-            # to populate the attribute accessed inside FakeConnection._connect.
-            try:
-                self.client = _fakeredis.FakeRedis(protocol=3, decode_responses=False)
-            except TypeError:  # pragma: no cover - older fakeredis releases
-                self.client = _fakeredis.FakeRedis(decode_responses=False)
-            # Ensure future connections carry the protocol attribute when fakeredis
-            # falls back silently (defensive for mixed redis-py versions).
-            try:
-                conn = self.client.connection_pool.get_connection("PING")
-                if not hasattr(conn, "protocol"):
-                    conn.protocol = 3
-                self.client.connection_pool.release(conn)
-            except Exception:  # pragma: no cover - safe best-effort guard
-                pass
-        else:
-            self.client = redis.Redis(host=host, port=port, db=db)
+        if testing:
+            raise RuntimeError(
+                "Testing mode with in-memory fakeredis is not supported in this deployment. Use a real Redis server."
+            )
+        self.client = redis.Redis(host=host, port=port, db=db)
 
     def set(self, key: str, value: bytes):
         self.client.set(key, value)

@@ -3,6 +3,8 @@ from collections.abc import Iterator, Mapping
 from enum import Enum
 from typing import Any
 
+from common.config.settings import load_settings
+
 # Local application imports (alphabetical)
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
@@ -149,7 +151,21 @@ def create_memory_system(
     SomaFractalMemoryEnterprise
         Configured memory system instance.
     """
-    config = config or {}
+    # If no explicit config dict is provided, load service settings from the
+    # centralised Pydantic settings and populate a small config mapping so the
+    # rest of the factory can remain unchanged.
+    if config is None:
+        settings = load_settings()
+        # Map known infra endpoints into the expected config shape. We keep this
+        # conservative: only populate host fields which downstream stores can use.
+        config = {
+            "redis": {"host": getattr(settings.infra, "redis", None)},
+            "postgres": {"url": getattr(settings, "postgres_url", None)},
+            "qdrant": {"host": getattr(settings, "qdrant_host", None)},
+            "memory_enterprise": {},
+        }
+    else:
+        config = config or {}
     kv_store = None
     vector_store = None
     graph_store = None

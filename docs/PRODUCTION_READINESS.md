@@ -33,8 +33,8 @@ docker push myregistry.example.com/somatechlat/soma-memory-api:v2.1.0
 Notes:
 - Use a private registry or your cloud provider's container registry for
   production, and set imagePullSecrets in Helm if the registry is private.
-- Pin base images for reproducible builds (the `Dockerfile` already uses
-  `python:3.10-slim` in this repo).
+- Pin base images for reproducible builds (the Dockerfiles in this repo
+  use pinned Python slim images; verify they match your runtime policy).
 
 ## 2. Helm deployment (Kind or cloud Kubernetes)
 
@@ -65,13 +65,8 @@ kubectl -n soma-memory describe pod <pod-name>
 ## 3. Key configuration and schema notes
 
 - Ensure `EVENTING_ENABLED=true` in `helm/values.yaml` (or override via `--set`) when using the evented pipeline.
-- The event producer validates events against `schemas/memory.event.json`. The project requires `timestamp` as an ISO8601 string (`date-time`). If you extend or change the schema, update both producer and consumers.
+- The event producer validates events against `schemas/memory.event.json`. The current implementation emits a numeric epoch timestamp via `time.time()`; consumers accept both epoch numbers and ISO8601 strings and normalise to epoch seconds. If you extend or change the schema, update both producer and consumers.
 - We recommend keeping `additionalProperties: false` in the schema to force strict contract compatibility.
-
-Recent compatibility fix included:
-
-- `eventing/producer.py` now loads `schemas/memory.event.json` and emits UTC ISO8601 timestamps (e.g. `2025-09-27T12:34:56.789+00:00`).
-- `workers/kv_writer.py` accepts numeric epoch or ISO timestamp strings and normalizes to epoch seconds before DB insertion. This keeps backward compatibility.
 
 ## 4. Expose API for developers (local dev only)
 
@@ -95,7 +90,7 @@ curl -s http://localhost:9595/healthz | jq .
 python - <<'PY'
 import requests, uuid, json
 run_id = uuid.uuid4().hex
-items = [{"id": str(uuid.uuid4()), "text": f"item {i}", "run_id": run_id} for i in range(50)]
+items = [{"coord":"0,0,0","payload":{"text": f"item {i}", "run_id": run_id}, "type":"episodic"} for i in range(50)]
 resp = requests.post('http://localhost:9595/store_bulk', json={"items": items})
 print(resp.status_code, resp.text)
 PY
@@ -105,7 +100,7 @@ PY
 
 ```bash
 kubectl exec -n soma-memory deploy/soma-memory-somafractalmemory-postgres -- \
-  -- psql -U postgres -d somamemory -t -c "select count(*) from public.kv_store where value::text like '%<RUN_ID>%';"
+  -- psql -U postgres -d somamemory -t -c "select count(*) from public.memory_events where payload::text like '%<RUN_ID>%';"
 ```
 
 4. Verify Qdrant indexing:

@@ -5,17 +5,18 @@ This document is the operational source of truth for developers and operators. I
 ---
 
 ## 1. Prepare the Environment
-1. Copy the shared environment file:
-   ```bash
-   cp .env.example .env
-   ```
-2. (Preferred) Use uv for a fast, reproducible environment:
+1. (Preferred) Use uv for a fast, reproducible environment:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y
-   uv sync --extra api --extra events
+   uv sync --extra api --extra events --extra dev
    ```
-    Or create a classic venv and install editable: `python -m venv .venv && source .venv/bin/activate && pip install -e .`
-3. Adjust `.env` to match the target mode (`MEMORY_MODE`, ports, credentials) when running the CLI or scripts directly. Docker Compose now inlines service environment blocks, so edit `docker-compose.yml` (or an override file) if you need different container settings.
+    Or create a classic venv and install editable:
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -e .[api,events,dev]
+    ```
+2. When running the CLI or scripts directly, set environment variables in your shell (`export`), not via `.env`. Docker Compose inlines container env blocks; adjust `docker-compose.yml` (or an override file) for container settings.
 
 ---
 
@@ -197,7 +198,63 @@ Important: keep `UVICORN_PORT=9595` in `.env` (or override the Helm value `env.U
 - **Static checks** – `ruff check .`, `black --check .`, `bandit`, and `mypy` mirror the GitHub Actions pipeline.
 - **Documentation build** – `mkdocs build` (requires `mkdocs` and `mkdocs-material`).
 
-The FastAPI example regenerates `openapi.json` in the repository root during startup; keep that file committed so docs and CI stay in sync.
+### 6.1 Async gRPC server (new)
+
+This project now provides an asyncio-based gRPC server implementation alongside
+the legacy synchronous server. The async server lives at
+`somafractalmemory.async_grpc_server` and uses `grpc.aio` with async adapters
+for Redis (`redis.asyncio`) and Postgres (`asyncpg`). Qdrant calls currently use
+the official (sync) `qdrant-client` wrapped via `asyncio.to_thread`.
+
+Key points:
+- Listen port: 50054 (default, container exposure added in `Dockerfile`)
+- Handlers: Store, Recall, Delete, Health
+- Storage: `AsyncRedisKeyValueStore`, `AsyncPostgresKeyValueStore` in
+   `somafractalmemory.implementations.async_storage`
+- Tracing: optional OpenTelemetry support; `common/utils/trace.configure_tracer`
+   will be used if OTLP packages are installed and configured.
+
+Integration test quick-run (from project root):
+
+```bash
+# Start required infra via Docker Compose (if not already running)
+docker compose up -d postgres qdrant redis
+
+# Start the async gRPC server locally (in venv)
+source .venv/bin/activate
+python -m somafractalmemory.async_grpc_server &
+
+# Run the client integration test (Health, Store, Recall, Delete)
+python - <<'PY'
+import asyncio
+from somafractalmemory import memory_pb2, memory_pb2_grpc
+import grpc
+from google.protobuf import empty_pb2
+
+async def run():
+      async with grpc.aio.insecure_channel('localhost:50054') as ch:
+            stub = memory_pb2_grpc.MemoryServiceStub(ch)
+            print('Health:', (await stub.Health(empty_pb2.Empty())).status)
+            coord = memory_pb2.Coordinate(values=[0.1,0.2,0.3])
+            mem = memory_pb2.Memory(coord=coord, payload_json='{"ok": true}', memory_type='memories')
+            store = await stub.Store(memory_pb2.StoreRequest(memory=mem))
+            print('Store ok:', store.ok)
+            await asyncio.sleep(0.5)
+            r = await stub.Recall(memory_pb2.RetrieveRequest(query=coord, top_k=3))
+            print('Recall count:', len(r.memories))
+            print('Deleting...')
+            await stub.Delete(memory_pb2.DeleteRequest(coord=coord))
+            print('Done')
+
+asyncio.run(run())
+PY
+```
+
+If the client returns `Health: ok`, `Store ok: True` and `Recall count: >=1`,
+the async codepath is functioning against the dockerized infra.
+
+
+The FastAPI example serves OpenAPI at `/openapi.json`; if you need to regenerate a committed `openapi.json`, run `uv run python scripts/generate_openapi.py`.
 
 ---
 

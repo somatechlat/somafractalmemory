@@ -59,7 +59,8 @@ USER appuser
 
 ENV PATH="/opt/venv/bin:${PATH}"
 
-EXPOSE 9595 8001
+# Expose HTTP API and gRPC ports (sync gRPC 50053, async gRPC 50054)
+EXPOSE 9595 8001 50053 50054
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:9595/healthz || exit 1
 

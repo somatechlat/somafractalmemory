@@ -84,13 +84,13 @@ docker compose build
 ```bash
 docker compose up -d
 ```
-This will start:
+This starts Redis (6381->6379), Postgres (5433->5432), Qdrant (6333), Kafka (19092->9092), API (9595), and a sandbox API (8888->9595) as defined in `docker-compose.yml`.
 ### 4.3 Verify services are healthy
 ```bash
 # API health check (exposed on localhost:9595)
 curl -s http://localhost:9595/healthz | jq .
 # PostgreSQL test (run inside the container)
-docker compose exec postgres pg_isready
+docker compose exec postgres pg_isready -U postgres
 # Qdrant health endpoint
 curl -s http://localhost:6333/collections/api_ns | jq .
 ```
@@ -104,6 +104,7 @@ docker compose down   # Keeps volumes (data) – add -v to delete them
 ---
 
 ## 5. Kind + Helm – Near‑Production Cluster
+```bash
 kind create cluster --name soma-cluster --config=- <<EOF
 kind: Cluster
 apiVersion: kind.x‑k8s.io/v1alpha4
@@ -189,24 +190,31 @@ If you run this **outside** of Kubernetes, you can skip the Helm/Kind steps and 
 ### 6.2 Working with the Consumer
 The consumer reads from Kafka and writes to Postgres/Qdrant. To run it locally (without Helm) use:
 ```bash
-python -m scripts.run_consumers
+uv run python -m scripts.run_consumers
 ```
-Make sure the environment variables in `.env` point at the Docker‑Compose services (e.g., `KAFKA_BOOTSTRAP_SERVERS=localhost:9092`).
+If you run the consumer outside Docker, export env vars to point at Compose services:
+```bash
+export KAFKA_BOOTSTRAP_SERVERS=localhost:19092
+export POSTGRES_URL=postgresql://postgres:postgres@localhost:5433/somamemory
+export QDRANT_HOST=localhost
+export QDRANT_PORT=6333
+uv run python -m scripts.run_consumers
+```
 
 ### 6.3 Running Tests
 ```bash
 # Run the full test suite (including integration tests that spin up containers)
-pytest -q
+uv run pytest -q
 ```
 For a quick unit‑test run that does **not** start Docker containers:
 ```bash
-pytest tests/test_cli.py
+uv run pytest tests/test_cli.py
 ```
 
 ### 6.4 Linting & Formatting (pre‑commit)
 ```bash
-pre-commit install   # installs hooks into .git/hooks
-pre-commit run --all-files   # run all hooks once
+uv run pre-commit install   # installs hooks into .git/hooks
+uv run pre-commit run --all-files   # run all hooks once
 ```
 The repo uses **ruff**, **black**, **isort**, **mypy**, and **bandit**.
 

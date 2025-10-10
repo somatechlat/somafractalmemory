@@ -34,3 +34,24 @@ curl http://localhost:9595/healthz
 ```
 
 ## ⚡ **Just run `./scripts/auto-server.sh` and everything works automatically!**
+
+## Async gRPC server (developer quick-run)
+
+The repository contains an asyncio gRPC server useful for integration testing
+against the real infra (Redis, Postgres, Qdrant). To run it locally:
+
+```bash
+# start required infra
+docker compose up -d postgres qdrant redis
+
+# activate venv and run server (background)
+source .venv/bin/activate
+python -m somafractalmemory.async_grpc_server &
+
+# run the small client script which calls Health → Store → Recall → Delete
+# see docs/CANONICAL_DOCUMENTATION.md for the inline script
+```
+
+If you want containers to start the async gRPC server instead of uvicorn,
+set the container env `START_ASYNC_GRPC=1` (entrypoint will launch the async
+server on port 50054).

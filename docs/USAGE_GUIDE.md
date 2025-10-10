@@ -17,7 +17,7 @@ This guide explains how to use every public endpoint of the SomaFractalMemory (S
 - SOMA_RATE_LIMIT_MAX: int, default 60 (requests/window)
 - SOMA_RATE_LIMIT_WINDOW_SECONDS: float, default 60
 - SOMA_HYBRID_RECALL_DEFAULT: 1|0 (default behavior in core.recall)
-- SOMA_FAST_START / SOMA_FORCE_HASH_EMBEDDINGS: enable hash embeddings fallback
+- SOMA_FORCE_HASH_EMBEDDINGS: enable hash embeddings fallback; prefer this over SOMA_FAST_START
 - Postgres: POSTGRES_URL (e.g., postgresql://postgres:postgres@localhost:5433/somamemory)
 - Redis: REDIS_URL or REDIS_HOST/REDIS_PORT/REDIS_DB
 - Qdrant: QDRANT_URL or QDRANT_HOST/QDRANT_PORT

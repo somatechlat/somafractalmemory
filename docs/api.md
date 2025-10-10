@@ -86,7 +86,7 @@ All commands accept `--mode`, `--namespace`, and optional `--config-json` to pro
 ---
 
 ## FastAPI Surface (`examples/api.py`)
-The example application wires `MemoryMode.DEVELOPMENT` with local Redis (fakeredis) and Qdrant, instruments endpoints for Prometheus, and auto-generates `openapi.json`. Key routes:
+The example application wires the selected `MEMORY_MODE` (default DEVELOPMENT) with Redis/Postgres/Qdrant based on environment, instruments endpoints for Prometheus, and serves OpenAPI at `/openapi.json`. Key routes:
 
 ### Memory Operations
 - `POST /store` – body: `{coord: str, payload: dict, type: "episodic"|"semantic"}`
