@@ -131,3 +131,107 @@ total_vectors, insert_qps, query_qps, p50/p95 latency, norm_error_max, importanc
 ---
 Change Log:
 * v2.1 (initial canonical roadmap committed) – Sprint 1 initialization.
+
+---
+
+## 13. Soma Stack Compliance & Integration Roadmap (SMF)
+
+Objective
+
+Align SomafractalMemory (SMF) with the revised, shared‑infrastructure Soma stack architecture:
+
+- Use common infra services (Auth, OPA, Kafka, Redis, Prometheus/Grafana, Vault, Etcd).
+- Communicate with other components via gRPC (memory.proto).
+- Adopt an async‑first design pattern across the service.
+- Centralize configuration, logging, and tracing via `common/` utilities.
+- Deploy via the unified Helm stack and run CI/CD that spins up the full stack for integration tests.
+
+No‑mock policy
+
+WARNING: This project does NOT allow mocking, mimicking, or changing production values for tests. All agents must operate against real configurations and real services. Any test that requires altering live settings is prohibited. Use dedicated test environments and real data fixtures instead.
+
+Scope and current baseline
+
+- Present in code:
+	- Centralized settings module (`common/config/settings.py`), infra DNS defaults, logging/tracing helpers exist.
+	- gRPC artifacts present (`proto/memory.proto`, generated stubs, async and sync servers present).
+	- Async consumer pipeline (`aiokafka`) and Prometheus metrics for API and consumer.
+- Missing/partial:
+	- Core/factory still synchronous; API primarily HTTP; gRPC port not standardized/exposed; Vault/etcd not wired; cache layer not integrated; Helm sub‑chart and CI full‑stack pipeline not landed.
+
+Mermaid overview
+
+```mermaid
+flowchart LR
+	Client[SMF gRPC Clients] -->|gRPC 50053| SMF[SMF Service]
+	SMF -->|KV/Cache| Redis[(Redis)]
+	SMF -->|Vectors| Qdrant[(Qdrant)]
+	SMF -->|Events| Kafka[(Kafka)]
+	SMF -->|Secrets| Vault[(Vault)]
+	SMF -->|Flags| Etcd[(Etcd)]
+	SMF -->|Policy| OPA[(OPA)]
+	SMF -->|AuthN/Z| Auth[(Auth)]
+	SMF -->|Metrics| Prom[Prometheus/Grafana]
+```
+
+Milestones (2‑week sprints)
+
+Sprint 1 – Config centralization & Vault integration
+
+- Tasks
+	- Refactor API/factory to consume `SMFSettings` from `common/config/settings.py` (single source of truth, env prefix SOMA_).
+	- Remove `.env` reliance in runtime paths; document Vault Agent injection and mount points; add Vault annotations to manifests.
+	- Default endpoints to cluster DNS (e.g., `redis.soma.svc.cluster.local`) with compose overrides for local.
+- Acceptance
+	- API starts with only settings file + env; no `.env` needed.
+	- Helm values default to DNS; Vault paths configurable; docs updated.
+
+Sprint 2 – gRPC definition & async refactor (core)
+
+- Tasks
+	- Standardize gRPC port 50053 across code/docs; expose in Dockerfile/compose/helm.
+	- Make gRPC server primary; mark HTTP example as auxiliary.
+	- Convert I/O in core/factory to async; add thin sync adapters if required.
+	- Update CLI to run with `asyncio.run` when contacting async backends.
+- Acceptance
+	- grpcurl health check passes; basic CRUD round‑trip via gRPC; core critical paths run under asyncio.
+
+Sprint 3 – Logging/Tracing & Docker/Helm
+
+- Tasks
+	- Replace ad‑hoc tracing with `common/utils/trace.py`; export to Jaeger via settings.
+	- Switch logging to `common/utils/logger.py` JSON logger with consistent fields.
+	- Dockerfile: base `python:3.12-slim`, expose 50053, gRPC healthcheck.
+	- Promote Helm: serviceAccount + minimal RBAC; Vault annotations; support `global.imageTag`; default to shared DNS.
+- Acceptance
+	- Traces visible in Jaeger; logs structured; helm lint passes; deployment uses SA/RBAC and picks up global image tag.
+
+Sprint 4 – CI/CD full‑stack & cache
+
+- Tasks
+	- GitHub Actions: setup‑kind; install soma‑stack; run integration tests; run `helm lint`; cache generated gRPC stubs.
+	- Integrate `common/utils/redis_cache.py` on hot read paths with 5‑minute TTL; configure via settings.
+- Acceptance
+	- CI green end‑to‑end on Kind; cache hit ratio visible; latency improved for hot keys.
+
+Sprint 5 – Feature flags (etcd) & full integration tests
+
+- Tasks
+	- Wire `common/utils/etcd_client.py` feature flags; background watcher (Kafka `config.updates`).
+	- Write pytest‑asyncio gRPC unit tests; add full‑stack tests (Auth/OPA/Kafka/Redis/Etcd) with latency SLO (<50 ms per call under dev load).
+- Acceptance
+	- Flags toggle behaviors without restarts; tests validate latency and contract.
+
+Sprint 6 – Documentation & run‑book
+
+- Tasks
+	- Add `docs/runbook_smf.md` with deployment steps, health/rollback, and gRPC usage.
+	- Update architecture with shared‑infra section and gRPC contract; add "no‑mock" banner to index/quickstart.
+	- Add k6 load script and Vault secrecy checks to the repo.
+- Acceptance
+	- Docs reviewed/green; run‑book reproducible; load/secrecy checks integrated into CI optional stage.
+
+Gating metrics & risks (integration)
+
+- SLOs: p95 gRPC store/recall < 50 ms on dev Kind; zero secret leakage; CI full‑stack < 25 min.
+- Risks: Async refactor regressions → dual path adapters; Vault/etcd availability → fallback to safe defaults with clear warnings; Helm drift → lint + schema checks.
