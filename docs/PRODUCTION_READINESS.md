@@ -1,5 +1,33 @@
 # Production Readiness & Deployment Guide
 
+At a glance (current state):
+- Local Docker Compose: persistent volumes enabled for Postgres, Redis (AOF), Qdrant, and Kafka. Verified persistence by inserting a record, restarting services, and confirming presence in Postgres (`kv_store`) afterward. API recall requires the background consumer when running in `EVENTED_ENTERPRISE` mode.
+- Kubernetes via Helm (dev release on port 9797): API exposed through NodePort 30797 on localhost when using `helm/values-dev-port9797.yaml`. By default, persistence is disabled for convenience; enable per-service `persistence.enabled: true` (or apply `k8s/pvcs.yaml` for Kind) to make data durable.
+
+Gap analysis for production hardening (local limitations noted):
+- Authentication and authorization
+  - API token support exists (SOMA_API_TOKEN) but is optional by default. NEEDS_ACTION for production: enforce auth, rotate secrets, and use an ingress with TLS + authN.
+- TLS everywhere
+  - Postgres, Kafka, and Qdrant support TLS via env flags. NEEDS_ACTION: terminate TLS at ingress and enable upstream TLS where available; provision certificates and CA trust.
+- Secrets management
+  - DEV uses inline envs. NEEDS_ACTION: move to Kubernetes Secrets or an external secret store; do not commit secrets.
+- Persistence and backups
+  - DEV chart disables PVCs. NEEDS_ACTION: enable PVCs with a production StorageClass; add scheduled Postgres and Qdrant backups and a tested restore runbook.
+- Database migrations
+  - The `kv_store` table is created on first use; no Alembic migrations exist. NEEDS_ACTION: define migration strategy for future schema changes.
+- High availability and auto-scaling
+  - Single replicas by default. NEEDS_ACTION: set HPA for API/consumers; consider managed multi-AZ Postgres/Qdrant/Kafka.
+- Network policies and RBAC
+  - Not included in the dev chart. NEEDS_ACTION: add NetworkPolicy to restrict east-west traffic; verify minimal RBAC.
+- Pod disruption budgets and graceful shutdown
+  - Not present. NEEDS_ACTION: add PDBs; define preStop hooks and ensure graceful shutdown under load.
+- Security context & image hardening
+  - Images run as root in dev. NEEDS_ACTION: run as non-root, read-only root FS, drop capabilities; pin image digests and enable supply-chain scanning.
+- Observability
+  - Metrics and traces are instrumented; dashboards and alerts are not in-repo. NEEDS_ACTION: wire to your Prometheus/Grafana and OTEL collector; add alert rules.
+- Resilience to backend restarts
+  - Observed a transient `psycopg2.InterfaceError: connection already closed` in `/stats` after Postgres restart. NEEDS_ACTION: add reconnect-on-failure logic in `PostgresKeyValueStore` and make stats robust to backend churn.
+
 This guide documents how to prepare, deploy and validate a production-capable
 Soma Fractal Memory cluster. It combines operational best-practices, the
 Helm-based deployment steps used for local Kind clusters and explicit
@@ -74,6 +102,7 @@ kubectl -n soma-memory describe pod <pod-name>
 - Prefer the idempotent helper `./scripts/port_forward_api.sh start`; it wraps
   the port-forward in `nohup`, records the PID in `/tmp/port-forward-*.pid`, and
   frees the terminal while continuing to stream logs to `/tmp/port-forward-*.log`.
+ - When using the provided dev values (`helm/values-dev-port9797.yaml`) the API is exposed via NodePort on your host at `http://127.0.0.1:30797` (service port 9797 inside the cluster).
 
 ## 5. Testing & verification (end-to-end)
 
@@ -145,6 +174,8 @@ Avoid single huge HTTP requests — port-forward and reverse-proxy timeouts make
 - Use a managed Kafka (or a hardened Redpanda cluster) with appropriate retention and replication settings.
 - Deploy with resource requests/limits and HorizontalPodAutoscalers for the API and consumers.
 - Secure the cluster: use network policies, TLS for Kafka if available, and protect the API with authentication (SOMA_API_TOKEN) and an ingress controller with TLS.
+ - Enable persistence in Helm values (PVCs) and configure scheduled backups; verify restore.
+ - Add PodDisruptionBudgets and health-probe tuning to avoid false positives during rollouts.
 
 ## 10. Rollback procedure
 

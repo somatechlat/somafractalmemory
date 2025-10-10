@@ -1,14 +1,24 @@
+# Standard library imports
 import json
 import logging
 import uuid
 from concurrent import futures
+from typing import Any
 
+# Third‑party imports (alphabetical)
 import grpc
 import psycopg2
 import qdrant_client
 import redis
 import requests
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
+
+# Local imports
+try:
+    from common.config.settings import load_settings
+except Exception:  # pragma: no cover - optional in CI environments
+    load_settings = None  # type: ignore
 
 from somafractalmemory import memory_pb2, memory_pb2_grpc
 
@@ -16,11 +26,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
-    def __init__(self):
-        # Lightweight servicer: avoid importing the full memory core here
-        # to keep startup fast and not pull heavy ML deps. Health checks
-        # query the backing services directly.
-        pass
+    def __init__(self, settings: Any | None = None):
+        """Initialize the servicer.
+
+        ``settings`` is an optional ``SMFSettings`` instance; if omitted the
+        servicer falls back to environment variables for backwards
+        compatibility. This keeps the original lightweight behaviour while
+        allowing the new centralized configuration.
+        """
+        self.settings = settings
+        # No heavy imports here – the core memory system is imported lazily
+        # inside each RPC method when needed.
 
     def Store(self, request, context):
         # Persist memory payload in Postgres and vector in Qdrant.
@@ -34,7 +50,9 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             point_id = uuid.uuid5(uuid.NAMESPACE_URL, repr(coord)).hex
 
             # Upsert into Qdrant
-            q = qdrant_client.QdrantClient(url="http://localhost:6333")
+            # Use centralized Qdrant host if settings provided, else default.
+            qdrant_host = self.settings.infra.qdrant if self.settings else "localhost"
+            q = qdrant_client.QdrantClient(url=f"http://{qdrant_host}:6333")
             collection = memory_type or "memories"
             try:
                 # Create collection if missing
@@ -51,11 +69,12 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             # Store canonical JSON in Postgres kv table
             from psycopg2.extras import Json
 
+            pg_host = self.settings.infra.postgres if self.settings else "localhost"
             conn = psycopg2.connect(
                 dbname="somamemory",
                 user="postgres",
                 password="postgres",
-                host="localhost",
+                host=pg_host,
                 port=5433,
             )
             conn.autocommit = True
@@ -77,7 +96,8 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
 
     def Recall(self, request, context):
         try:
-            q = qdrant_client.QdrantClient(url="http://localhost:6333")
+            qdrant_host = self.settings.infra.qdrant if self.settings else "localhost"
+            q = qdrant_client.QdrantClient(url=f"http://{qdrant_host}:6333")
             query: list[float] = list(request.query.values)
             top_k = int(request.top_k or 5)
             memory_type = request.memory_type or "memories"
@@ -128,18 +148,20 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
         try:
             coord = list(request.coord.values)
             point_id = uuid.uuid5(uuid.NAMESPACE_URL, repr(coord)).hex
-            q = qdrant_client.QdrantClient(url="http://localhost:6333")
+            qdrant_host = self.settings.infra.qdrant if self.settings else "localhost"
+            q = qdrant_client.QdrantClient(url=f"http://{qdrant_host}:6333")
             collection = "memories"
             try:
                 q.delete(collection_name=collection, points_selector=PointStruct(id=point_id))
             except Exception:
                 # best-effort
                 pass
+            pg_host = self.settings.infra.postgres if self.settings else "localhost"
             conn = psycopg2.connect(
                 dbname="somamemory",
                 user="postgres",
                 password="postgres",
-                host="localhost",
+                host=pg_host,
                 port=5433,
             )
             conn.autocommit = True
@@ -157,18 +179,20 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
         # Check Redis, Postgres, and Qdrant used by the compose stack.
         status = {}
         try:
-            r = redis.Redis(host="localhost", port=6381, db=0, socket_connect_timeout=2)
+            redis_host = self.settings.infra.redis if self.settings else "localhost"
+            r = redis.Redis(host=redis_host, port=6381, db=0, socket_connect_timeout=2)
             status["redis"] = bool(r.ping())
         except Exception as e:
             LOGGER.debug("Redis health error: %s", e)
             status["redis"] = False
 
         try:
+            pg_host = self.settings.infra.postgres if self.settings else "localhost"
             conn = psycopg2.connect(
                 dbname="somamemory",
                 user="postgres",
                 password="postgres",
-                host="localhost",
+                host=pg_host,
                 port=5433,
                 connect_timeout=2,
             )
@@ -179,7 +203,8 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             status["postgres"] = False
 
         try:
-            r = requests.get("http://localhost:6333/collections", timeout=2)
+            qdrant_host = self.settings.infra.qdrant if self.settings else "localhost"
+            r = requests.get(f"http://{qdrant_host}:6333/collections", timeout=2)
             status["qdrant"] = r.status_code == 200
         except Exception as e:
             LOGGER.debug("Qdrant health error: %s", e)
@@ -192,8 +217,18 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
 
 def serve(host: str = "0.0.0.0", port: int = 50053):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
-    servicer = MemoryServicer()
+    # Load centralized settings if available
+    settings_obj = load_settings() if load_settings else None
+    # Register the core memory RPCs with settings
+    servicer = MemoryServicer(settings=settings_obj)
     memory_pb2_grpc.add_MemoryServiceServicer_to_server(servicer, server)
+
+    # Register the standard health service (grpc-health-probe compatible)
+    health_servicer = health.HealthServicer()
+    # Set the overall service status to SERVING (empty service name = all services)
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+
     bind_addr = f"{host}:{port}"
     server.add_insecure_port(bind_addr)
     server.start()

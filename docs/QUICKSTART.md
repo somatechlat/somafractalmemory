@@ -89,6 +89,9 @@ Docs and metrics:
 - Swagger UI: <http://localhost:9595/docs>
 - Prometheus metrics: <http://localhost:9595/metrics>
 
+Kubernetes alternative (dev):
+- Use the Helm chart with `helm/values-dev-port9797.yaml` to run the API on 9797 and expose it on your host via NodePort 30797. Then hit `http://127.0.0.1:30797/healthz`.
+
 ---
 
 ## 6. Explore Events & Consumers
@@ -111,6 +114,10 @@ docker compose down          # stop services, keep data
 rm -rf qdrant.db             # remove local Qdrant file created by quickstart
 ```
 Re-run the quickstart anytime—fake Redis and local Qdrant make it easy to iterate.
+
+Persistence notes:
+- Docker Compose data persists across restarts via named volumes; wipe with `docker compose down -v`.
+- The dev Helm chart disables persistence by default; enable PVCs in values or apply `k8s/pvcs.yaml` for Kind when you want durable local data.
 
 ---
 

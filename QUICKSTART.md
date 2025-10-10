@@ -54,4 +54,4 @@ python -m somafractalmemory.async_grpc_server &
 
 If you want containers to start the async gRPC server instead of uvicorn,
 set the container env `START_ASYNC_GRPC=1` (entrypoint will launch the async
-server on port 50054).
+server on port 50053).

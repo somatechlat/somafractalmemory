@@ -207,7 +207,7 @@ for Redis (`redis.asyncio`) and Postgres (`asyncpg`). Qdrant calls currently use
 the official (sync) `qdrant-client` wrapped via `asyncio.to_thread`.
 
 Key points:
-- Listen port: 50054 (default, container exposure added in `Dockerfile`)
+- Listen port: 50053 (default, container exposure added in `Dockerfile`)
 - Handlers: Store, Recall, Delete, Health
 - Storage: `AsyncRedisKeyValueStore`, `AsyncPostgresKeyValueStore` in
    `somafractalmemory.implementations.async_storage`
@@ -232,7 +232,7 @@ import grpc
 from google.protobuf import empty_pb2
 
 async def run():
-      async with grpc.aio.insecure_channel('localhost:50054') as ch:
+   async with grpc.aio.insecure_channel('localhost:50053') as ch:
             stub = memory_pb2_grpc.MemoryServiceStub(ch)
             print('Health:', (await stub.Health(empty_pb2.Empty())).status)
             coord = memory_pb2.Coordinate(values=[0.1,0.2,0.3])

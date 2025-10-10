@@ -25,7 +25,7 @@ from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
 try:
-    # Prefer centralized settings and shared tracing if available
+    # Centralised settings and shared tracing (optional in CI environments)
     from common.config.settings import load_settings
     from common.utils.trace import configure_tracer
 except Exception:  # pragma: no cover - optional in some environments
@@ -61,8 +61,19 @@ def _resolve_memory_mode() -> MemoryMode:
     return MemoryMode.DEVELOPMENT
 
 
-def _redis_config() -> dict[str, Any]:
+def _redis_config(settings: Any | None = None) -> dict[str, Any]:
+    """Build a Redis connection dict.
+
+    Preference order:
+    1. Values from ``SMFSettings.infra.redis`` (host) and optional ``REDIS_PORT``/``REDIS_DB`` env vars.
+    2. Legacy ``REDIS_URL`` parsing.
+    3. Individual ``REDIS_HOST``/``REDIS_PORT``/``REDIS_DB`` env vars.
+    """
     cfg: dict[str, Any] = {"testing": False}
+    # Use the DNS name from the shared infra settings if available
+    if settings and getattr(settings, "infra", None):
+        cfg["host"] = settings.infra.redis
+    # Fallback to explicit URL parsing
     redis_url = os.getenv("REDIS_URL")
     if redis_url:
         parsed = urlparse(redis_url)
@@ -73,6 +84,7 @@ def _redis_config() -> dict[str, Any]:
         path = parsed.path.lstrip("/")
         if path.isdigit():
             cfg["db"] = int(path)
+    # Individual env vars override previous values
     if host := os.getenv("REDIS_HOST"):
         cfg["host"] = host
     if port := os.getenv("REDIS_PORT"):
@@ -88,10 +100,18 @@ def _redis_config() -> dict[str, Any]:
     return cfg
 
 
-def _qdrant_config() -> dict[str, Any]:
+def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
+    """Return Qdrant connection parameters.
+
+    If a full URL is provided via ``QDRANT_URL`` we honour it.
+    Otherwise we build ``host``/``port`` using either the shared infra DNS name
+    (``settings.infra.qdrant`` – not defined explicitly, so we fall back to the
+    ``QDRANT_HOST`` env var) and the ``QDRANT_PORT`` env var.
+    """
     url = os.getenv("QDRANT_URL")
     if url:
         return {"url": url}
+    # No dedicated DNS field in SMFSettings; keep the legacy env default.
     host = os.getenv("QDRANT_HOST", "qdrant")
     port = int(os.getenv("QDRANT_PORT", "6333"))
     return {"host": host, "port": port}
@@ -112,10 +132,10 @@ except Exception:
 config: dict[str, Any] = {
     "postgres": {"url": os.getenv("POSTGRES_URL")},
     "vector": {"backend": "qdrant"},
-    "qdrant": _qdrant_config(),
+    "qdrant": _qdrant_config(settings),
 }
 
-redis_cfg = _redis_config()
+redis_cfg = _redis_config(settings)
 if redis_cfg:
     config["redis"] = redis_cfg
 

@@ -1,0 +1,34 @@
+# Development override: run API on port 9797 instead of default 9595.
+service:
+  type: NodePort
+  port: 9797
+  nodePort: 30797
+
+env:
+  UVICORN_PORT: "9797"
+  SOMA_RATE_LIMIT_MAX: "5000"
+  EVENTING_ENABLED: "false"
+  POSTGRES_URL: "postgresql://postgres:postgres@sfm-9797-somafractalmemory-postgres:5432/somamemory"
+  REDIS_URL: "redis://sfm-9797-somafractalmemory-redis:6379/0"
+  REDIS_HOST: "sfm-9797-somafractalmemory-redis"
+  REDIS_PORT: "6379"
+  QDRANT_URL: "http://sfm-9797-somafractalmemory-qdrant:6333"
+  QDRANT_HOST: "sfm-9797-somafractalmemory-qdrant"
+  QDRANT_PORT: "6333"
+  KAFKA_BOOTSTRAP_SERVERS: "sfm-9797-somafractalmemory-redpanda:9092"
+
+probe:
+  port: 9797
+  path: /healthz
+
+# Ensure the locally built image is used without attempting a remote pull.
+image:
+  pullPolicy: Never
+
+consumer:
+  enabled: false
+  image:
+    pullPolicy: Never
+
+redpanda:
+  enabled: false

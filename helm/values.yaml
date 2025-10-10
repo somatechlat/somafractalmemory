@@ -14,6 +14,8 @@ image:
 service:
   type: ClusterIP
   port: 9595  # reverted to original value
+  # Set type: NodePort and an explicit nodePort to expose on host without port-forward
+  # nodePort: 9797
 
 resources:
   requests:
@@ -157,3 +159,12 @@ redpanda:
 
 # Name identifier for the Soma Fractal Memory cluster (used for labeling, metrics, etc.)
 clusterName: "soma-fractal-memory"
+
+# Optional Ingress configuration
+ingress:
+  enabled: false
+  # className: "nginx"
+  host: "sfm.local"
+  annotations: {}
+  tls: false
+  # tlsSecretName: "sfm-tls"

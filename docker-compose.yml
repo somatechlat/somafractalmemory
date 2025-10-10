@@ -60,7 +60,7 @@ services:
       - "com.soma.project=somafractalmemory"
       - "com.soma.service=api"
     ports:
-      - "9595:9595"  # host 9595 → container 9595 (fixed host port)
+      - "9595:9595"  # host 9595 → container 9595 (default)
     environment:
       # Choose the memory mode (development|test|evented_enterprise|cloud_managed)
       MEMORY_MODE: evented_enterprise

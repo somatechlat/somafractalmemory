@@ -19,3 +19,7 @@ fastapi
 uvicorn
 opentelemetry-instrumentation-fastapi
 opentelemetry-sdk
+pydantic-settings
+opentelemetry-instrumentation-psycopg2
+opentelemetry-instrumentation-redis
+pydantic-settings

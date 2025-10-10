@@ -469,7 +469,9 @@ class PostgresKeyValueStore(IKeyValueStore):
         self._ensure_table()
 
     def _ensure_connection(self):
-        if self._conn is None:
+        # Establish a new connection if none exists or if the previous
+        # connection has been closed by the server (e.g., container restart).
+        if self._conn is None or getattr(self._conn, "closed", 0) != 0:
             conn_kwargs = {}
             if self._sslmode:
                 conn_kwargs["sslmode"] = self._sslmode
@@ -517,47 +519,98 @@ class PostgresKeyValueStore(IKeyValueStore):
 
     def set(self, key: str, value: bytes):
         # value is expected to be JSON-encoded bytes
+        self._ensure_connection()
         try:
             json_obj = json.loads(value)
         except Exception:
             # Fallback: store as plain string
             json_obj = value.decode("utf-8", errors="ignore")
-        with self._conn.cursor() as cur:
-            cur.execute(
-                SQL(
-                    "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
-                ).format(Identifier(self._TABLE_NAME)),
-                (key, Json(json_obj)),
-            )
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL(
+                        "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
+                    ).format(Identifier(self._TABLE_NAME)),
+                    (key, Json(json_obj)),
+                )
+        except psycopg2.InterfaceError:
+            # Connection dropped; reconnect and retry once
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL(
+                        "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
+                    ).format(Identifier(self._TABLE_NAME)),
+                    (key, Json(json_obj)),
+                )
 
     def get(self, key: str) -> bytes | None:
-        with self._conn.cursor() as cur:
-            cur.execute(
-                SQL("SELECT value FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
-                (key,),
-            )
-            row = cur.fetchone()
-            if row:
-                # row[0] is a Python dict (psycopg2 converts JSONB to dict)
-                return json.dumps(row[0]).encode("utf-8")
-            return None
+        self._ensure_connection()
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL("SELECT value FROM {} WHERE key = %s;").format(
+                        Identifier(self._TABLE_NAME)
+                    ),
+                    (key,),
+                )
+                row = cur.fetchone()
+        except psycopg2.InterfaceError:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL("SELECT value FROM {} WHERE key = %s;").format(
+                        Identifier(self._TABLE_NAME)
+                    ),
+                    (key,),
+                )
+                row = cur.fetchone()
+        if row:
+            # row[0] is a Python dict (psycopg2 converts JSONB to dict)
+            return json.dumps(row[0]).encode("utf-8")
+        return None
 
     def delete(self, key: str):
-        with self._conn.cursor() as cur:
-            cur.execute(
-                SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)), (key,)
-            )
+        self._ensure_connection()
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
+                    (key,),
+                )
+        except psycopg2.InterfaceError:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
+                    (key,),
+                )
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
         # Convert glob pattern * to SQL %
         sql_pattern = pattern.replace("*", "%")
-        with self._conn.cursor() as cur:
-            cur.execute(
-                SQL("SELECT key FROM {} WHERE key LIKE %s;").format(Identifier(self._TABLE_NAME)),
-                (sql_pattern,),
-            )
-            for (k,) in cur.fetchall():
-                yield k
+        self._ensure_connection()
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL("SELECT key FROM {} WHERE key LIKE %s;").format(
+                        Identifier(self._TABLE_NAME)
+                    ),
+                    (sql_pattern,),
+                )
+                rows = cur.fetchall()
+        except psycopg2.InterfaceError:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    SQL("SELECT key FROM {} WHERE key LIKE %s;").format(
+                        Identifier(self._TABLE_NAME)
+                    ),
+                    (sql_pattern,),
+                )
+                rows = cur.fetchall()
+        for (k,) in rows:
+            yield k
 
     def hgetall(self, key: str) -> dict[bytes, bytes]:
         # Not used in core for canonical store; return empty dict.
@@ -576,6 +629,7 @@ class PostgresKeyValueStore(IKeyValueStore):
 
     def health_check(self) -> bool:
         try:
+            self._ensure_connection()
             with self._conn.cursor() as cur:
                 cur.execute("SELECT 1;")
                 return True

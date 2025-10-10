@@ -49,6 +49,9 @@ class InfraEndpoints(BaseModel):
     etcd: str = Field(default="etcd.soma.svc.cluster.local")
     prometheus: str = Field(default="prometheus.soma.svc.cluster.local")
     jaeger: str = Field(default="jaeger.soma.svc.cluster.local")
+    # Additional services used by SMF
+    qdrant: str = Field(default="qdrant.soma.svc.cluster.local")
+    postgres: str = Field(default="postgres.soma.svc.cluster.local")
 
 
 class LangfuseSettings(BaseModel):
@@ -68,6 +71,9 @@ class SMFSettings(SomaBaseSettings):
     namespace: str = Field(default="default")
     model_name: str = Field(default="microsoft/codebert-base")
     vector_dim: int = Field(default=768)
+    # Canonical ports for the service interfaces
+    api_port: int = Field(default=9595, description="FastAPI HTTP port")
+    grpc_port: int = Field(default=50053, description="gRPC service port")
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 

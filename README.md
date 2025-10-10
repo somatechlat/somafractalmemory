@@ -24,7 +24,7 @@
 +-------------------+   +-------------------+   +-------------------+
 ```
 
-* **FastAPI (`examples/api.py`)** – HTTP server exposing memory, graph, and admin endpoints plus Prometheus metrics.
+* **FastAPI (`somafractalmemory/http_api.py`)** – HTTP server exposing memory, graph, and admin endpoints plus Prometheus metrics. A compatibility shim is kept at `examples/api.py`.
 * **CLI (`soma` command)** – Thin wrapper around the same factory for scripting and batch jobs.
 * **Redis** – Optional low-latency cache and distributed lock store for recent episodic memories.
 * **PostgreSQL** – Canonical key-value store for durable JSON payloads.

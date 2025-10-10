@@ -132,6 +132,58 @@ Fixed host ports (aligns with test fixtures and examples):
 
 Declarative configuration lives in `docker-compose.yml`. Override values ad hoc with `docker compose up -d api -e MEMORY_MODE=development` or by creating a `.env` file; environment variables take precedence over defaults baked into the compose file.
 
+### Kubernetes via Helm (dev and prod)
+
+For day-to-day dev against Kubernetes, use the bundled Helm chart (`helm/`). The canonical API port is 9595. For the current dev slice we also ship a values file that runs the API on 9797 and exposes it via a NodePort mapped to 30797 on your host.
+
+- Default values: `helm/values.yaml` (ClusterIP on 9595 inside the cluster)
+- Dev override: `helm/values-dev-port9797.yaml` (API 9797, service.type NodePort, nodePort 30797, eventing disabled)
+
+Quick start on Kind (example):
+```bash
+# Create a Kind cluster with host port mapping (only needed once per machine)
+kind create cluster --name sfm --config helm/kind-config.yaml
+
+# Build the runtime image and load it into Kind
+docker build -f Dockerfile.runtime -t somafractalmemory-runtime:local .
+kind load docker-image somafractalmemory-runtime:local --name sfm
+
+# Install the chart using the dev override values
+helm upgrade --install sfm-9797 ./helm -n sfm-9797 --create-namespace \
+   --values helm/values-dev-port9797.yaml --wait
+
+# Verify health via NodePort on the host
+curl -s http://127.0.0.1:30797/healthz | jq .
+```
+
+Notes:
+- To expose the default 9595 without NodePort, use `kubectl port-forward svc/<release>-somafractalmemory 9595:9595` or the helper script `./scripts/port_forward_api.sh`.
+- To use an ingress instead, set `ingress.enabled=true` and provide an ingress class and host in values; see the chart comments in `helm/values.yaml`.
+
+### Data persistence (volumes)
+
+- Docker Compose: volumes are declared for Postgres (`postgres_data`), Redis (`redis_data` with AOF enabled), Qdrant (`qdrant_storage`), and Kafka (`kafka_data`). They persist across `docker compose down` and are only removed with `docker compose down -v`.
+- Kubernetes/Helm: by default the chart disables persistence for local convenience. For durable local runs, either:
+   - enable persistence in values (recommended for real clusters):
+      ```yaml
+      postgres.persistence:
+         enabled: true
+         size: 10Gi
+         storageClass: standard
+      redis.persistence:
+         enabled: true
+         size: 5Gi
+      qdrant.persistence:
+         enabled: true
+         size: 10Gi
+      redpanda.persistence:
+         enabled: true
+         size: 10Gi
+      ```
+   - or apply the static hostPath PVs/PVCs under `k8s/pvcs.yaml` for Kind-only local development.
+
+Backups and disaster recovery are out of scope for local dev. For production, use managed Postgres/Qdrant/Kafka or provision stateful sets with replicated storage, scheduled backups, and tested restore procedures (see Production Readiness).
+
 ### Minimal backends via `start_stack.sh`
 
 Use this path when you only need the API plus storage without Kafka:
@@ -218,6 +270,8 @@ All of the above run automatically in GitHub Actions (`.github/workflows/ci.yml`
 **Redis connection errors during development** – If you only need in-memory mode, set `REDIS_HOST=localhost` and `redis.testing=true` in your config to force `fakeredis`.
 
 **Kafka optional for some modes** – Set `EVENTING_ENABLED=false` and avoid running the consumer if you only need synchronous store/recall APIs. For full enterprise coverage (vector + event reconciliation) leave it enabled.
+
+**NodePort vs. port-forward** – When using the dev Helm values on Kind, access the API at `http://127.0.0.1:30797` (service port 9797). In other clusters, prefer an ingress with TLS for external access.
 
 **Integration tests use existing services** – With `USE_REAL_INFRA=1`, tests reuse the running Postgres/Redis/Qdrant/Kafka instead of spinning up disposable containers; ensure compose stack is healthy before running.
 
