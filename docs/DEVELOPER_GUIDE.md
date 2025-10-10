@@ -70,6 +70,16 @@ This guide is aimed at contributors working directly with the codebase. It compl
 
 SomaFractalMemory exposes two local workflows: the **full Docker Compose stack** and a **scripted lightweight stack**. Most contributors should start with Docker Compose, which mirrors CI and integration test expectations.
 
+Quick path using Make:
+- `make help` – discover available targets
+- `make prereqs` – verify Docker/Helm/Kind tooling
+- `make compose-build && make compose-up` – build and start the local stack
+- `make compose-health` – wait for `/healthz`
+- `make compose-logs` – tail the API logs
+- `make compose-consumer-up` – start the consumer profile
+- `make settings` – print detected ports and Helm dev NodePort
+- `make runtime-build && make kind-up && make kind-load && make helm-dev-install` – dev Helm slice on NodePort 30797
+
 ### Full Stack Topology
 ```mermaid
 flowchart LR
@@ -94,23 +104,23 @@ Follow these steps every time you want a clean local cluster:
 
 2. **Start the core services** (API, Kafka, Postgres, Redis, Qdrant):
    ```bash
-   docker compose up -d
+   make compose-up
    ```
 
 3. **Tail logs until the API reports ready** – this waits for Kafka and database connectivity before proceeding:
    ```bash
-   docker compose logs -f api
+   make compose-logs
    ```
    Look for `Application startup complete.`. Press `Ctrl+C` to stop tailing; containers keep running.
 
 4. **(Optional) Start the consumer profile** if you need asynchronous reconciliation:
    ```bash
-   docker compose --profile consumer up -d somafractalmemory_kube
+   make compose-consumer-up
    ```
 
 5. **Validate the cluster**:
    ```bash
-   curl -s http://localhost:9595/healthz | jq .
+   make compose-health
    curl -s http://localhost:9595/readyz | jq .
    docker compose exec postgres pg_isready -U postgres
    curl -s http://localhost:6333/metrics >/dev/null
@@ -119,8 +129,8 @@ Follow these steps every time you want a clean local cluster:
 
 6. **Stop services when finished**:
    ```bash
-   docker compose down           # keep volumes
-   docker compose down -v        # remove volumes/data
+   make compose-down             # keep volumes
+   make compose-down-v           # remove volumes/data
    ```
 
 Fixed host ports (aligns with test fixtures and examples):
@@ -141,19 +151,14 @@ For day-to-day dev against Kubernetes, use the bundled Helm chart (`helm/`). The
 
 Quick start on Kind (example):
 ```bash
-# Create a Kind cluster with host port mapping (only needed once per machine)
-kind create cluster --name sfm --config helm/kind-config.yaml
-
-# Build the runtime image and load it into Kind
-docker build -f Dockerfile.runtime -t somafractalmemory-runtime:local .
-kind load docker-image somafractalmemory-runtime:local --name sfm
-
-# Install the chart using the dev override values
-helm upgrade --install sfm-9797 ./helm -n sfm-9797 --create-namespace \
-   --values helm/values-dev-port9797.yaml --wait
+# Create Kind, build runtime, load image, install Helm dev release
+make kind-up
+make runtime-build
+make kind-load
+make helm-dev-install
 
 # Verify health via NodePort on the host
-curl -s http://127.0.0.1:30797/healthz | jq .
+make helm-dev-health
 ```
 
 Notes:

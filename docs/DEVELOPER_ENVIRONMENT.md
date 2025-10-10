@@ -1,6 +1,53 @@
 # Developer Environment Setup
 
-This guide walks you through setting up a full **development environment** for the **Soma Fractal Memory (SFM)** project on macOS (the steps also work on Linux). It covers everything from system prerequisites to running the stack locally with Docker Compose, Kind, and Helm, as well as IDE configuration, testing, and debugging.
+This guide walks you through setting up a complete developer environment for Soma Fractal Memory (SFM), from prerequisites to running the stack with Docker Compose or Kubernetes + Helm, plus the exact settings the code reads. The code is the single source of truth; this document cites concrete files and symbols so you can trace behavior directly.
+
+---
+
+## Visual overview (at a glance)
+
+### Docker Compose topology (host ports → containers)
+```mermaid
+flowchart LR
+  subgraph Host
+    Client[Client / Agent]
+  end
+  Client -->|HTTP 9595| API[FastAPI API (uvicorn)]
+  API -->|write JSON| PG[(Postgres 5433→5432)]
+  API -->|cache| RD[(Redis 6381→6379)]
+  API -->|vectors| QD[(Qdrant 6333)]
+  API -->|publish| KF[(Kafka 19092→9092)]
+  CN[Consumer(s)] -->|read| KF
+  CN -->|upsert| PG
+  CN -->|index| QD
+  classDef db fill:#eef7ff,stroke:#4c8eda,color:#0b3d91;
+  classDef cache fill:#f6ffed,stroke:#52c41a,color:#135200;
+  classDef broker fill:#fff7e6,stroke:#fa8c16,color:#873800;
+  class PG db;
+  class QD db;
+  class RD cache;
+  class KF broker;
+```
+
+### Kubernetes + Helm (dev override with NodePort)
+```mermaid
+flowchart LR
+  Client[Client / Agent] -->|NodePort 30797| SVCNP[Service NodePort 9797]
+  SVCNP -->|ClusterIP 9797| API[Deployment: API]
+  API -->|env → DSN| PG[(Postgres PVC?)]
+  API --> RD[(Redis PVC?)]
+  API --> QD[(Qdrant PVC?)]
+  API -->|if enabled| RP[(Redpanda/Kafka PVC?)]
+  CNS[Deployment: Consumer] --> RP
+  CNS --> PG
+  CNS --> QD
+  classDef comp fill:#eef7ff,stroke:#4c8eda,color:#0b3d91;
+  classDef np fill:#fff7e6,stroke:#fa8c16,color:#873800;
+  class PG,QD,RD,RP comp;
+  class SVCNP np;
+```
+
+Optional Ingress path (production): Client → Ingress (TLS) → Service ClusterIP 9595 → API.
 
 ---
 
@@ -9,7 +56,7 @@ This guide walks you through setting up a full **development environment** for t
 | Tool | Minimum Version | Install Command |
 |------|-----------------|-----------------|
 | **Homebrew** (macOS) | 3.0+ | `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` |
-| **Python** | 3.11+ (3.12 recommended) | `brew install python@3.11` |
+| **Python** | 3.10+ (3.12 recommended) | `brew install python@3.12` |
 | **Git** | 2.30+ | `brew install git` |
 | **Docker Desktop** | 24.0+ (includes `docker` and `docker compose`) | Download from <https://www.docker.com/products/docker-desktop> |
 | **kubectl** | 1.28+ | `brew install kubectl` |
@@ -39,7 +86,7 @@ cd somafractalmemory
 
 ---
 
-## 3. Python Development Environment
+## 3. Python Development Environment (uv)
 
 ### 3.1 Recommended: Use uv for dependency management (fast and reproducible)
 We manage dependencies with Astral's uv. It creates a virtual environment, resolves extras, and locks versions for reliable installs.
@@ -61,7 +108,7 @@ uv run pytest -q
 uv run uvicorn somafractalmemory.http_api:app --reload
 ```
 
-> Fallback (pip): If you cannot install uv, you can still use a classic venv and `pip install -e .[dev]`, but uv is the supported path for deterministic installs.
+> Fallback (pip): If you cannot install uv, use a classic venv, then `pip install -e .[api,events,dev]`. uv remains the supported path for deterministic installs.
 
 ### 3.3 Verify the CLI works
 ```bash
@@ -71,60 +118,92 @@ You should see the help output with commands like `store`, `recall`, `store-bulk
 
 ---
 
-## 4. Docker‑Compose Local Stack (quick iteration)
+## 4. Docker Compose local stack (quick iteration)
 
 The repository ships a **docker‑compose.yml** that brings up all required services.
 
 ### 4.1 Build images (needed after code changes)
 ```bash
-docker compose build
+make compose-build
 ```
 
 ### 4.2 Start the full stack
 ```bash
-docker compose up -d
+make compose-up
 ```
-This starts Redis (6381->6379), Postgres (5433->5432), Qdrant (6333), Kafka (19092->9092), API (9595), and a sandbox API (8888->9595) as defined in `docker-compose.yml`.
+This starts Redis (6381→6379), Postgres (5433→5432), Qdrant (6333), Kafka (19092→9092), API (9595), and a sandbox API (8888→9595) as defined in `docker-compose.yml`.
 ### 4.3 Verify services are healthy
 ```bash
 # API health check (exposed on localhost:9595)
-curl -s http://localhost:9595/healthz | jq .
+make compose-health
 # PostgreSQL test (run inside the container)
 docker compose exec postgres pg_isready -U postgres
 # Qdrant health endpoint
 curl -s http://localhost:6333/collections/api_ns | jq .
 ```
-All should return a JSON payload with a `true` / `200` status.
+All should return a JSON payload with `true` values or HTTP 200.
+
+Request flows (visual aid)
+
+Store (with eventing enabled):
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant A as API
+  participant PG as Postgres
+  participant K as Kafka
+  participant W as Consumer
+  participant Q as Qdrant
+  C->>A: POST /store
+  A->>PG: INSERT kv_store
+  alt EVENTING_ENABLED=true
+    A->>K: produce memory.events
+    W->>K: consume memory.events
+    W->>Q: upsert vector
+  end
+  A-->>C: 200 { ok: true }
+```
+
+Recall (hybrid):
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant A as API
+  participant Q as Qdrant
+  participant PG as Postgres
+  C->>A: POST /recall
+  A->>Q: vector search (top-k)
+  A->>PG: fetch JSON payloads
+  A-->>C: 200 results
+```
 
 ### 4.4 Stop the stack
 ```bash
-docker compose down   # Keeps volumes (data) – add -v to delete them
+make compose-down     # Keeps volumes (data)
+make compose-down-v   # Removes volumes
 ```
 
 ---
 
-## 5. Kind + Helm – Near‑Production Cluster
+## 5. Kubernetes + Helm (near‑production)
 ```bash
-kind create cluster --name soma-cluster --config=- <<EOF
-kind: Cluster
-apiVersion: kind.x‑k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-  - role: worker
-EOF
+# Create a Kind cluster; the repo provides a config that maps NodePort 30797 to the host
+kind create cluster --name sfm --config helm/kind-config.yaml
 ```
 Verify:
 ```bash
-kubectl cluster-info --context kind-soma-cluster
+kubectl cluster-info --context kind-sfm
 ```
 
-### 5.2 Load the local Docker image into Kind
+### 5.2 Build and load the runtime image into Kind
 ```bash
-# After you build the image (see section 4.1)
-kind load docker-image somatechlat/soma-memory-api:dev-local-20251002 --name soma-cluster
+# Build the slim runtime image the Helm chart expects
+docker build -f Dockerfile.runtime -t somafractalmemory-runtime:local .
+# Load into the Kind node
+kind load docker-image somafractalmemory-runtime:local --name sfm
 ```
 
-### 5.3 Deploy with Helm (including default resource requests)
+### 5.3 Deploy with Helm
 ```bash
 helm upgrade --install soma-memory ./helm \
   --namespace soma-memory \
@@ -144,7 +223,13 @@ helm upgrade --install soma-memory ./helm \
   --wait --timeout=600s
 ```
 
-Apply `--values helm/values-production.yaml` (plus per-service `*.persistence.storageClass` overrides) to enable durable PVCs.
+For the dev slice that exposes the API on your host without port-forward, you can install using the provided 9797/30797 override:
+```bash
+make helm-dev-install
+make helm-dev-health
+```
+
+To enable durable PVCs on real clusters, pass `--values` that set `*.persistence.enabled: true` and a storageClass per component (Postgres, Redis, Qdrant, Kafka).
 
 The Helm chart creates the following resources in namespace `soma-memory`:
 - API Deployment (`soma-memory-somafractalmemory`)
@@ -155,10 +240,12 @@ The Helm chart creates the following resources in namespace `soma-memory`:
 - Kafka Broker Deployment (value block name may remain `redpanda`)
 - Service objects for each component
 
-### 5.4 Port‑forward the API for local testing
+### 5.4 Expose the API for local testing
 ```bash
-# Idempotent helper script (bundled in the repo)
-./scripts/port_forward_api.sh start   # forwards localhost:9595 → the API pod
+# Option A (port-forward): forwards localhost:9595 → API service port 9595
+./scripts/port_forward_api.sh start
+# Option B (NodePort): if you installed with values-dev-port9797.yaml, use 30797 on localhost
+make helm-dev-health
 ```
 Now you can hit the API exactly as you would with Docker‑Compose.
 
@@ -220,9 +307,18 @@ The repo uses **ruff**, **black**, **isort**, **mypy**, and **bandit**.
 
 ---
 
-## 7. IDE / Editor Configuration
+## 7. Generate OpenAPI and IDE setup
 
-### VS Code (recommended)
+### 7.1 Generate the OpenAPI spec from the running app
+```bash
+uv run python scripts/generate_openapi.py
+ls -l openapi.json
+```
+The file is generated from `somafractalmemory/http_api.py:app` and reflects the current code.
+
+### 7.2 VS Code (recommended)
+
+#### settings.json
 1. Install the **Python** extension.
 2. Open the workspace (`File → Open Folder…` → `somafractalmemory`).
 3. Select the interpreter: `Cmd+Shift+P → Python: Select Interpreter → .venv/bin/python`.
@@ -240,31 +336,31 @@ The repo uses **ruff**, **black**, **isort**, **mypy**, and **bandit**.
 ```
 5. (Optional) Install the **Docker** extension to view container logs directly from VS Code.
 
-### PyCharm / IntelliJ
+### 7.3 PyCharm / IntelliJ
 - Add the virtual environment (`.venv`) as a *Project Interpreter*.
 - Set the *Working directory* to the repository root.
 - Enable *pytest* as the test runner and configure the *Run/Debug* configuration for `scripts/run_consumers.py` if you want to debug the consumer.
 
 ---
 
-## 8. Debugging Tips
+## 8. Debugging tips
 
 | Symptom | Likely Cause | How to Investigate |
 |---------|--------------|--------------------|
 | **API returns 502 / connection refused** | Port‑forward not running or API pod crashed | `./scripts/port_forward_api.sh status`; `kubectl -n soma-memory get pods`; `kubectl -n soma-memory logs pod/<api-pod>` |
 | **Consumer not processing events** | Wrong `KAFKA_BOOTSTRAP_SERVERS` or broker not reachable | From inside the broker pod, run `kafka-topics --bootstrap-server localhost:9092 --list`; check consumer logs |
-| **Postgres rows missing** | Event schema mismatch (timestamp) or `kv_store` not called | Look at `workers/kv_writer.py` logs; verify the `timestamp` field is ISO8601 (the recent fix) |
+| **Postgres rows missing** | Event not consumed yet or filters in recall | Check `somafractalmemory/scripts/run_consumers.py` logs; verify the consumer is running (Kafka reachable). |
 | **Qdrant points count stays at 0** | Consumer failed to index vectors, or vector dimension mismatch | Inspect `workers/vector_indexer.py` logs; run a manual scroll query as shown in the README |
 | **Tests fail on CI but pass locally** | Missing Docker‑Compose services in CI environment | Ensure the CI workflow brings up the stack (`docker compose up -d`), or use the `testcontainers` based tests that spin up containers automatically |
 
 ---
 
-## 9. Production‑Ready Checklist (for reference)
+## 9. Production‑ready checklist (for reference)
 1. **Build & push a reproducible Docker image** (use a CI pipeline).<br>2. **Set resource requests/limits** for API & consumer (see `helm/values.yaml`).<br>3. **Enable probes** (`initialDelaySeconds` ≥ 20, `timeoutSeconds` ≥ 5).<br>4. **Configure authentication** (`SOMA_API_TOKEN`).<br>5. **Expose the API via an Ingress** with TLS termination.<br>6. **Enable Prometheus scrape** (`/metrics`).<br>7. **Run a backup strategy** for PostgreSQL and Qdrant persistence.<br>8. **Monitor consumer lag** (Kafka offsets) and set alerts.<br>9. **Run the production readiness steps** documented in `docs/PRODUCTION_READINESS.md`.
 
 ---
 
-## 10. Clean‑up
+## 10. Clean-up
 When you are done experimenting, you can delete all local resources:
 ```bash
 # Docker‑Compose
@@ -279,7 +375,28 @@ You now have a fully documented, reproducible developer environment for Soma Fra
 
 ---
 
-## 11. Performance & Latency
+## 11. Settings reference (source of truth)
+
+These are the settings the code reads, with file references for traceability.
+
+- FastAPI wiring: `somafractalmemory/http_api.py`
+  - Environment variables: `POSTGRES_URL`, `REDIS_URL|REDIS_HOST|REDIS_PORT|REDIS_DB`, `QDRANT_URL|QDRANT_HOST|QDRANT_PORT`, `KAFKA_BOOTSTRAP_SERVERS`, `EVENTING_ENABLED`, `SOMA_API_TOKEN`, `SOMA_MEMORY_NAMESPACE`, `UVICORN_PORT`, `UVICORN_WORKERS`, `UVICORN_TIMEOUT_*`.
+  - Optional centralised settings: `common/config/settings.py::load_settings()` (used if available) with `SMFSettings` defaults (`api_port=9595`, `grpc_port=50053`, infra endpoints).
+- Postgres KV store: `somafractalmemory/implementations/storage.py::PostgresKeyValueStore`
+  - Reads `POSTGRES_URL`; uses psycopg2 directly; includes reconnect-on-failure logic.
+- Redis KV store: `somafractalmemory/implementations/storage.py::RedisKeyValueStore`
+  - Reads `REDIS_HOST/PORT/DB` or `REDIS_URL` (parsed in `http_api.py`).
+- Qdrant vector store: `somafractalmemory/implementations/storage.py::QdrantVectorStore`
+  - Reads `QDRANT_URL` or `QDRANT_HOST/QDRANT_PORT`.
+- Helm chart defaults: `helm/values.yaml`
+  - API `service.port: 9595` by default, dev override at `helm/values-dev-port9797.yaml` sets `service.port: 9797`, `service.nodePort: 30797`.
+- Docker Compose: `docker-compose.yml`
+  - Host ports: API 9595, Redis 6381→6379, Postgres 5433→5432, Qdrant 6333, Kafka 19092→9092. Named volumes persist data.
+
+Precedence:
+1) Explicit config dict passed to `create_memory_system` → 2) Environment variables → 3) `SMFSettings` loaded via `load_settings()`.
+
+## 12. Performance & latency
 
 ### 11.1 Why latency matters
 The **store** endpoint (`POST /store_bulk` or `POST /store`) is the critical path for any agent that needs to persist a memory quickly. High latency can:
@@ -287,7 +404,7 @@ The **store** endpoint (`POST /store_bulk` or `POST /store`) is the critical pat
 - Cause back‑pressure on the eventing pipeline (Kafka).
 - Increase the chance of time‑outs when the API is called from a remote client.
 
-### 11.2 Typical numbers (observed on a local macOS/Kind setup)
+### 12.2 Typical numbers (observed on a local macOS/Kind setup)
 | Scenario | Avg latency (ms) | 95th‑pct latency (ms) |
 |----------|------------------|-----------------------|
 | Single‑item `POST /store` (no DB cache) | 45‑70 | 110 |
@@ -299,7 +416,7 @@ These numbers were measured with the API running on **UVICORN_WORKERS=2**, Postg
 - Qdrant vector upsert (if the payload includes an embedding).
 - JSON schema validation (now fast after the timestamp fix).
 
-### 11.3 Measuring latency yourself
+### 12.3 Measuring latency yourself
 #### Using `curl`
 ```bash
 curl -s -w "\nTIME_TOTAL:%{time_total}\n" -X POST http://127.0.0.1:9595/store \
@@ -325,17 +442,17 @@ histogram_quantile(0.95, sum(rate(api_request_latency_seconds_bucket{endpoint="s
 ```
 This returns the 95th‑percentile latency over the last 5 minutes.
 
-### 11.4 Reducing latency
+### 12.4 Reducing latency
 | Lever | What to adjust | Effect |
 |-------|----------------|--------|
 | **UVICORN_WORKERS** | Increase workers if the CPU has spare cores (e.g., `UVICORN_WORKERS=4`). | More concurrent requests, lower per‑request wait time under load. |
-| **PostgreSQL connection pool** | Tune `SQLALCHEMY_POOL_SIZE` (or the async driver pool) via `env.POSTGRES_POOL_SIZE`. | Reduces connection‑acquisition overhead. |
+| **PostgreSQL reconnect** | The KV store uses psycopg2 directly and reconnects if a connection is dropped. Keep transactions small and avoid frequent hard restarts. | Avoids 500s after DB restarts (the code now auto-reconnects). |
 | **Batch size** | Split very large bulk payloads into smaller chunks (e.g., 5‑10 items per request). | Keeps each transaction short and avoids long DB locks. |
 | **Disable schema validation** (only for trusted internal callers) | Set `EVENTING_ENABLED=false` or comment out the `jsonschema.validate` call in `eventing/producer.py`. | Removes a few ms per request. |
 | **Qdrant indexing** | Pre‑compute embeddings asynchronously (store vectors in a background worker instead of the API). | API returns faster; vector work is off‑loaded. |
 | **Resource limits** | Give the API pod more CPU (`resources.limits.cpu`) if the node has capacity. | Faster processing of JSON and DB driver work. |
 
-### 11.5 Stress‑testing guide
+### 12.5 Stress‑testing guide
 You can use `hey` or `wrk` to generate load and observe latency spikes:
 ```bash
 # Install hey
