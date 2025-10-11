@@ -95,3 +95,135 @@ Acceptance: On‑call can deploy prod with the example values and resolve common
 - Architecture: `docs/ARCHITECTURE.md`.
 - Operational source of truth: `docs/CANONICAL_DOCUMENTATION.md`.
 - Existing checklist: `docs/PRODUCTION_READINESS.md`.
+
+---
+
+## Module-by-module audit (classes, gaps, remediation)
+
+This section inventories the major modules and classes and lists production checks, observed gaps, and concrete remediation actions. It focuses on correctness, resilience, security, and operability. Use this as an implementation guide alongside the summary table above.
+
+### somafractalmemory/core.py
+- Classes: `MemoryType`, `SomaFractalMemoryError`, `SomaFractalMemoryEnterprise`
+- Purpose: Business logic for store/recall/graph/bulk, scoring path, decay.
+- Production checks:
+	- Thread/process safety; bounded memory growth; deterministic embeddings; idempotency of store; transactional boundaries for bulk.
+	- Clear error taxonomy mapped to API/gRPC status; structured logs, metrics for hot paths.
+- Gaps:
+	- Idempotency strategy for `store_memory` and `store_bulk` not formalized (duplicate coords or retry semantics).
+	- No explicit backpressure/circuit breaking when backends slow down.
+	- Decay thread lifecycle (startup/shutdown) and observability not documented.
+- Remediation:
+	- Add idempotency keys and upsert semantics; document conflict policy. Emit metrics for queue times and operation durations.
+	- Add graceful shutdown hooks; expose decay metrics and control toggles.
+
+### somafractalmemory/factory.py
+- Classes: `PostgresRedisHybridStore` (duplicate name also in implementations), `MemoryMode`, factory function(s).
+- Purpose: Bind interfaces to concrete stores based on mode; compose hybrid KV.
+- Gaps:
+	- Class name duplication with `implementations/storage.py` risks drift.
+	- Missing validation of config/env; lack of TLS/SSL defaults for DSNs; pool sizes/timeouts not enforced.
+- Remediation:
+	- Remove duplicate class; centralize hybrid KV in implementations. Validate config via pydantic settings; enforce sslmode and reasonable defaults.
+
+### somafractalmemory/implementations/storage.py
+- Classes: `InMemoryVectorStore`, `InMemoryKeyValueStore`, `RedisKeyValueStore`, `PostgresRedisHybridStore`, `QdrantVectorStore`, `PostgresKeyValueStore`.
+- Purpose: Concrete storage clients for KV and vectors.
+- Checks & gaps:
+	- Redis: Add explicit timeouts, retries with backoff, and pipeline usage for bulk ops; document key schema and TTL where applicable.
+	- Postgres: Migrations absent; ensure prepared statements, statement timeouts, connection pool sizing, and autocommit/transaction boundaries are explicit. Reconnect logic exists—verify thread safety and cursor lifecycle. Add read-only health checks that don’t allocate connections under pressure.
+	- Qdrant: Ensure collection existence/idempotent schema creation; vector dimension checks; timeouts and retries; handle backpressure when index operations lag; expose index status metrics.
+	- Hybrid store: Clarify cache consistency and eviction (write-through vs write-behind); document retry order and fallback when one backend is down.
+- Remediation:
+	- Introduce Alembic migrations; set `statement_timeout` and pool sizes via env. Add retry/backoff wrappers; export metrics per backend op. Add collection bootstrap and schema validation for Qdrant.
+
+### somafractalmemory/implementations/async_storage.py
+- Classes: `AsyncRedisKeyValueStore`, `AsyncPostgresKeyValueStore`.
+- Gaps:
+	- Feature parity with sync stores; explicit timeouts and cancellation; resource cleanup on shutdown.
+- Remediation:
+	- Align options with sync stores; add async connection pooling, deadlines, and graceful shutdown hooks.
+
+### somafractalmemory/interfaces/*.py
+- Classes: `IKeyValueStore`, `IVectorStore`, `IGraphStore`.
+- Gaps:
+	- Contracts lack detailed error semantics and performance expectations; missing docstrings and type hints for edge cases.
+- Remediation:
+	- Document required behaviors (idempotency, error mapping, timeouts) and expected complexity. Add strict typing and raise specific errors.
+
+### somafractalmemory/implementations/graph.py and graph_neo4j.py
+- Classes: `NetworkXGraphStore`, `Neo4jGraphStore`.
+- Gaps:
+	- Persistence and consistency model not documented; potential memory growth for NetworkX; Neo4j connection security and transactions unspecified.
+- Remediation:
+	- Clarify persistence expectations; add limits for in-memory graphs or require external store in production; configure Neo4j TLS/auth and transaction boundaries.
+
+### somafractalmemory/eventing/producer.py
+- Purpose: Build and publish Kafka events; schema validate.
+- Gaps:
+	- Delivery semantics (acks, retries, idempotent producer) not enforced; partitioning/keys undefined; error handling lacks DLQ fallback.
+- Remediation:
+	- Configure acks=all, idempotent producer; choose partition keys; add retry/backoff and DLQ publisher on failure; include trace/context headers.
+
+### somafractalmemory/workers/vector_indexer.py
+- Purpose: Consume events and index vectors.
+- Gaps:
+	- No poison‑pill handling; backoff strategy unspecified; batch sizing and commit strategy not documented; missing DLQ.
+- Remediation:
+	- Implement batch processing with max batch/time window, exponential backoff, DLQ on repeated failures, and explicit commit after successful batches; export consumer lag metrics.
+
+### somafractalmemory/http_api.py
+- Pydantic models for requests/responses; route handlers; health/stats.
+- Gaps:
+	- Auth not enforced for mutating/admin endpoints; CORS policy missing; pagination/limits inconsistent; request body size limits unspecified; rate limiting not enforced server‑side; error mapping to consistent HTTP codes.
+- Remediation:
+	- Add dependency to enforce bearer auth; configure CORS; introduce pagination for list‑like endpoints; set `--limit-concurrency` or middleware for backpressure; define body size limit; add consistent error handlers; redact sensitive fields from logs; expose Prometheus labels for route/method/status.
+
+### somafractalmemory/grpc_server.py and async_grpc_server.py
+- Gaps:
+	- TLS/mTLS not configured; deadlines/timeouts and auth interceptors absent; health/reflection services may be missing; backpressure/cancel propagation.
+- Remediation:
+	- Add TLS credentials; interceptors for auth/logging/tracing; implement `grpc.health.v1` health checks and reflection; require client deadlines.
+
+### somafractalmemory/cli.py
+- Gaps:
+	- Exit codes and error messaging not standardized; no auth flags/secrets sourcing; lack of non‑interactive mode examples.
+- Remediation:
+	- Normalize exit codes; add `--token/--config` flags; redact sensitive output; improve help text with production examples.
+
+### somafractalmemory/serialization.py
+- Gaps:
+	- Schema drift risk; lack of versioned payload schema and numeric precision policy.
+- Remediation:
+	- Introduce version fields; document canonical JSON encoding (e.g., separators, float precision); add tests for compatibility.
+
+### common/config/settings.py and common/utils/*
+- Classes: `SMFSettings`, `InfraEndpoints`, etc.
+- Gaps:
+	- Validate env at startup; secrets handling; precedence rules need to be surfaced in logs; feature flag clients (etcd) need timeouts/TLS.
+- Remediation:
+	- Use pydantic‑settings validation with strict types; emit redacted startup config; configure clients with TLS/timeouts.
+
+### Providers and embeddings
+- `implementations/providers.py`: `TransformersEmbeddingProvider`.
+- Gaps:
+	- Model pinning, caching, and offline operation; timeout control; resource limits.
+- Remediation:
+	- Pin model versions; allow offline deterministic hashes; set timeouts; cache artifacts; document CPU/GPU options.
+
+### Tests
+- Observation:
+	- Good coverage across factory/core and several integration paths; heaviest tests are skipped in PR CI and should run nightly.
+- Gaps:
+	- Missing tests for auth enforcement, TLS configs, migrations head check, DLQ behavior, and HPA integration metrics.
+- Remediation:
+	- Add targeted tests per new features above; create an end‑to‑end nightly workflow exercising Kind+Helm with NodePort 30797 and validating `/healthz`, `/stats`, and consumer lag.
+
+---
+
+## Acceptance criteria checklist by module
+
+- API (http_api.py): All mutating routes require bearer token; CORS configured; rate limiting active; 100% of routes return consistent error schema; p95 latency dashboard populated.
+- Storage (implementations/storage.py): Statement timeouts and pool sizes enforced; retries/backoff present; Qdrant collections bootstrapped; migrations applied at boot or gated by CI.
+- Eventing (producer/workers): Producer configured with acks=all/idempotent; DLQ in place; consumer reports lag; retries bounded with backoff.
+- Helm: Ingress with TLS; PVCs enabled with sizes; NetworkPolicy deny‑all + allowlist; PodSecurityContext non‑root; HPA for API/consumer.
+- CI: PR pipeline remains green and fast; nightly fails on HIGH/CRITICAL vulnerabilities and e2e failures.
