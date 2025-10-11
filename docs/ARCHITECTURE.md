@@ -71,3 +71,25 @@ flowchart LR
 ---
 
 *For API surface details and configuration specifics, consult `docs/api.md` and `docs/CONFIGURATION.md`.*
+
+---
+
+## Runtime surfaces and canonical entrypoints
+
+This architecture runs in two canonical ways for contributors and CI. Use Make as the single entrypoint to avoid drift between docs and code.
+
+- Local stack (Docker Compose):
+   - API: http://127.0.0.1:9595
+   - Start end-to-end and wait for health: `make setup-dev`
+   - Start consumer: `make compose-consumer-up`
+   - Inspect ports and NodePort mappings: `make settings`
+
+- Kubernetes dev slice (Kind + Helm):
+   - Dev service port 9797 exposed via NodePort 30797 on host
+   - Install and verify: `make setup-dev-k8s` then `make helm-dev-health`
+   - Default ClusterIP port remains 9595 inside the cluster; use port-forward helper if not using the dev NodePort
+
+Related documentation:
+- Developer Environment: `docs/DEVELOPER_ENVIRONMENT.md` (step-by-step, diagrams)
+- Developer Guide: `docs/DEVELOPER_GUIDE.md` (day-to-day workflows)
+- Canonical Documentation: `docs/CANONICAL_DOCUMENTATION.md` (operational source of truth)
