@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -51,6 +52,26 @@ else:
 app = FastAPI(title="SomaFractalMemory API")
 # Instrument the FastAPI app for tracing
 FastAPIInstrumentor().instrument_app(app)
+
+# ------------------------------------------------------------
+# CORS configuration (configurable via SOMA_CORS_ORIGINS)
+# ------------------------------------------------------------
+_cors_origins_env = os.getenv("SOMA_CORS_ORIGINS", "")
+if _cors_origins_env:
+    # Comma-separated list of origins, e.g. "https://app.example.com,https://admin.example.com"
+    origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+else:
+    origins = []  # default: no CORS (closed) unless explicitly enabled
+
+if origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        max_age=600,
+    )
 
 
 def _resolve_memory_mode() -> MemoryMode:
@@ -164,7 +185,19 @@ if not hasattr(mem, "prediction_provider"):
 
 
 # Simple auth + rate limit stubs
-API_TOKEN = os.getenv("SOMA_API_TOKEN")
+def _load_api_token() -> str | None:
+    # Support reading token from file (e.g., mounted Kubernetes Secret)
+    token_file = os.getenv("SOMA_API_TOKEN_FILE")
+    if token_file and os.path.exists(token_file):
+        try:
+            with open(token_file, encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return os.getenv("SOMA_API_TOKEN")
+
+
+API_TOKEN = _load_api_token()
 _RATE: dict[tuple[str, str], list[float]] = {}
 _RATE_LIMIT_MAX = int(os.getenv("SOMA_RATE_LIMIT_MAX", "60"))
 _RATE_WINDOW = float(os.getenv("SOMA_RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -377,6 +410,18 @@ async def metrics_middleware(request: Request, call_next):
 
     start = _t.perf_counter()
     try:
+        # Enforce a maximum request body size via Content-Length (fail fast)
+        try:
+            max_mb = float(os.getenv("SOMA_MAX_REQUEST_BODY_MB", "5"))
+        except Exception:
+            max_mb = 5.0
+        if max_mb > 0:
+            cl = request.headers.get("content-length")
+            if cl and cl.isdigit():
+                if int(cl) > int(max_mb * 1024 * 1024):
+                    return JSONResponse(
+                        status_code=413, content={"detail": "Request entity too large"}
+                    )
         response = await call_next(request)
         return response
     finally:
