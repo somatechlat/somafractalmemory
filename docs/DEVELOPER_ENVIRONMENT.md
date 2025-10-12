@@ -2,8 +2,10 @@
 
 ## 14. Docker shared infra quick links
 
- - Reset local Docker shared infra (containers + named volumes): `scripts/reset-sharedinfra-compose.sh`
- - Gap analysis and sprint plan to align Docker compose with the Shared Infra Playbook: `docs/ops/DOCKER_SHARED_INFRA_GAP.md`
+- Reset local Docker shared infra (containers + named volumes): `scripts/reset-sharedinfra-compose.sh`
+- Gap analysis and sprint plan to align Docker compose with the Shared Infra Playbook: `docs/ops/DOCKER_SHARED_INFRA_GAP.md`
+- Generate Vault policy + ExternalSecret manifests for shared infra: `scripts/generate-sharedinfra-secrets.sh`
+- Use existing shared-infra containers instead of local ones: `docs/ops/SHARED_INFRA_DOCKER.md`
 # Developer Environment Setup
 
 This guide walks you through setting up a complete developer environment for Soma Fractal Memory (SFM), from prerequisites to running the stack with Docker Compose or Kubernetes + Helm, plus the exact settings the code reads. The code is the single source of truth; this document cites concrete files and symbols so you can trace behavior directly.

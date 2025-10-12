@@ -9,6 +9,15 @@ global:
 namespace: soma-infra
 nameOverride: sharedinfra
 
+networkPolicy:
+  enabled: true
+  allowedNamespaceLabels:
+    soma.sh/allow-shared-infra: "true"
+
+endpointsConfigMap:
+  enabled: true
+  name: sharedinfra-endpoints
+
 postgres:
   enabled: true
   fullnameOverride: sharedinfra-postgres

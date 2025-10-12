@@ -9,7 +9,6 @@ DEFAULT_COMPOSE_FILES=(
   "docker-compose.yml"
   "docker-compose.test.yml"
   "docker-compose.dev.yml"
-  "infra/docker/shared-infra.compose.yaml"
 )
 
 mapfile -t COMPOSE_FILES < <(
@@ -41,9 +40,6 @@ VOLUMES=(
   redis_test_data
   redpanda_test_data
   qdrant_test_storage
-  sharedinfra_postgres-data
-  sharedinfra_redis-data
-  sharedinfra_kafka-data
 )
 
 echo "Removing Docker volumes (if present)..."
@@ -58,6 +54,6 @@ cat <<'EOF'
 Docker shared infra reset complete.
 
 Next steps:
-  - docker compose up -d postgres qdrant kafka   # local baseline
+  - docker compose up -d redis postgres qdrant kafka   # local baseline
   - or scripts/start_stack.sh development --with-broker
 EOF

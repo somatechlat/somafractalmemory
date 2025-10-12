@@ -95,12 +95,10 @@ chmod +x scripts/reset-sharedinfra-compose.sh
 scripts/reset-sharedinfra-compose.sh
 
 # Manual equivalent (if the script cannot be used)
-docker compose -f infra/docker/shared-infra.compose.yaml down
-docker volume rm \
-  sharedinfra_postgres-data sharedinfra_redis-data sharedinfra_kafka-data \
-  docker_postgres_data docker_redis_data docker_kafka_data || true
-docker compose -f infra/docker/shared-infra.compose.yaml up -d
-docker compose -f infra/docker/shared-infra.compose.yaml ps
+docker compose down
+docker volume rm postgres_data redis_data kafka_data qdrant_storage || true
+docker compose up -d redis postgres qdrant kafka
+docker compose ps
 ```
 
 If any named volume refuses to delete, stop dependent containers first. Removing the volumes prevents Redis or Kafka from reusing incompatible persistence formats.
@@ -108,11 +106,55 @@ If any named volume refuses to delete, stop dependent containers first. Removing
 Run a fast smoke check:
 
 ```sh
-docker compose -f infra/docker/shared-infra.compose.yaml exec redis redis-cli ping
-docker compose -f infra/docker/shared-infra.compose.yaml logs kafka --tail 40
+docker compose exec redis redis-cli ping
+docker compose logs kafka --tail 40
 ```
 
 **Parity note**: the compose topology is single-node Postgres, single Kafka broker, and standalone Redis. Use it only for local development; production parity lives in the Kubernetes workflow below.
+
+### 1.5 Docker Shared Infra Usage Guide
+
+Follow these steps when developing against the Docker-based stack defined in `docker-compose.yml`.
+
+1. **Start the stack**
+   - Preferred: `scripts/reset-sharedinfra-compose.sh` (cleans volumes, restarts services).
+   - Manual: `docker compose up -d redis postgres qdrant kafka`.
+   - Validate with `docker compose ps`.
+
+2. **Service endpoints (default host ports)**
+   - Postgres: `postgresql://postgres:postgres@localhost:5433/somamemory`
+   - Redis: `redis://localhost:6381/0`
+   - Kafka: `PLAINTEXT://localhost:19092`
+   - Qdrant: `http://localhost:6333`
+   - Vault is not part of this compose stack; use the Kind deployment to exercise Vault integrations.
+
+3. **Export environment variables**
+
+   ```sh
+   export POSTGRES_URL="postgresql://postgres:postgres@localhost:5433/somamemory"
+   export REDIS_HOST=localhost
+   export REDIS_PORT=6381
+   export REDIS_URL="redis://localhost:6381/0"
+   export QDRANT_HOST=localhost
+   export QDRANT_PORT=6333
+   export KAFKA_BOOTSTRAP_SERVERS="localhost:19092"
+   ```
+
+4. **Migrations / seed data**
+   - Use the default Postgres credentials from `docker-compose.yml`.
+   - Keep migrations idempotent so the reset script can be re-run safely.
+
+5. **Shutdown and cleanup**
+   - Stop without purge: `docker compose down`.
+   - Stop and wipe data: `scripts/reset-sharedinfra-compose.sh` or `docker compose down -v` (after backing up data).
+
+**Limitations & tips**
+
+- Single-node topology only; use the Kind + Helm workflow for HA validation.
+- Port mappings are fixed (`5433`, `6381`, `6333`, `19092`). Adjust via `docker-compose.yml` if needed.
+- Increase Docker Desktop resources before running heavy tests.
+- Stop the Docker stack before using port forwarding to avoid conflicts.
+- To consume an existing shared infra stack instead of running local containers, follow `docs/ops/SHARED_INFRA_DOCKER.md`.
 
 ---
 
@@ -159,6 +201,9 @@ kubectl get deployment sharedinfra-postgres-pgpool -n soma-infra -o jsonpath='{.
 ```
 
 If any pod reports `ImagePullBackOff`, confirm `docker.io` reachability and that `global.security.allowInsecureImages=true` is present in the rendered values.
+
+- The chart creates a ConfigMap `sharedinfra-endpoints` containing cluster DNS endpoints (Postgres, Redis, Kafka, Vault, etc.) that application charts can consume.
+- A NetworkPolicy restricts ingress to namespaces labeled `soma.sh/allow-shared-infra=true`; ensure application namespaces carry this label before wiring ExternalSecrets or ConfigMaps.
 
 ### 2.5 Overlay Matrix
 
@@ -216,17 +261,18 @@ kubectl label namespace "$APP_NS" soma.sh/allow-shared-infra="true" --overwrite
 
 ### 3.2 Vault Role + Policy Automation
 
-```sh
-cat <<'HCL' > policies/${APP_NS}.hcl
-path "secret/data/shared-infra/${APP_NS}/*" {
-  capabilities = ["read"]
-}
-path "secret/metadata/shared-infra/${APP_NS}/*" {
-  capabilities = ["list", "read"]
-}
-HCL
+Run the helper script to generate policy and secret manifests:
 
-vault policy write ${APP_NS} policies/${APP_NS}.hcl
+```sh
+scripts/generate-sharedinfra-secrets.sh ${APP_NS} ${ENV:-dev}
+```
+
+This produces `infra/vault/policies/${APP_NS}.hcl` and `infra/external-secrets/${APP_NS}-externalsecret.yaml`.
+
+Apply the policy and configure the Vault Kubernetes role:
+
+```sh
+vault policy write ${APP_NS} infra/vault/policies/${APP_NS}.hcl
 vault write auth/kubernetes/role/${APP_NS} \
   bound_service_account_names=${APP_NS}-sa \
   bound_service_account_namespaces=${APP_NS} \
@@ -236,49 +282,7 @@ vault write auth/kubernetes/role/${APP_NS} \
 
 ### 3.3 ExternalSecret Template
 
-Export the environment slug (`ENV=dev|staging|prod`) before applying manifests:
-
-```sh
-export ENV=dev
-```
-
-Create `infra/external-secrets/${APP_NS}-externalsecret.yaml`:
-
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: ${APP_NS}-secrets
-  namespace: ${APP_NS}
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: soma-infra-vault
-    kind: ClusterSecretStore
-  target:
-    name: ${APP_NS}-runtime
-    template:
-      type: Opaque
-  data:
-    - secretKey: POSTGRES_PASSWORD
-      remoteRef:
-        key: secret/data/shared-infra/${APP_NS}/${ENV}
-        property: postgres_password
-    - secretKey: REDIS_PASSWORD
-      remoteRef:
-        key: secret/data/shared-infra/${APP_NS}/${ENV}
-        property: redis_password
-    - secretKey: KAFKA_SASL_PASSWORD
-      remoteRef:
-        key: secret/data/shared-infra/${APP_NS}/${ENV}
-        property: kafka_sasl_password
-    - secretKey: POSTGRES_DSN
-      remoteRef:
-        key: secret/data/shared-infra/${APP_NS}/${ENV}
-        property: postgres_dsn
-```
-
-Apply and verify:
+Apply the rendered ExternalSecret and verify sync:
 
 ```sh
 kubectl apply -f infra/external-secrets/${APP_NS}-externalsecret.yaml

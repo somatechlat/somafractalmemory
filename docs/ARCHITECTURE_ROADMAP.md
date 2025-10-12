@@ -63,9 +63,9 @@ Store sprint artefacts under `docs/infra/sprints/<sprint-id>/` with command tran
 ### Sprint 2 – Shared Infra Wiring `[TODO]`
 - [x] Scaffold `infra/helm/soma-infra/` (Chart.yaml, dependencies, base `values.yaml`, overlays for dev/test/staging/prod-lite/prod).
 - [x] Configure chart dependencies (Vault, OPA, Prometheus, Grafana) and baseline values for Postgres, Redis, Kafka, Vault.
-- [ ] Add shared templates (ConfigMaps, NetworkPolicies) to customize upstream charts and enforce Soma defaults.
-- [ ] Add Vault policy templates under `infra/vault/policies/` plus automation script to apply roles/policies.
-- [ ] Provide ExternalSecret templates in `infra/external-secrets/` and document usage (including `ENV` export).
+- [x] Add shared templates (ConfigMaps, NetworkPolicies) to customize upstream charts and enforce Soma defaults.
+- [x] Add Vault policy templates under `infra/vault/policies/` plus automation script to apply roles/policies.
+- [x] Provide ExternalSecret templates in `infra/external-secrets/` and document usage (including `ENV` export).
 - [ ] Update application Helm chart to consume ConfigMap contract and runtime secret references from playbook §3.4–3.5.
 - [ ] Move runtime credentials to Kubernetes Secrets/Vault (retire plaintext values) and document rotation path.
 - [ ] Automate DB provisioning snippet (psql client) and Kafka topic creation under `scripts/`.
