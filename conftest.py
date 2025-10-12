@@ -53,11 +53,13 @@ def pytest_sessionstart(session):
     - Never abort the entire test session; if infra remains unreachable, mark it via env so
       integration tests can skip gracefully.
     """
-    use_real = os.getenv("USE_REAL_INFRA", "0").lower() in ("1", "true", "yes")
-    if not use_real:
+    # Accept either USE_LIVE_INFRA (preferred) or USE_REAL_INFRA (back-compat)
+    use_live = os.getenv("USE_LIVE_INFRA", "").lower() in ("1", "true", "yes")
+    use_real = os.getenv("USE_REAL_INFRA", "").lower() in ("1", "true", "yes")
+    if not (use_live or use_real):
         return
 
-    print("[conftest] USE_REAL_INFRA enabled: attempting to bind tests to local infra...")
+    print("[conftest] Live infra mode enabled: attempting to bind tests to local infra...")
 
     # Derive desired endpoints from env or localhost defaults.
     # Postgres
@@ -93,6 +95,30 @@ def pytest_sessionstart(session):
     os.environ["REDIS_PORT"] = str(redis_port)
     os.environ["QDRANT_HOST"] = q_host
     os.environ["QDRANT_PORT"] = str(q_port)
+    # Align Qdrant collection with the active namespace to keep test scrolls small and recent.
+    # Default API namespace is "api_ns"; respect override if provided. If the preferred
+    # namespace collection does not exist but another known namespace does, fall back to it.
+    preferred_ns = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+    chosen_collection = preferred_ns
+    try:
+        from qdrant_client import QdrantClient
+
+        qc = QdrantClient(host=q_host, port=q_port)
+        cols = {c.name for c in qc.get_collections().collections}
+        # Prefer the preferred namespace if present, else a common default used by the API settings,
+        # else fall back to the legacy memory_vectors for compatibility.
+        if preferred_ns in cols:
+            chosen_collection = preferred_ns
+        elif "somabrain_ns:public" in cols:
+            chosen_collection = "somabrain_ns:public"
+        elif "api_ns" in cols:
+            chosen_collection = "api_ns"
+        elif "memory_vectors" in cols:
+            chosen_collection = "memory_vectors"
+    except Exception:
+        # If Qdrant probe fails, keep the preferred default; tests will still run.
+        chosen_collection = preferred_ns
+    os.environ["QDRANT_COLLECTION"] = chosen_collection
     os.environ["KAFKA_BOOTSTRAP_SERVERS"] = f"{k_host}:{k_port}"
 
     # Connectivity check with small retry if needed.

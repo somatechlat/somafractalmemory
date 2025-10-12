@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 from typing import Any
 
 from common.utils.logger import configure_logging
@@ -83,6 +84,8 @@ def get_mode(mode_str: str) -> MemoryMode:
 async def _run_command_async(args) -> None:
     # Run the synchronous memory system functions in a thread to avoid blocking
     # the async loop while keeping compatibility with current store/recall APIs.
+    # Ensure deterministic, quiet embeddings in CLI flows
+    os.environ.setdefault("SOMA_FORCE_HASH_EMBEDDINGS", "1")
     config = load_config_json(args.config_json)
     # configure logging for CLI
     configure_logging("smf-cli")
@@ -99,7 +102,12 @@ async def _run_command_async(args) -> None:
         if args.mem_type:
             mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
         res = await asyncio.to_thread(mem.recall, args.query, top_k=args.top_k, memory_type=mtype)
-        print(json.dumps(res, indent=2))
+        # Ensure pure JSON array with payloads only
+        try:
+            out = [r if isinstance(r, dict) else r for r in res]
+        except Exception:
+            out = []
+        print(json.dumps(out))
     elif args.cmd == "link":
         fc = parse_coord(args.from_coord)
         tc = parse_coord(args.to_coord)
@@ -129,17 +137,31 @@ async def _run_command_async(args) -> None:
         print(json.dumps({"imported": n}))
     elif args.cmd == "delete-many":
         coords = [parse_coord(s) for s in args.coords.split(";") if s.strip()]
-        await asyncio.to_thread(mem.delete_many, coords)
-        print("OK")
+        n = await asyncio.to_thread(mem.delete_many, coords)
+        print(json.dumps({"deleted": n}))
     elif args.cmd == "store-bulk":
-        items = json.load(open(args.file))
-        await asyncio.to_thread(mem.store_memories_bulk, items)
-        print("OK")
+        with open(args.file, encoding="utf-8") as fh:
+            raw = json.load(fh)
+
+        # Expect list of {coord: "x,y,z", payload: {...}, type: "episodic|semantic"}
+        def _to_tuple(item):
+            c = parse_coord(item.get("coord", ""))
+            p = item.get("payload", {})
+            t = MemoryType.SEMANTIC if item.get("type") == "semantic" else MemoryType.EPISODIC
+            return (c, p, t)
+
+        tuples = [_to_tuple(it) for it in raw]
+        await asyncio.to_thread(mem.store_memories_bulk, tuples)
+        print(json.dumps({"stored": len(tuples)}))
     elif args.cmd == "range":
         minc = parse_coord(args.min_coord)
         maxc = parse_coord(args.max_coord)
-        res = await asyncio.to_thread(mem.range_query, minc, maxc, memory_type=args.mem_type)
-        print(json.dumps(res))
+        mtype = None
+        if args.mem_type:
+            mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
+        res = await asyncio.to_thread(mem.find_by_coordinate_range, minc, maxc, memory_type=mtype)
+        coords = [m.get("coordinate") for m in res if isinstance(m, dict) and m.get("coordinate")]
+        print(json.dumps(coords))
 
 
 def main() -> None:

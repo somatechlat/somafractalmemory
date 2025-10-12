@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 import structlog
 
@@ -18,7 +19,7 @@ def configure_logging(
     logging.basicConfig(
         level=level,
         format="%(message)s",
-        handlers=[logging.StreamHandler()],
+        handlers=[logging.StreamHandler(stream=sys.stderr)],
     )
 
     structlog.configure(

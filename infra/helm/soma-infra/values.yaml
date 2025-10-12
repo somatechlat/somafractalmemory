@@ -1,0 +1,124 @@
+# Default values for soma-infra.
+# TODO: Populate component charts (postgres, pgpool, redis, kafka, vault, opa, prometheus, grafana) and shared globals.
+
+global:
+  imageRegistry: docker.io
+  security:
+    allowInsecureImages: true
+
+namespace: soma-infra
+nameOverride: sharedinfra
+
+postgres:
+  enabled: true
+  fullnameOverride: sharedinfra-postgres
+  postgresql:
+    replicaCount: 1
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/postgresql-repmgr
+      tag: 16.6.0-debian-12-r3
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  pgpool:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/pgpool
+      tag: 4.6.3-debian-12-r0
+    replicaCount: 1
+    service:
+      ports:
+        postgresql: 5432
+
+redis:
+  enabled: true
+  fullnameOverride: sharedinfra-redis
+  architecture: replication
+  replica:
+    replicaCount: 1
+  auth:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 4Gi
+  master:
+    service:
+      ports:
+        redis: 6379
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+  replica:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+kafka:
+  enabled: true
+  fullnameOverride: sharedinfra-kafka
+  controller:
+    replicaCount: 1
+    image:
+      registry: docker.io
+      repository: apache/kafka
+      tag: 3.8.0
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    service:
+      ports:
+        client: 9092
+
+vault:
+  enabled: true
+  fullnameOverride: sharedinfra-vault
+  server:
+    dev:
+      enabled: true
+    dataStorage:
+      enabled: true
+      size: 5Gi
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+
+opa:
+  enabled: true
+  fullnameOverride: sharedinfra-opa
+  image:
+    repository: openpolicyagent/opa
+    tag: 0.57.0-debug
+  service:
+    type: ClusterIP
+    port: 8181
+
+prometheus:
+  enabled: true
+  fullnameOverride: sharedinfra-prometheus
+  server:
+    persistentVolume:
+      enabled: true
+      size: 8Gi
+  alertmanager:
+    enabled: false
+
+grafana:
+  enabled: true
+  fullnameOverride: sharedinfra-grafana
+  persistence:
+    enabled: true
+    size: 5Gi

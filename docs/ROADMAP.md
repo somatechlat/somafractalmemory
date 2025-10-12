@@ -1,6 +1,15 @@
 # Roadmap
 
-> Note: This document is superseded by `docs/ARCHITECTURE_ROADMAP.md` and kept for historical context. Please refer to that file for the current, canonical plan and status.
+> Alignment note: `docs/ARCHITECTURE_ROADMAP.md` is the canonical sprint tracker for SomaStack integration. This document keeps the memory-core roadmap and summarizes the latest shared-infra alignment status below.
+
+## Shared Infra Alignment Snapshot (Nov 2024)
+- [ACTIVE] **Sprint 0 – Readiness Gap Fixes**: adopt `scripts/reset-sharedinfra-compose.sh`, expand Docker parity docs, add Redis/Kafka recovery steps, and link onboarding guides to the SomaStack playbook.
+- [ACTIVE] **Sprint 1 – Kubernetes Baseline**: add Kind config (`infra/kind/soma-kind.yaml`), shared infra Kind bootstrap scripts, shared infra deploy helper, and Makefile target chaining the flow.
+- [TODO] **Sprint 2 – Shared Infra Wiring**: scaffold `infra/helm/soma-infra`, add Vault policy + ExternalSecret templates, wire ConfigMap contract, script DB/Kafka provisioning.
+- [TODO] **Sprint 3 – Observability & CI**: adopt structured logging/tracing, implement GitHub Actions deploy workflow, add health snapshot automation, close high-severity auth/TLS/network-policy gaps.
+- [TODO] **Sprint 4 – Go-Live Checklist**: document DR rehearsal, namespace access audit, incident bundle collector, production cutover checklist, and remaining production-readiness items (PVC backups, Alembic migrations, Kafka DLQ).
+
+See `docs/ARCHITECTURE_ROADMAP.md` for task-level breakdowns, production-readiness mapping (Section 4), evidence requirements, and dependencies.
 <!-- Canonical Roadmap for SomaFractalMemory (SFM) v2.1 -->
 
 # SFM Canonical Roadmap (v2.1)
@@ -181,6 +190,7 @@ Milestones (2‑week sprints)
 
 Sprint 1 – Config centralization & Vault integration
 
+- Status: [TODO] – blocked on Sprint 0 documentation updates and compose parity notes.
 - Tasks
 	- Refactor API/factory to consume `SMFSettings` from `common/config/settings.py` (single source of truth, env prefix SOMA_).
 	- Remove `.env` reliance in runtime paths; document Vault Agent injection and mount points; add Vault annotations to manifests.
@@ -191,6 +201,7 @@ Sprint 1 – Config centralization & Vault integration
 
 Sprint 2 – gRPC definition & async refactor (core)
 
+- Status: [TODO] – pending completion of async refactor design and Sprint 1 settings work.
 - Tasks
 	- Standardize gRPC port 50053 across code/docs; expose in Dockerfile/compose/helm.
 	- Make gRPC server primary; mark HTTP example as auxiliary.
@@ -201,40 +212,157 @@ Sprint 2 – gRPC definition & async refactor (core)
 
 Sprint 3 – Logging/Tracing & Docker/Helm
 
+- Status: [TODO] – requires logging/tracing consolidation and Dockerfile refresh.
 - Tasks
-	- Replace ad‑hoc tracing with `common/utils/trace.py`; export to Jaeger via settings.
+	- Replace ad-hoc tracing with `common/utils/trace.py`; export to Jaeger via settings.
 	- Switch logging to `common/utils/logger.py` JSON logger with consistent fields.
 	- Dockerfile: base `python:3.12-slim`, expose 50053, gRPC healthcheck.
 	- Promote Helm: serviceAccount + minimal RBAC; Vault annotations; support `global.imageTag`; default to shared DNS.
 - Acceptance
 	- Traces visible in Jaeger; logs structured; helm lint passes; deployment uses SA/RBAC and picks up global image tag.
 
-Sprint 4 – CI/CD full‑stack & cache
+Sprint 4 – CI/CD full-stack & cache
 
+- Status: [TODO] – dependent on shared infra Helm chart and GitHub Action scaffolding.
 - Tasks
-	- GitHub Actions: setup‑kind; install soma‑stack; run integration tests; run `helm lint`; cache generated gRPC stubs.
-	- Integrate `common/utils/redis_cache.py` on hot read paths with 5‑minute TTL; configure via settings.
+	- GitHub Actions: setup-kind; install soma-stack; run integration tests; run `helm lint`; cache generated gRPC stubs.
+	- Integrate `common/utils/redis_cache.py` on hot read paths with 5-minute TTL; configure via settings.
 - Acceptance
 	- CI green end‑to‑end on Kind; cache hit ratio visible; latency improved for hot keys.
 
 Sprint 5 – Feature flags (etcd) & full integration tests
 
+- Status: [TODO] – waiting on etcd client wiring and async test harness.
 - Tasks
 	- Wire `common/utils/etcd_client.py` feature flags; background watcher (Kafka `config.updates`).
-	- Write pytest‑asyncio gRPC unit tests; add full‑stack tests (Auth/OPA/Kafka/Redis/Etcd) with latency SLO (<50 ms per call under dev load).
+	- Write pytest-asyncio gRPC unit tests; add full-stack tests (Auth/OPA/Kafka/Redis/Etcd) with latency SLO (<50 ms per call under dev load).
 - Acceptance
 	- Flags toggle behaviors without restarts; tests validate latency and contract.
 
-Sprint 6 – Documentation & run‑book
+Sprint 6 – Documentation & run-book
 
+- Status: [TODO] – final sprint once infra and core integrations are complete.
 - Tasks
 	- Add `docs/runbook_smf.md` with deployment steps, health/rollback, and gRPC usage.
-	- Update architecture with shared‑infra section and gRPC contract; add "no‑mock" banner to index/quickstart.
+	- Update architecture with shared-infra section and gRPC contract; add "no-mock" banner to index/quickstart.
 	- Add k6 load script and Vault secrecy checks to the repo.
 - Acceptance
 	- Docs reviewed/green; run‑book reproducible; load/secrecy checks integrated into CI optional stage.
 
 Gating metrics & risks (integration)
+---
 
+# SomaStack Shared Infra — Agent Deployment Playbook (Canonical)
+
+Scope: Canonical manual for automation agents (Codex, Copilot, GitOps) to deploy workloads into Soma shared infra. Deterministic, restart‑resistant, with explicit commands and validation.
+
+Order of operations: Docker setup first where applicable (images, uv, local validation), then Kubernetes shared infra provisioning, then app wire‑up.
+
+## 0. Cluster Reset Checklist
+```sh
+helm uninstall sharedinfra -n soma-infra || true
+kubectl delete namespace soma-infra --wait=false || true
+kubectl wait --for=delete ns/soma-infra --timeout=120s || true
+kubectl get namespaces
+```
+If `soma-infra` is stuck `Terminating`, clear finalizers:
+```sh
+kubectl get namespace soma-infra -o json | jq '.spec.finalizers=[]' | \
+	kubectl replace --raw /api/v1/namespaces/soma-infra/finalize -f -
+```
+
+## 1. Environment Bootstrap
+Tools (minimum versions): kubectl ≥1.28, helm ≥3.13, kind ≥0.22, docker ≥24.0, jq ≥1.6.
+Validate binaries:
+```sh
+kubectl version --client && helm version && kind version && docker version && jq --version
+```
+Kind cluster:
+```sh
+kind delete cluster --name soma || true
+kind create cluster --name soma --config infra/kind/soma-kind.yaml
+kubectl config use-context kind-soma
+```
+Preload images:
+```sh
+for img in bitnamicharts/postgresql-repmgr:17.6.0-debian-12-r2 \
+					 bitnamicharts/pgpool:4.6.3-debian-12-r0 \
+					 apache/kafka:3.8.0 \
+					 redis:7.2.4-alpine \
+					 hashicorp/vault:1.15.4 \
+					 openpolicyagent/opa:0.57.0-debug \
+					 prom/prometheus:v2.47.2 \
+					 grafana/grafana:10.2.3; do
+	docker pull "$img" && kind load docker-image "$img" --name soma
+done
+```
+
+## 2. Shared Infra Deployment
+```sh
+helm dependency update infra/helm/soma-infra
+kubectl create namespace soma-infra || true
+helm upgrade --install sharedinfra infra/helm/soma-infra \
+	-n soma-infra -f infra/helm/soma-infra/values-dev.yaml \
+	--wait --timeout 5m
+kubectl wait --for=condition=ready pod --all -n soma-infra --timeout=180s
+helm status sharedinfra -n soma-infra
+```
+Postgres HA check, see full playbook above.
+
+Overlays: select via `-f values-<mode>.yaml` (dev/test/staging/prod-lite/prod). Always `--wait`.
+
+Mermaid snapshot included in full playbook.
+
+## 3. Application Wire‑Up Workflow
+- Namespace labeling
+- Vault role + policy, ExternalSecret (per app ns)
+- ConfigMap contract (DNS for shared services)
+- Deployment skeleton (Helm)
+- Database provisioning (Pgpool)
+- Kafka topic setup (partitions per env)
+
+Commands and YAML templates provided in the playbook above.
+
+## 4. CD Pipeline Blueprint
+GitHub Actions template included (build, push, helm upgrade, readiness gate). Enforce identical readiness checks across environments.
+
+## 5. Verification Matrix & Troubleshooting
+Command→criteria table provided; incident bundle collector script included.
+
+## 6. Policies
+No mocking; restart resilience; drift detection; access control via namespace label + NetworkPolicies.
+
+---
+
+# Consolidated Execution Roadmap (Parallel Sprints Enabled)
+
+This section unifies code refactor sprints with production‑readiness and the shared‑infra onboarding playbook. Sprints can run in parallel where they touch disjoint areas.
+
+Sprint 0 — Guardrails (CI reports) [parallel]
+- MkDocs build + link checks; dead‑code/dep reports; decide on generated artifacts policy.
+
+Sprint 1 — Structure cleanup [parallel]
+- Remove duplicate workers; unify package layout; .gitignore hygiene; relocate stray tests.
+
+Sprint 2 — Config & DI simplification
+- Central Settings; inject at boundaries; uniform logging; explicit retries/backoff.
+
+Sprint 3 — Docs & ergonomics
+- One roadmap doc; scripts index; normalized terminology; generated vs committed clarified.
+
+Sprint 4 — Packaging & runtime
+- Dockerfiles on uv; slim images; SBOM; enforce CI gates.
+
+Sprint 5 — Correctness & performance
+- Pydantic v2 cleanup; perf/load tests; RED dashboards and targets.
+
+Sprint 6 — Security & production hardening
+- Secrets via files; TLS/Ingress; NetworkPolicies; scans; Helm defaults (resources/HPA/PDB).
+
+Shared‑Infra Onboarding (Kubernetes)
+- Reset → Bootstrap → Deploy infra → App wire‑up → CD → Verification → Ops.
+
+Cutover & Merge Playbook
+- Complete Sprints 1–3; run Sanity CI; update CHANGELOG; tag release; deploy to staging with readiness gates; smoke and promote.
 - SLOs: p95 gRPC store/recall < 50 ms on dev Kind; zero secret leakage; CI full‑stack < 25 min.
 - Risks: Async refactor regressions → dual path adapters; Vault/etcd availability → fallback to safe defaults with clear warnings; Helm drift → lint + schema checks.

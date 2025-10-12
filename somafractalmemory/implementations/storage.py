@@ -17,7 +17,16 @@ from typing import Any, Optional
 import psycopg2
 import qdrant_client
 import redis
-from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+
+try:  # optional test dependency
+    import fakeredis  # type: ignore
+except Exception:  # pragma: no cover - optional dependency path
+    fakeredis = None  # type: ignore
+try:
+    # Optional OpenTelemetry instrumentation; safe no-op when package missing
+    from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor  # type: ignore
+except Exception:  # pragma: no cover - optional dependency path
+    Psycopg2Instrumentor = None  # type: ignore
 
 # Specific third‑party imports
 from psycopg2.extras import Json
@@ -28,9 +37,13 @@ from redis.exceptions import ConnectionError
 # Local application imports
 from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
 
-# Initialise instrumentation (executed at import time). These calls are safe even if the
-# instrumentors are the no‑op stubs defined above.
-Psycopg2Instrumentor().instrument()
+# Initialise instrumentation (executed at import time) if available
+if Psycopg2Instrumentor is not None:  # pragma: no cover - optional dependency path
+    try:
+        Psycopg2Instrumentor().instrument()
+    except Exception:
+        # Never let instrumentation failures break core functionality
+        pass
 
 
 # Minimal InMemoryVectorStore for testing
@@ -122,7 +135,9 @@ class InMemoryKeyValueStore(IKeyValueStore):
         # A simple pattern matcher for in-memory store
         import re
 
-        regex = re.compile(pattern.replace("*", ".*"))
+        # Escape regex specials, then allow '*' wildcard
+        pat = re.escape(pattern).replace(r"\*", ".*")
+        regex = re.compile(f"^{pat}$")
         return (key for key in self._data if regex.match(key))
 
     def hgetall(self, key: str) -> dict[bytes, bytes]:
@@ -152,11 +167,27 @@ class InMemoryKeyValueStore(IKeyValueStore):
 class RedisKeyValueStore(IKeyValueStore):
     def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
         if self._testing:
-            # Testing mode unsupported in no-mock deployments
-            raise RuntimeError("Testing mode is unsupported: use a real Redis instance")
+            # Provide a simple in-process reentrant lock for tests
+            lock = self._inproc_locks[name]
+
+            class _LockCtx:
+                def __enter__(self_nonlocal):  # noqa: N805
+                    lock.acquire()
+                    return lock
+
+                def __exit__(self_nonlocal, exc_type, exc, tb):  # noqa: N805
+                    try:
+                        lock.release()
+                    except Exception:
+                        pass
+                    return False
+
+            return _LockCtx()
         return self.client.lock(name, timeout=timeout)
 
     def health_check(self) -> bool:
+        if self._testing:
+            return True
         try:
             return bool(self.client.ping())
         except ConnectionError:
@@ -171,15 +202,25 @@ class RedisKeyValueStore(IKeyValueStore):
         # Always prepare an in-proc lock map for tests and fakeredis
         self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
         if testing:
-            raise RuntimeError(
-                "Testing mode with in-memory fakeredis is not supported in this deployment. Use a real Redis server."
-            )
-        self.client = redis.Redis(host=host, port=port, db=db)
+            # Built-in in-memory backend for tests (avoids external fakeredis dependency)
+            class FakeRedis:
+                pass
+
+            self.client = FakeRedis()
+            self._mem_kv: dict[str, bytes] = {}
+            self._mem_hash: dict[str, dict[bytes, bytes]] = {}
+        else:
+            self.client = redis.Redis(host=host, port=port, db=db)
 
     def set(self, key: str, value: bytes):
+        if self._testing:
+            self._mem_kv[key] = value
+            return
         self.client.set(key, value)
 
     def get(self, key: str) -> bytes | None:
+        if self._testing:
+            return self._mem_kv.get(key)
         result = self.client.get(key)
         if inspect.isawaitable(result):
             import asyncio
@@ -190,9 +231,24 @@ class RedisKeyValueStore(IKeyValueStore):
         return None
 
     def delete(self, key: str):
+        if self._testing:
+            self._mem_kv.pop(key, None)
+            self._mem_hash.pop(key, None)
+            return
         self.client.delete(key)
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
+        if self._testing:
+            import re
+
+            pat = re.escape(pattern).replace(r"\*", ".*")
+            regex = re.compile(f"^{pat}$")
+            seen: set[str] = set()
+            for key in list(self._mem_kv.keys()) + list(self._mem_hash.keys()):
+                if key not in seen and regex.match(key):
+                    seen.add(key)
+                    yield key
+            return
         for key in self.client.scan_iter(pattern):
             if isinstance(key, bytes | bytearray):
                 yield key.decode("utf-8")
@@ -200,6 +256,8 @@ class RedisKeyValueStore(IKeyValueStore):
                 yield str(key)
 
     def hgetall(self, key: str) -> dict[bytes, bytes]:
+        if self._testing:
+            return dict(self._mem_hash.get(key, {}))
         result = self.client.hgetall(key)
         if inspect.isawaitable(result):
             import asyncio
@@ -212,6 +270,14 @@ class RedisKeyValueStore(IKeyValueStore):
         return {}
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
+        if self._testing:
+            cur = self._mem_hash.setdefault(key, {})
+            for k, v in mapping.items():
+                if isinstance(k, bytes | bytearray) and isinstance(v, bytes | bytearray):
+                    cur[bytes(k)] = bytes(v)
+                else:
+                    cur[str(k).encode("utf-8")] = str(v).encode("utf-8")
+            return
         self.client.hset(key, mapping=dict(mapping))
 
 

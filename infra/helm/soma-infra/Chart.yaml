@@ -1,0 +1,43 @@
+apiVersion: v2
+name: soma-infra
+description: Shared infrastructure stack (Postgres, Pgpool, Redis, Kafka, Vault, OPA, Prometheus, Grafana) for Soma deployments.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: postgresql-ha
+    version: 13.2.4
+    repository: https://charts.bitnami.com/bitnami
+    alias: postgres
+    condition: postgres.enabled
+  - name: redis
+    version: 18.8.1
+    repository: https://charts.bitnami.com/bitnami
+    alias: redis
+    condition: redis.enabled
+  - name: kafka
+    version: 27.1.0
+    repository: https://charts.bitnami.com/bitnami
+    alias: kafka
+    condition: kafka.enabled
+  - name: vault
+    version: 0.27.0
+    repository: https://helm.releases.hashicorp.com
+    alias: vault
+    condition: vault.enabled
+  - name: opa
+    version: 1.18.2
+    repository: https://openpolicyagent.github.io/opa
+    alias: opa
+    condition: opa.enabled
+  - name: prometheus
+    version: 25.7.0
+    repository: https://prometheus-community.github.io/helm-charts
+    alias: prometheus
+    condition: prometheus.enabled
+  - name: grafana
+    version: 8.5.1
+    repository: https://grafana.github.io/helm-charts
+    alias: grafana
+    condition: grafana.enabled

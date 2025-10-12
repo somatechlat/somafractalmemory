@@ -6,10 +6,11 @@ available at ``somafractalmemory/http_api.py`` with a compatibility shim left
 in place for legacy imports.
 """
 
+import logging
 import os
 import time
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from common.utils.logger import configure_logging
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
@@ -48,6 +50,10 @@ if configure_tracer:
 else:
     trace.set_tracer_provider(TracerProvider())
     trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+
+# Configure structured logging early (JSON output)
+configure_logging("somafractalmemory-api")
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SomaFractalMemory API")
 # Instrument the FastAPI app for tracing
@@ -132,8 +138,10 @@ def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
     url = os.getenv("QDRANT_URL")
     if url:
         return {"url": url}
-    # No dedicated DNS field in SMFSettings; keep the legacy env default.
-    host = os.getenv("QDRANT_HOST", "qdrant")
+    # Prefer centralized settings DNS when available, else fall back to env or default.
+    host = getattr(getattr(settings, "infra", None), "qdrant", None) or os.getenv(
+        "QDRANT_HOST", "qdrant"
+    )
     port = int(os.getenv("QDRANT_PORT", "6333"))
     return {"host": host, "port": port}
 
@@ -150,8 +158,27 @@ try:
 except Exception:
     settings = None
 
+
+def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
+    """Resolve Postgres configuration with centralized settings fallback.
+
+    Preference order:
+    1. Explicit ``POSTGRES_URL`` environment variable.
+    2. Centralized settings DNS (``settings.infra.postgres``) with standard DSN.
+    3. Empty mapping when neither is present.
+    """
+    url = os.getenv("POSTGRES_URL")
+    if url:
+        return {"url": url}
+    host = getattr(getattr(settings, "infra", None), "postgres", None)
+    if host:
+        # Default credentials/database match our Helm chart defaults
+        return {"url": f"postgresql://postgres:postgres@{host}:5432/somamemory"}
+    return {"url": os.getenv("POSTGRES_URL")}  # final fallback (None or value)
+
+
 config: dict[str, Any] = {
-    "postgres": {"url": os.getenv("POSTGRES_URL")},
+    "postgres": _postgres_config(settings),
     "vector": {"backend": "qdrant"},
     "qdrant": _qdrant_config(settings),
 }
@@ -165,14 +192,39 @@ if eventing_env is not None:
     config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
 
 mem = create_memory_system(memory_mode, namespace_default, config=config)
-print("[DEBUG] Memory mode:", memory_mode.value)
-print("[DEBUG] POSTGRES_URL used:", os.getenv("POSTGRES_URL"))
-if redis_host := redis_cfg.get("host"):
-    print("[DEBUG] Redis host:", redis_host)
-if qdrant_url := config["qdrant"].get("url"):
-    print("[DEBUG] Qdrant URL:", qdrant_url)
-else:
-    print("[DEBUG] Qdrant host:", config["qdrant"].get("host"))
+
+
+def _redact_dsn(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        p = urlparse(url)
+        # Drop username/password from netloc
+        hostport = p.hostname or ""
+        if p.port:
+            hostport = f"{hostport}:{p.port}"
+        return urlunparse((p.scheme, hostport, p.path, "", "", ""))
+    except Exception:
+        return url
+
+
+def _log_startup_config():
+    q = config.get("qdrant", {})
+    q_loc = q.get("url") or f"{q.get('host','')}:{q.get('port','')}"
+    logger.info(
+        "startup: api",
+        extra={
+            "mode": memory_mode.value,
+            "namespace": namespace_default,
+            "postgres": _redact_dsn(config.get("postgres", {}).get("url")),
+            "redis_host": redis_cfg.get("host"),
+            "qdrant": q_loc,
+            "eventing_enabled": config.get("eventing", {}).get("enabled", True),
+        },
+    )
+
+
+_log_startup_config()
 
 # Some tests expect a prediction_provider attribute for health endpoints; provide a no-op stub
 if not hasattr(mem, "prediction_provider"):

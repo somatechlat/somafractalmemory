@@ -23,6 +23,9 @@ from typing import Any
 from aiokafka import AIOKafkaConsumer
 from prometheus_client import Counter, Histogram, start_http_server
 
+from common.config.settings import load_settings
+from common.utils.logger import configure_logging
+
 # ---------------------------------------------------------------------------
 # Prometheus metrics
 # ---------------------------------------------------------------------------
@@ -48,9 +51,10 @@ PROCESS_LATENCY = Histogram(
 )
 
 # ---------------------------------------------------------------------------
-# Configuration (environment variables – fall back to dev defaults)
+# Configuration (environment variables – fall back to centralized settings or dev defaults)
 # ---------------------------------------------------------------------------
-BROKER_URL = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+_settings = load_settings()
+BROKER_URL = os.getenv("KAFKA_BOOTSTRAP_SERVERS") or f"{_settings.infra.kafka}:9092"
 TOPIC = os.getenv("KAFKA_MEMORY_EVENTS_TOPIC", "memory.events")
 GROUP_ID = os.getenv("KAFKA_CONSUMER_GROUP", "soma-consumer-group")
 METRICS_PORT = int(os.getenv("CONSUMER_METRICS_PORT", "8001"))
@@ -124,7 +128,8 @@ async def consume() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    # Structured logging
+    configure_logging("somafractalmemory-consumer", level=os.getenv("LOG_LEVEL", "INFO"))
     # Expose Prometheus metrics endpoint
     # Ensure the repository root (project root) is on the import path when
     # the script is executed (only required when running from source).

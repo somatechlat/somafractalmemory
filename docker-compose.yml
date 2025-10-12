@@ -1,6 +1,6 @@
 services:
   redis:
-    image: redis:7
+    image: redis:7.2.4-alpine
     container_name: somafractalmemory_redis
     labels:
       - "com.soma.project=somafractalmemory"
@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.9.2
     container_name: somafractalmemory_qdrant
     labels:
       - "com.soma.project=somafractalmemory"
@@ -90,7 +90,7 @@ services:
       - kafka
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9595/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 10s
@@ -168,7 +168,7 @@ services:
       - kafka
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
+      test: ["CMD-SHELL", "python - <<'PY'\nimport socket; s=socket.socket(); s.settimeout(1);\nprint('ok') if s.connect_ex(('kafka', 9092))==0 else (_ for _ in ()).throw(SystemExit(1))\nPY"]
       interval: 30s
       timeout: 5s
       start_period: 10s
@@ -201,7 +201,7 @@ services:
       - kafka
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://api:9595/healthz || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9595/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 10s

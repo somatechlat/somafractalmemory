@@ -90,7 +90,7 @@ Docs and metrics:
 - Prometheus metrics: <http://localhost:9595/metrics>
 
 Kubernetes alternative (dev):
-- Use the Helm chart with `helm/values-dev-port9797.yaml` to run the API on 9797 and expose it on your host via NodePort 30797. Then hit `http://127.0.0.1:30797/healthz`.
+- Use the Helm chart dev values to run the API on 9797 and expose it on your host via NodePort 30797. Then hit `http://127.0.0.1:30797/healthz`.
  - Canonical entrypoint:
    ```bash
    make setup-dev-k8s
@@ -122,6 +122,7 @@ Kubernetes alternative (dev):
 docker compose down          # stop services, keep data
 rm -rf qdrant.db             # remove local Qdrant file created by quickstart
 ```
+Need a clean slate across all compose files? Run `scripts/reset-sharedinfra-compose.sh` to stop compose stacks, prune named volumes (Redis/Postgres/Kafka/Qdrant), and remove legacy SomaStack volumes before starting fresh.
 Re-run the quickstart anytime—fake Redis and local Qdrant make it easy to iterate.
 
 Persistence notes:
@@ -131,6 +132,9 @@ Persistence notes:
 ---
 
 *Need more detail? Dive into `docs/CONFIGURATION.md` for tunables and `docs/api.md` for the full method reference.*
+
+Testing notes:
+- For real-infra tests, export `USE_REAL_INFRA=1` and ensure the Compose stack is running (includes Kafka and the background consumer). Tests verify Qdrant indexing via payload filters and probe across common collections to avoid scroll-order flakiness.
 
 > WARNING
 >

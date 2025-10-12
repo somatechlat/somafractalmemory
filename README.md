@@ -32,6 +32,8 @@
 * **Kafka** – Event bus carrying `memory.events` for asynchronous processing. (Docker Compose now uses a single Confluent Kafka KRaft broker; earlier revisions shipped Redpanda.)
 * **Workers (`scripts/run_consumers.py`)** – Consume events, update Postgres/Qdrant, and expose their own Prometheus metrics.
 
+> For SomaStack deployments (Kind, Helm, Vault, shared services), follow the canonical playbook at `docs/ops/SOMASTACK_SHARED_INFRA_PLAYBOOK.md`. Sprint artefacts belong under `docs/infra/sprints/`.
+
 ---
 
 ## ⚙️ Settings & Configuration
@@ -97,6 +99,7 @@ The uv path is preferred for reliability and speed.
 make setup-dev
 ```
 The API listens on **http://localhost:9595**. Start the background consumer with `make compose-consumer-up`. A sandbox API can be reached at **http://localhost:8888** when `test_api` is running.
+For Kubernetes dev slice, a second API listens on port **9797** in-cluster and is exposed via NodePort **30797** on the host.
 
 ---
 
@@ -122,6 +125,7 @@ The API listens on **http://localhost:9595**. Start the background consumer with
   ```bash
   docker compose down -v
   ```
+  Use `scripts/reset-sharedinfra-compose.sh` for the canonical cleanup (stops every compose file, prunes Redis/Postgres/Kafka/Qdrant volumes, and removes legacy SomaStack volumes).
 
 > ℹ️  The FastAPI example writes `openapi.json` to the repository root at startup for documentation builds.
 
@@ -162,7 +166,7 @@ helm upgrade --install soma-memory ./helm \
 Expose the API locally with NodePort health (dev slice) or the port-forward helper:
 
 ```bash
-make helm-dev-health   # NodePort 30797 for dev slice
+make helm-dev-health   # NodePort 30797 for dev slice (service port 9797)
 # or
 ./scripts/port_forward_api.sh start && curl -s http://127.0.0.1:9595/healthz | jq . && ./scripts/port_forward_api.sh stop
 ```
@@ -194,11 +198,16 @@ Swagger UI is available at **`/docs`**, and the generated spec is published as `
 
 For detailed endpoint-by-endpoint usage, parameters, and examples, see `docs/USAGE_GUIDE.md`.
 
+Auth/CORS/body size controls:
+- `SOMA_API_TOKEN` or `SOMA_API_TOKEN_FILE` (from a mounted Secret) enables bearer auth.
+- `SOMA_CORS_ORIGINS` accepts a comma-separated list of origins to enable CORS.
+- `SOMA_MAX_REQUEST_BODY_MB` enforces a maximum JSON body size for incoming requests.
+
 ---
 
 ## 🧪 Testing & CI
 * **Unit tests** – `pytest -q` can use lightweight in-memory/ephemeral paths.
-* **Integration & E2E** – Full infra tests (e.g., `tests/test_full_infra_e2e.py`) exercise API → Kafka → consumer → Postgres/Qdrant/Redis with `USE_REAL_INFRA=1`.
+* **Integration & E2E** – Full infra tests (e.g., `tests/test_full_infra_e2e.py`) exercise API → Kafka → consumer → Postgres/Qdrant/Redis with `USE_REAL_INFRA=1`. Tests validate Qdrant indexing deterministically using payload filters and probe collections (`$QDRANT_COLLECTION`, `memory_vectors`, `default`, `api_ns`) to avoid scroll-order flakiness.
 * **CI quick checks** – `make ci-verify` (Compose: up → health → curls → down), `make ci-verify-k8s` (uses `scripts/run_ci.sh`).
 * **Docs** – `make docs-build` to build, `make docs-serve` to preview at http://127.0.0.1:8008.
 * **CI** – GitHub Actions run pytest, Ruff, Black, Bandit, mypy, and build the MkDocs documentation.

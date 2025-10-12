@@ -1,0 +1,45 @@
+# Prod-lite overlay for soma-infra.
+postgres:
+  postgresql:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 20Gi
+  pgpool:
+    replicaCount: 2
+
+redis:
+  architecture: replication
+  auth:
+    enabled: true
+  persistence:
+    enabled: true
+    size: 8Gi
+
+kafka:
+  controller:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 40Gi
+
+vault:
+  enabled: true
+  server:
+    ha:
+      enabled: true
+      replicas: 3
+    dataStorage:
+      enabled: true
+      size: 20Gi
+
+opa:
+  enabled: true
+
+prometheus:
+  enabled: true
+  alertmanager:
+    enabled: true
+
+grafana:
+  enabled: true

@@ -28,6 +28,9 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `UVICORN_WORKERS` | Worker count for the FastAPI container images. | `4` |
 | `UVICORN_TIMEOUT_GRACEFUL` | Graceful shutdown timeout for the API. | `60` |
 | `UVICORN_TIMEOUT_KEEP_ALIVE` | Keep-alive timeout override. | `120` (Compose default) |
+| `SOMA_CORS_ORIGINS` | Comma-separated list of allowed origins for CORS in the FastAPI service. | *(unset → CORS disabled)* |
+| `SOMA_API_TOKEN_FILE` | Filesystem path to a file containing the API bearer token (e.g., mounted Kubernetes Secret). Overrides `SOMA_API_TOKEN` when present. | *(unset)* |
+| `SOMA_MAX_REQUEST_BODY_MB` | Maximum allowed JSON request size in megabytes; requests exceeding this are rejected. | *(unset → default limit)* |
 
 ---
 
@@ -100,6 +103,11 @@ config = {
 ```
 The factory ensures mutually exclusive use of `path` vs. network connection parameters.
 
+Collections and consumers:
+- The API uses the provided namespace as the collection name when wired to Qdrant.
+- The vector indexing worker indexes into `$QDRANT_COLLECTION` (default `memory_vectors`), the namespace collection (when provided), and optionally `$QDRANT_EXTRA_COLLECTION` if set.
+- Tests and diagnostics may probe multiple collections (`$QDRANT_COLLECTION`, `memory_vectors`, `default`, `api_ns`) using payload filters for deterministic presence checks.
+
 ---
 
 ## Redis / Postgres Options
@@ -129,6 +137,13 @@ TLS-related variables for Postgres are honoured when present:
 - `POSTGRES_SSL_KEY`
 
 To disable Kafka publishing without editing source, set `EVENTING_ENABLED=false` in the environment; the FastAPI wiring will feed `{"eventing": {"enabled": False}}` into the factory.
+
+---
+
+## Testing against real infrastructure
+
+- Set `USE_REAL_INFRA=1` to enable tests that bind to running local services (Docker Compose defaults: Postgres 5433, Redis 6381, Qdrant 6333, Kafka 19092). The `conftest.py` helper auto-detects reachable ports and exports them as environment variables for the tests.
+- Integration tests verify Qdrant vector presence deterministically using payload filters and will probe across collections to avoid scroll-order flakiness in large datasets.
 
 ---
 

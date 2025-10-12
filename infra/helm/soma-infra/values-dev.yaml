@@ -1,0 +1,42 @@
+# Development overlay for soma-infra.
+postgres:
+  postgresql:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      size: 8Gi
+  pgpool:
+    replicaCount: 1
+
+redis:
+  architecture: standalone
+  persistence:
+    enabled: true
+    size: 2Gi
+
+kafka:
+  controller:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      size: 5Gi
+
+vault:
+  enabled: true
+  server:
+    dev:
+      enabled: true
+    dataStorage:
+      enabled: true
+      size: 5Gi
+
+opa:
+  enabled: true
+
+prometheus:
+  enabled: true
+  alertmanager:
+    enabled: false
+
+grafana:
+  enabled: true

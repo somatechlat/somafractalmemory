@@ -246,7 +246,11 @@ class SomaFractalMemoryEnterprise:
             "yes",
         )
         if force_hash:
-            logger.info("SOMA_FORCE_HASH_EMBEDDINGS enabled: using hash-based embeddings")
+            # Quiet mode for CLI/tests: avoid printing to stdout
+            try:
+                logger.debug("SOMA_FORCE_HASH_EMBEDDINGS enabled: using hash-based embeddings")
+            except Exception:
+                pass
             self.tokenizer = None
             self.model = None
         else:

@@ -2,6 +2,7 @@
         help prereqs prereqs-docker prereqs-k8s settings \
         compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health compose-consumer-up compose-consumer-down compose-print-ports \
 	runtime-build kind-up kind-down kind-load helm-dev-install helm-dev-uninstall helm-dev-health \
+	sharedinfra-kind-bootstrap sharedinfra-kind-deploy sharedinfra-kind \
 	setup-dev setup-dev-k8s quickstart docs-build docs-serve ci-verify ci-verify-k8s k8s-verify
 
 # ------------------------------------------------------------
@@ -32,6 +33,9 @@ POSTGRES_HOST_PORT_RUNTIME := $(or $(call dc_port,postgres,5432),$(POSTGRES_HOST
 REDIS_HOST_PORT_RUNTIME := $(or $(call dc_port,redis,6379),$(REDIS_HOST_PORT))
 QDRANT_HOST_PORT_RUNTIME := $(or $(call dc_port,qdrant,6333),$(QDRANT_HOST_PORT))
 KAFKA_OUTSIDE_PORT_RUNTIME := $(or $(call dc_port,kafka,19092),$(KAFKA_OUTSIDE_PORT))
+
+# Shared infra defaults
+MODE ?= dev
 
 # ------------------------------------------------------------
 # Help and prerequisites
@@ -225,3 +229,16 @@ helm-dev-health: prereqs-k8s ## Check health of the dev release via NodePort
 
 helm-dev-uninstall: prereqs-k8s ## Uninstall dev release (sfm-9797)
 	helm uninstall sfm-9797 -n sfm-9797 || true
+
+# ------------------------------------------------------------
+# SomaStack shared infra (Kind + Helm)
+# ------------------------------------------------------------
+
+sharedinfra-kind-bootstrap: prereqs-k8s ## Recreate Kind cluster 'soma' and preload shared infra images
+	./scripts/create-kind-soma.sh
+	./scripts/preload-sharedinfra-images.sh
+
+sharedinfra-kind-deploy: prereqs-k8s ## Deploy shared infra Helm chart into the Kind cluster
+	./scripts/deploy-kind-sharedinfra.sh MODE=$(MODE)
+
+sharedinfra-kind: sharedinfra-kind-bootstrap sharedinfra-kind-deploy ## Full shared infra reset + deploy

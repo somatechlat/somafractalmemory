@@ -164,7 +164,7 @@ This section inventories the major modules and classes and lists production chec
 - Remediation:
 	- Configure acks=all, idempotent producer; choose partition keys; add retry/backoff and DLQ publisher on failure; include trace/context headers.
 
-### somafractalmemory/workers/vector_indexer.py
+### workers/vector_indexer.py
 - Purpose: Consume events and index vectors.
 - Gaps:
 	- No poison‑pill handling; backoff strategy unspecified; batch sizing and commit strategy not documented; missing DLQ.

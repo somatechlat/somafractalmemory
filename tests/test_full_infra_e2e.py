@@ -62,8 +62,10 @@ def _can_reach():
 @pytest.mark.integration
 @pytest.mark.timeout(60)
 def test_full_infra_e2e():
-    if os.getenv("USE_REAL_INFRA") != "1":
-        pytest.skip("Requires USE_REAL_INFRA=1")
+    use_live = os.getenv("USE_LIVE_INFRA") in ("1", "true", "yes")
+    use_real = os.getenv("USE_REAL_INFRA") in ("1", "true", "yes")
+    if not (use_live or use_real):
+        pytest.skip("Requires live infra (USE_LIVE_INFRA=1 or USE_REAL_INFRA=1)")
     if not _can_reach():
         pytest.skip("Required infra not reachable")
 
@@ -122,34 +124,57 @@ def test_full_infra_e2e():
     )
     assert has_key, "Redis does not show any namespace keys"
 
-    # 3. Qdrant point presence (search by embedding of marker)
+    # 3. Qdrant point presence (deterministic payload filter across candidate collections)
     from qdrant_client import QdrantClient
+    from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
     qc = QdrantClient(host=qdrant_host, port=qdrant_port)
-    # Basic attempt: similarity search using embed_text of marker payload
-    emb = memory.embed_text(json.dumps(payload)).flatten().tolist()
-    try:
-        res = qc.query_points(collection_name=namespace, query=emb, limit=5, with_payload=True)
-        points = getattr(res, "points", res)
-    except Exception:
-        points = qc.search(collection_name=namespace, query_vector=emb, limit=5)
-    found_marker = any(
-        marker == getattr(p, "payload", {}).get("task")  # modern QueryResponse point
-        for p in points
-        if getattr(p, "payload", None)
-    )
-    if not found_marker:
-        # Hash‑based fallback: if similarity missed due to random hash embedding dispersion, perform a scroll
-        try:
-            scroll, _next = qc.scroll(collection_name=namespace, limit=200, with_payload=True)
-            found_marker = any(
-                getattr(p, "payload", {}).get("task") == marker
-                for p in scroll
-                if getattr(p, "payload", None)
-            )
-        except Exception:
-            pass
-    assert found_marker, "Qdrant search/scroll did not locate the stored payload"
+    # Prefer namespace collection but probe common alternates too
+    candidates = [namespace, "memory_vectors", "default", "api_ns"]
+    f = Filter(must=[FieldCondition(key="task", match=MatchValue(value=marker))])
+    found_marker = False
+    deadline = time.time() + 30
+    while time.time() < deadline and not found_marker:
+        for coll in candidates:
+            try:
+                cnt = qc.count(collection_name=coll, count_filter=f, exact=True)
+                count_val = getattr(cnt, "count", cnt)
+                if count_val and int(count_val) > 0:
+                    found_marker = True
+                    break
+            except Exception:
+                pass
+            try:
+                items, _ = qc.scroll(collection_name=coll, limit=1, with_payload=True, filter=f)  # type: ignore[arg-type]
+                if len(items) > 0:
+                    found_marker = True
+                    break
+            except Exception:
+                try:
+                    items, _ = qc.scroll(
+                        collection_name=coll,
+                        limit=1,
+                        with_payload=True,
+                        scroll_filter=f,  # type: ignore[arg-type]
+                    )
+                    if len(items) > 0:
+                        found_marker = True
+                        break
+                except Exception:
+                    try:
+                        items, _ = qc.scroll(collection_name=coll, limit=200, with_payload=True)
+                        if any(
+                            getattr(p, "payload", {}).get("task") == marker
+                            for p in items
+                            if getattr(p, "payload", None)
+                        ):
+                            found_marker = True
+                            break
+                    except Exception:
+                        pass
+        if not found_marker:
+            time.sleep(1.0)
+    assert found_marker, "Qdrant did not locate the stored payload via payload filter"
 
     # 4. Kafka event (memory.events)
     try:

@@ -1,3 +1,9 @@
+---
+
+## 14. Docker shared infra quick links
+
+ - Reset local Docker shared infra (containers + named volumes): `scripts/reset-sharedinfra-compose.sh`
+ - Gap analysis and sprint plan to align Docker compose with the Shared Infra Playbook: `docs/ops/DOCKER_SHARED_INFRA_GAP.md`
 # Developer Environment Setup
 
 This guide walks you through setting up a complete developer environment for Soma Fractal Memory (SFM), from prerequisites to running the stack with Docker Compose or Kubernetes + Helm, plus the exact settings the code reads. The code is the single source of truth; this document cites concrete files and symbols so you can trace behavior directly.
@@ -177,7 +183,28 @@ sequenceDiagram
   A-->>C: 200 results
 ```
 
-### 4.4 Stop the stack
+### 4.4 Docker vs. SomaStack parity
+
+| Capability | Docker compose (local) | SomaStack shared infra | Notes |
+|------------|-----------------------|------------------------|-------|
+| Postgres | Single container, no replication, named volume `postgres_data`. | HA cluster via Helm (Pgpool + Postgres StatefulSet, persistent volumes). | Local data loss on `compose-down -v`; production relies on PVC + backups. |
+| Kafka | Single broker (Redpanda optional) with local volume. | 1–3 brokers depending on overlay, TLS/SASL optional. | Feature parity limited: no DLQ or Schema Registry locally. |
+| Redis | Standalone with persistence optional. | Sentinel/cluster modes available via Helm values. | Local stack disables auth; production requires password + TLS (if enabled). |
+| Vault/OPA/Auth | Not started locally by default. | Managed in shared infra namespace with Vault policies and OPA bundles. | Use mock tokens locally; production pulls secrets via ExternalSecret. |
+| TLS | Disabled; services exposed over HTTP. | Ingress + backend TLS enforced in production overlays. | Use `mkcert` or `traefik` locally only when testing TLS flows. |
+| Observability | Prometheus metrics endpoints exposed; no collector. | Prometheus + Grafana installed via shared infra chart. | Run `scripts/sharedinfra-health.sh` (Sprint 3) for parity once available. |
+
+Keep this table handy when translating debugging steps between local compose and SomaStack clusters.
+
+### 4.5 Recovery playbook (Redis/Kafka/Postgres)
+
+1. **Automated reset**: run `scripts/reset-sharedinfra-compose.sh` to stop all compose files, prune named volumes, and remove legacy shared infra volumes. Re-run `make compose-up` afterwards.
+2. **Redis stuck in loading**: check `docker compose logs redis --tail 40`. If RDB corruption persists, delete only `redis_data` via `docker volume rm redis_data` and restart. Local data loss is acceptable; production uses AOF/backups.
+3. **Kafka broker fails to start**: inspect `docker compose logs kafka --tail 80`. When log shows `found corrupt log segments`, remove `kafka_data` volume and ensure no other containers still mount it before recreating.
+4. **Postgres refuses connections**: run `docker compose exec postgres pg_isready -U postgres`. For repeated failures, capture logs (`docker compose logs postgres --tail 100`) and delete `postgres_data` volume. Remember to reapply migrations (Alembic coming in Sprint 4).
+5. **Log capture for incident reports**: archive `docker compose logs <service>` output and attach to the sprint artefact directory (`docs/infra/sprints/sprint-0/`).
+
+### 4.6 Stop the stack
 ```bash
 make compose-down     # Keeps volumes (data)
 make compose-down-v   # Removes volumes
@@ -211,6 +238,17 @@ helm upgrade --install soma-memory ./helm \
   --wait --timeout=600s
 ```
 
+### 5.4 SomaStack shared infra bootstrap (Kind)
+- Reset and recreate the shared infra Kind cluster, preload required images, and deploy Helm overlays in one shot:
+  ```bash
+  make sharedinfra-kind MODE=dev
+  ```
+- The convenience target runs, in order:
+  1. `scripts/create-kind-soma.sh` — enforces minimum tool versions, deletes any existing `soma` cluster, and provisions the new one using `infra/kind/soma-kind.yaml`.
+  2. `scripts/preload-sharedinfra-images.sh` — `docker pull` and `kind load` for Postgres, Pgpool, Kafka, Redis, Vault, OPA, Prometheus, and Grafana images.
+  3. `scripts/deploy-kind-sharedinfra.sh` — executes `helm dependency update`, creates namespace `soma-infra`, and upgrades/installs `infra/helm/soma-infra` with `values.yaml` + `values-$(MODE).yaml`.
+- Inspect the CLI output for the pod readiness gate (`kubectl wait`) to confirm the environment is ready before deploying application workloads.
+
 The default `values.yaml` already requests 300 m CPU / 2 Gi memory for the API and consumer to mimic production sizing. When deploying to a remote cluster, override the image coordinates and pull policy:
 
 ```bash
@@ -240,7 +278,7 @@ The Helm chart creates the following resources in namespace `soma-memory`:
 - Kafka Broker Deployment (value block name may remain `redpanda`)
 - Service objects for each component
 
-### 5.4 Expose the API for local testing
+### 5.5 Expose the API for local testing
 ```bash
 # Option A (port-forward): forwards localhost:9595 → API service port 9595
 ./scripts/port_forward_api.sh start
@@ -249,7 +287,7 @@ make helm-dev-health
 ```
 Now you can hit the API exactly as you would with Docker‑Compose.
 
-### 5.5 Verify the deployment
+### 5.6 Verify the deployment
 ```bash
 # Pods are Running?
 kubectl -n soma-memory get pods -o wide

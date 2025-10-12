@@ -7,11 +7,28 @@ from psycopg2.extras import Json
 
 logger = logging.getLogger(__name__)
 
-# Connection parameters – read from env or use defaults matching docker-compose.dev.yml
-_DB_URL = os.getenv(
-    "POSTGRES_URL",
-    "postgresql://soma:soma@localhost:5432/soma",
-)
+
+# Connection parameters – prefer explicit env; otherwise fall back to centralized settings DNS.
+def _resolve_db_url() -> str:
+    env_url = os.getenv("POSTGRES_URL")
+    if env_url:
+        return env_url
+    # Optional centralized settings (if available); do not hard‑fail if missing
+    try:
+        from common.config.settings import load_settings  # type: ignore
+
+        _s = load_settings()
+        host = getattr(getattr(_s, "infra", None), "postgres", None)
+        if host:
+            # Defaults align with Helm values and compose: postgres/postgres@<host>:5432/somamemory
+            return f"postgresql://postgres:postgres@{host}:5432/somamemory"
+    except Exception:
+        pass
+    # Final fallback: local developer default
+    return "postgresql://postgres:postgres@localhost:5433/somamemory"
+
+
+_DB_URL = _resolve_db_url()
 
 # Lazy singleton connection
 _conn = None

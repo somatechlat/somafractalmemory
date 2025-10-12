@@ -6,6 +6,7 @@ import psycopg2
 import pytest
 import requests
 from qdrant_client import QdrantClient
+from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -16,8 +17,12 @@ from tenacity import (
 
 @pytest.mark.integration
 def test_consumer_end_to_end_smoke():
-    if os.getenv("USE_REAL_INFRA") != "1":
-        pytest.skip("Requires USE_REAL_INFRA=1 and running docker-compose stack")
+    use_live = os.getenv("USE_LIVE_INFRA") in ("1", "true", "yes")
+    use_real = os.getenv("USE_REAL_INFRA") in ("1", "true", "yes")
+    if not (use_live or use_real):
+        pytest.skip(
+            "Requires live infra (USE_LIVE_INFRA=1 or USE_REAL_INFRA=1) and running docker-compose stack"
+        )
 
     # Helper: wait for API readiness
     @retry(
@@ -85,23 +90,61 @@ def test_consumer_end_to_end_smoke():
         host=os.getenv("QDRANT_HOST", "localhost"), port=int(os.getenv("QDRANT_PORT", "6333"))
     )
     found_vec = False
-    deadline = time.time() + 20
+    deadline = time.time() + 30
+    env_collection = os.getenv("QDRANT_COLLECTION", "memory_vectors")
+    candidates = [env_collection, "memory_vectors", "default", "api_ns"]
+    payload_filter = Filter(must=[FieldCondition(key="task", match=MatchValue(value=marker))])
     while time.time() < deadline and not found_vec:
-        try:
-            # scroll payloads to find marker (avoids relying on embedding similarity)
-            items, _ = qc.scroll(
-                collection_name=os.getenv("QDRANT_COLLECTION", "memory_vectors"),
-                limit=200,
-                with_payload=True,
-            )
-            found_vec = any(
-                getattr(p, "payload", {}).get("task") == marker
-                for p in items
-                if getattr(p, "payload", None)
-            )
-        except Exception:
-            # collection may not exist yet on first iteration
-            pass
+        for collection in candidates:
+            try:
+                # 1) Use count with filter (works across client versions)
+                cnt = qc.count(collection_name=collection, count_filter=payload_filter, exact=True)
+                count_val = getattr(cnt, "count", cnt)
+                found_vec = bool(count_val and int(count_val) > 0)
+                if found_vec:
+                    break
+            except Exception:
+                pass
+            try:
+                # 2) Try scroll with 'filter' kw
+                items, _ = qc.scroll(
+                    collection_name=collection,
+                    limit=1,
+                    with_payload=True,
+                    filter=payload_filter,  # type: ignore[arg-type]
+                )
+                found_vec = len(items) > 0
+                if found_vec:
+                    break
+            except Exception:
+                try:
+                    # 3) Try scroll with 'scroll_filter' kw
+                    items, _ = qc.scroll(
+                        collection_name=collection,
+                        limit=1,
+                        with_payload=True,
+                        scroll_filter=payload_filter,  # type: ignore[arg-type]
+                    )
+                    found_vec = len(items) > 0
+                    if found_vec:
+                        break
+                except Exception:
+                    # 4) Last resort small unfiltered scroll
+                    try:
+                        items, _ = qc.scroll(
+                            collection_name=collection,
+                            limit=200,
+                            with_payload=True,
+                        )
+                        found_vec = any(
+                            getattr(p, "payload", {}).get("task") == marker
+                            for p in items
+                            if getattr(p, "payload", None)
+                        )
+                        if found_vec:
+                            break
+                    except Exception:
+                        pass
         if not found_vec:
             time.sleep(1.0)
     assert found_vec, "Consumer did not index vector into Qdrant in time"

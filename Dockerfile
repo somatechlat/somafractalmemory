@@ -41,7 +41,6 @@ RUN if [ "${ENABLE_REAL_EMBEDDINGS}" = "1" ]; then \
 # Copy application source and runtime assets
 COPY somafractalmemory/ ./somafractalmemory/
 COPY common/ ./common/
-COPY src/somafractalmemory/ ./src/somafractalmemory/
 COPY workers/ ./workers/
 COPY eventing/ ./eventing/
 COPY scripts/ ./scripts/

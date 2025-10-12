@@ -2,6 +2,7 @@
 
 This guide explains how to use every public endpoint of the SomaFractalMemory (SFM) API, including inputs/outputs, parameters, environment settings, and real examples. It reflects the live server at port 9595 and the FastAPI app in `somafractalmemory/http_api.py`.
 
+- Deploying against the Soma shared infrastructure? Start with `docs/ops/SOMASTACK_SHARED_INFRA_PLAYBOOK.md` for environment bootstrap, Helm overlays, and verification steps. Sprint artefacts for completed work should be checked into `docs/infra/sprints/`.
 - Base URL: http://localhost:9595
 - Auth: Optional Bearer token via `SOMA_API_TOKEN` (when set, required on all endpoints except health/ready/metrics).
 - Rate limiting: Global soft limit via `SOMA_RATE_LIMIT_MAX` and `SOMA_RATE_LIMIT_WINDOW_SECONDS` with 429 responses once exceeded.

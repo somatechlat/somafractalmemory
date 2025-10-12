@@ -68,7 +68,7 @@ This guide is aimed at contributors working directly with the codebase. It compl
 
 ## Running Services
 
-SomaFractalMemory exposes two local workflows: the **full Docker Compose stack** and a **scripted lightweight stack**. Most contributors should start with Docker Compose, which mirrors CI and integration test expectations.
+SomaFractalMemory exposes two local workflows: the **full Docker Compose stack** and a **scripted lightweight stack**. Most contributors should start with Docker Compose, which mirrors CI and integration test expectations. For shared Kubernetes infra onboarding, follow the canonical playbook appended to `docs/ROADMAP.md` (Docker images and local validation first, then Kubernetes bootstrap and app wire‑up).
 
 Quick path using Make:
 - `make help` – discover available targets

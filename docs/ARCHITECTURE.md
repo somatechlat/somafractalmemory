@@ -85,7 +85,7 @@ This architecture runs in two canonical ways for contributors and CI. Use Make a
    - Inspect ports and NodePort mappings: `make settings`
 
 - Kubernetes dev slice (Kind + Helm):
-   - Dev service port 9797 exposed via NodePort 30797 on host
+   - Dev service port 9797 exposed via NodePort 30797 on host (primary API at 9595 remains unchanged)
    - Install and verify: `make setup-dev-k8s` then `make helm-dev-health`
    - Default ClusterIP port remains 9595 inside the cluster; use port-forward helper if not using the dev NodePort
 
@@ -93,3 +93,17 @@ Related documentation:
 - Developer Environment: `docs/DEVELOPER_ENVIRONMENT.md` (step-by-step, diagrams)
 - Developer Guide: `docs/DEVELOPER_GUIDE.md` (day-to-day workflows)
 - Canonical Documentation: `docs/CANONICAL_DOCUMENTATION.md` (operational source of truth)
+
+---
+
+## Event pipeline and vector indexing specifics
+
+- Producer (API/core): publishes validated `memory.events` with deterministic IDs and ISO8601 timestamps.
+- Consumers:
+   - `workers/kv_writer.py` upserts canonical JSON rows into Postgres (`memory_events`).
+   - `workers/vector_indexer.py` generates deterministic hash-based embeddings aligned with core’s fallback (blake2b → float32 → L2-normalize) and indexes into:
+      - The default collection (env `$QDRANT_COLLECTION`, defaults to `memory_vectors`).
+      - The namespace-named collection when a `namespace` field is present.
+      - An optional extra collection when `$QDRANT_EXTRA_COLLECTION` is set (useful for tests).
+
+Tests verify presence via a payload filter on `task` and probe multiple collections (`$QDRANT_COLLECTION`, `memory_vectors`, `default`, `api_ns`) to avoid flakiness due to scroll order or mixed collections.

@@ -1,0 +1,20 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: soma
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.29.2
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            eviction-hard: nodefs.available<1%,nodefs.inodesFree<1%,imagefs.available<1%
+            max-pods: "150"
+    extraPortMappings:
+      - containerPort: 30797
+        hostPort: 30797
+        protocol: TCP
+      - containerPort: 30095
+        hostPort: 30095
+        protocol: TCP
