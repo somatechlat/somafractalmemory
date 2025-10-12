@@ -6,7 +6,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 def test_store_memories_bulk_core(tmp_path):
     mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "bulk_core",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
     )
@@ -24,7 +24,7 @@ def test_cli_store_bulk(tmp_path, capsys):
     from somafractalmemory.factory import MemoryMode, create_memory_system
 
     shared_mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "cli_bulk",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "bulk_shared.db")}},
     )
@@ -46,7 +46,7 @@ def test_cli_store_bulk(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_bulk",
         "--config-json",

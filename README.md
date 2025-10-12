@@ -41,15 +41,15 @@ These are the key environment variables consumed by the API, CLI, and consumer p
 
 | Variable | Description | Default / Example |
 |----------|-------------|--------------------|
-| `MEMORY_MODE` | Selects backend wiring. Options: `development`, `test`, `evented_enterprise`, `cloud_managed`. | `development` |
+| `MEMORY_MODE` | Selects backend wiring. Only `evented_enterprise` is supported. | `evented_enterprise` |
 | `SOMA_MEMORY_NAMESPACE` | Namespace injected into `create_memory_system` (defaults to `api_ns`). | `api_ns` |
 | `POSTGRES_URL` | Full DSN for PostgreSQL (used by API, CLI, and workers). | `postgresql://postgres:postgres@postgres:5433/somamemory` |
 | `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints; host/port/db win over URL when provided. | `redis://redis:6379/0` |
 | `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint for vector search. | `http://qdrant:6333` |
 | `EVENTING_ENABLED` | When set to `false`, disables Kafka publishing by wiring `eventing.enabled=False` in the factory. | `true` |
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka bootstrap servers consumed by API and consumers. | `kafka:9092` |
-| `SOMA_API_TOKEN` | Optional bearer token enforced by the FastAPI dependencies. | *(unset)* |
-| `SOMA_RATE_LIMIT_MAX` | Requests per minute per endpoint for the sample API (set `0` to disable throttling). | `60` |
+| `SOMA_API_TOKEN` | Required bearer token enforced by the FastAPI dependencies (set via env or file). | *(secret)* |
+| `SOMA_RATE_LIMIT_MAX` | Redis-backed request budget per endpoint (set `0` to disable throttling). | `60` |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window (seconds) for the rate limiter buckets. | `60` |
 | `UVICORN_PORT` | Exposed port for the API process (kept at `9595` in charts and Compose). | `9595` |
 | `UVICORN_WORKERS` / `UVICORN_TIMEOUT_GRACEFUL` / `UVICORN_TIMEOUT_KEEP_ALIVE` | Process tuning knobs honoured by `scripts/docker-entrypoint.sh`. | `4` / `60` / `30` |
@@ -63,6 +63,11 @@ cp .env.example .env
 ```
 
 Advanced tuning is documented in `docs/CONFIGURATION.md`.
+
+### Kubernetes secrets & TLS
+- The Helm chart now sources sensitive settings (`SOMA_API_TOKEN`, `POSTGRES_URL`, etc.) from a Kubernetes Secret. Override `secret.data` or point to an existing secret via `secret.existingSecret` when deploying.
+- The default `POSTGRES_URL` includes `?sslmode=require`; configure your managed Postgres/Qdrant/Kafka endpoints with TLS certificates and mount them as needed.
+- When you enable the Helm ingress (`ingress.enabled=true`), TLS is expected by default. Provide a certificate secret (`kubectl create secret tls …`) or wire cert-manager to issue one and set `ingress.tlsSecretName`.
 
 ---
 
@@ -98,19 +103,14 @@ The uv path is preferred for reliability and speed.
 # Canonical entrypoint (build, start, wait for health, print endpoints)
 make setup-dev
 ```
-The API listens on **http://localhost:9595**. Start the background consumer with `make compose-consumer-up`. A sandbox API can be reached at **http://localhost:8888** when `test_api` is running.
-For Kubernetes dev slice, a second API listens on port **9797** in-cluster and is exposed via NodePort **30797** on the host.
+The API listens on **http://localhost:9595**. Start the background consumer with `make compose-consumer-up` when you need the Kafka reconciliation workers.
+For the developer Kind slice, the chart exposes port **9797** in-cluster and NodePort **30797** on the host.
 
 ---
 
 ## 🚀 Running & Dynamic Configuration
-* **Minimal local services** – Start just Postgres and Qdrant for development:
-  ```bash
-  ./scripts/start_stack.sh development
-  docker compose up -d api
-  ```
-* **Add Kafka** – Include the broker by passing `--with-broker` to `start_stack.sh` (legacy flag; compose already defines the `kafka` service), or simply run the full compose stack.
-* **Full parity stack** – Mirror production wiring with Kafka and workers:
+* **Bring up shared infrastructure** – Reuse the company-wide stack by running `docker compose up -d api` (see `docs/ops/shared_infra_compose.md`).
+* **Self-hosted services** – When you need local Postgres/Qdrant/Kafka containers, start them via:
   ```bash
   ./scripts/start_stack.sh evented_enterprise
   docker compose up -d api
@@ -199,7 +199,7 @@ Swagger UI is available at **`/docs`**, and the generated spec is published as `
 For detailed endpoint-by-endpoint usage, parameters, and examples, see `docs/USAGE_GUIDE.md`.
 
 Auth/CORS/body size controls:
-- `SOMA_API_TOKEN` or `SOMA_API_TOKEN_FILE` (from a mounted Secret) enables bearer auth.
+- `SOMA_API_TOKEN` or `SOMA_API_TOKEN_FILE` (from a mounted Secret) must be provided; all mutating endpoints enforce the bearer token.
 - `SOMA_CORS_ORIGINS` accepts a comma-separated list of origins to enable CORS.
 - `SOMA_MAX_REQUEST_BODY_MB` enforces a maximum JSON body size for incoming requests.
 
@@ -250,7 +250,7 @@ python scripts/synthetic_real_stack_benchmark.py \
   --N 5000 --Q 500 --top-k 5 --out benchmark.json
 ```
 
-Outputs include: insert throughput, query QPS, latency p50/p90/p95/p99 (ms), Recall@K, and MRR. Authentication is honored when `SOMA_API_TOKEN` is set.
+Outputs include: insert throughput, query QPS, latency p50/p90/p95/p99 (ms), Recall@K, and MRR. Authentication obeys the configured `SOMA_API_TOKEN` bearer requirement.
 
 For methodology and troubleshooting, see `docs/CANONICAL_DOCUMENTATION.md#61-synthetic-runs-on-real-servers-no-mocks`.
 
@@ -319,7 +319,7 @@ from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
 
 memory = create_memory_system(
-    MemoryMode.DEVELOPMENT,
+  MemoryMode.EVENTED_ENTERPRISE,
     "demo",
     config={
         "redis": {"testing": True},

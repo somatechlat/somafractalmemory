@@ -11,13 +11,12 @@ DEFAULT_COMPOSE_FILES=(
   "docker-compose.dev.yml"
 )
 
-mapfile -t COMPOSE_FILES < <(
-  for f in "${DEFAULT_COMPOSE_FILES[@]}"; do
-    if [[ -f "${REPO_ROOT}/${f}" ]]; then
-      printf '%s\n' "${REPO_ROOT}/${f}"
-    fi
-  done
-)
+COMPOSE_FILES=()
+for f in "${DEFAULT_COMPOSE_FILES[@]}"; do
+  if [[ -f "${REPO_ROOT}/${f}" ]]; then
+    COMPOSE_FILES+=("${REPO_ROOT}/${f}")
+  fi
+done
 
 if [[ ${#COMPOSE_FILES[@]} -eq 0 ]]; then
   echo "No compose files found. Nothing to reset." >&2
@@ -26,6 +25,11 @@ fi
 
 echo "Stopping compose stacks..."
 for compose_file in "${COMPOSE_FILES[@]}"; do
+  services="$(docker compose -f "${compose_file}" config --services 2>/dev/null || true)"
+  if [[ -z "${services}" ]]; then
+    echo "  skipping ${compose_file} (no services resolved)"
+    continue
+  fi
   echo "  docker compose -f ${compose_file} down"
   docker compose -f "${compose_file}" down || true
 done
@@ -55,5 +59,5 @@ Docker shared infra reset complete.
 
 Next steps:
   - docker compose up -d redis postgres qdrant kafka   # local baseline
-  - or scripts/start_stack.sh development --with-broker
+  - or scripts/start_stack.sh evented_enterprise
 EOF

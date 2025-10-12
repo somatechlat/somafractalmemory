@@ -12,7 +12,8 @@ def _make_system(env: dict | None = None):
         for k, v in env.items():
             original[k] = os.environ.get(k)
             os.environ[k] = str(v)
-    system = create_memory_system(MemoryMode.TEST, "learn_ns", config={})
+    config = {"redis": {"testing": True}, "vector": {"backend": "memory"}}
+    system = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "learn_ns", config=config)
     # Restore original env to avoid leaking settings into other tests
     if env:
         for k, old in original.items():

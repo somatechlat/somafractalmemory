@@ -22,10 +22,7 @@ flowchart LR
 
 ## Data Flow Narrative
 1. **Entry points** – Applications call the factory from the CLI (`somafractalmemory/cli.py`) or the FastAPI service (`somafractalmemory/http_api.py`). Both paths resolve to `create_memory_system(mode, namespace, config)`.
-2. **Factory wiring** – The factory inspects the requested `MemoryMode`:
-   * `DEVELOPMENT` – optional Redis cache, optional Postgres backing store, Qdrant or in-memory vectors; eventing off unless explicitly enabled.
-   * `TEST` – fully in-memory backends (`fakeredis` and `InMemoryVectorStore`), eventing forced off.
-   * `EVENTED_ENTERPRISE` / `CLOUD_MANAGED` – Postgres + Redis hybrid KV store, Qdrant vector store, eventing enabled.
+2. **Factory wiring** – The factory always resolves to `MemoryMode.EVENTED_ENTERPRISE`. Configuration toggles (for example `redis.testing=True` or `vector.backend="memory"`) can swap specific backends to in-memory implementations for tests, but the mode itself never changes.
 3. **Core orchestration** – `SomaFractalMemoryEnterprise` owns the public API (`store_memory`, `recall`, graph helpers, decay, bulk import/export). It:
    * Serialises payloads to the KV store (JSON-first) and writes metadata for pruning.
    * Embeds payloads using a HuggingFace transformer (falls back to hash-based vectors). Embeddings are L2-normalized.
@@ -52,13 +49,51 @@ flowchart LR
 
 ---
 
+## Component Inventory
+| Layer | Responsibilities | Code anchors | Operational notes |
+|-------|------------------|--------------|-------------------|
+| **Ingress** | FastAPI, CLI, and async gRPC server all invoke the enterprise runtime. | `somafractalmemory/http_api.py`, `somafractalmemory/cli.py`, `somafractalmemory/async_grpc_server.py` | HTTP surface enforces bearer auth & rate limiting; gRPC exposes the same metrics/health checks. |
+| **Configuration** | Load and validate settings, wire concrete stores. | `common/config/settings.py`, `somafractalmemory/factory.py` | `MemoryMode.EVENTED_ENTERPRISE` is enforced; invalid modes raise before runtime wiring. |
+| **Enterprise core** | Store/recall flows, decay, export/import, WAL reconciliation, graph helpers. | `somafractalmemory/core.py` | Maintains adaptive importance normaliser and sliceable hooks for before/after store & recall. |
+| **Persistence** | Durable KV + cache, vector storage, graph metadata. | `somafractalmemory/implementations/storage.py`, `somafractalmemory/implementations/graph.py` | Postgres remains canonical; Redis is optional (falls back to Postgres locks); Qdrant can be swapped for the in-memory vector store in tests. |
+| **Event pipeline** | Publish memory events and consume them for durable indexing. | `eventing/producer.py`, `workers/kv_writer.py`, `workers/vector_indexer.py` | Events validated against `schemas/memory.event.json`; consumers dedupe via deterministic IDs. |
+| **Observability** | Metrics, tracing, structured logging, rate limiting. | `somafractalmemory/http_api.py`, `scripts/run_consumers.py`, `common/utils/logger.py` | Prometheus `/metrics`; OTEL exporters optional; Redis-backed rate limiter downgrades gracefully to in-memory buckets. |
+
+---
+
 ## Production Guarantees
-* **Real clients** – PostgreSQL, Redis, Qdrant, and Kafka are first-class dependencies. Test mode swaps in `fakeredis` and the in-memory vector store without altering code paths.
+* **Real clients** – PostgreSQL, Redis, Qdrant, and Kafka are first-class dependencies. Test configurations swap in `fakeredis` and the in-memory vector store without altering code paths.
 * **JSON-first persistence** – All payloads are serialised as JSON; legacy pickle-based storage has been removed.
 * **Event schema enforcement** – Every produced message is validated against `schemas/memory.event.json`.
 * **TLS/SASL hooks** – Environment variables (`POSTGRES_SSL_*`, `QDRANT_TLS`, `KAFKA_SECURITY_PROTOCOL`, etc.) are plumbed through to the respective clients.
 * **Graceful degradation** – Vector failures fall back to WAL entries for later reconciliation; OpenTelemetry and Langfuse integrations quietly disable themselves when dependencies are absent.
 * **Deterministic math path** – Vector embeddings are normalized; recall scoring is strictly `max(0, cosine) * importance_norm`, where `importance_norm ∈ [0,1]` is produced by an adaptive decision tree (min-max → winsor → logistic) based on the observed importance distribution (512-sample rolling reservoir). This keeps retrieval branch-free and bounded.
+
+---
+
+## Critical Invariants
+1. **Namespace isolation** – Namespaces are embedded in every storage key (`{namespace}:{coord}`) and Qdrant collection. Consumers replay events into the same namespace, preventing accidental tenant bleed.
+2. **Authenticated writes** – FastAPI import fails when `SOMA_API_TOKEN` (or `SOMA_API_TOKEN_FILE`) is missing. CLI users pass tokens when calling remote APIs; health/metrics endpoints intentionally remain unauthenticated.
+3. **At-least-once delivery** – Kafka events use deterministic IDs. Consumers upsert into Postgres, making replays idempotent. WAL reconciliation guarantees eventual vector convergence.
+4. **Schema stability** – Event payloads must conform to `schemas/memory.event.json`; changes require coordinated producer/consumer releases and schema version bumps.
+5. **Resilient rate limiting** – Redis-backed limiter downgrades to in-memory buckets when Redis is unavailable so write paths continue to function.
+
+---
+
+## Request Lifecycle Deep Dive
+1. **Store path**
+   - Authorization + rate limit dependencies run before handler logic.
+   - Payload persisted to Postgres (and optionally Redis cache) inside the enterprise core transaction.
+   - Qdrant upsert executed synchronously; failures persist a WAL entry and raise to the caller.
+   - Event emitted to Kafka; reconciliation workers re-apply failed vector upserts.
+2. **Recall path**
+   - Query embedded via transformer or hash fallback.
+   - Hybrid scorer merges vector scores, keyword matches (Postgres trigram), and adaptive importance boosts.
+   - Results return coordinates, payload snippets, optional scores, and graph metadata on demand.
+3. **Decay & pruning**
+   - Background thread evaluates configured decayable keys and `max_memory_size`, pruning low-importance or stale entries.
+4. **Reconciliation**
+   - WAL entries replay periodically (or via `_reconcile_once`) ensuring vector store parity even after transient outages.
 
 ---
 

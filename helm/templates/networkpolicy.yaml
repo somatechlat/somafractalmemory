@@ -1,0 +1,31 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "somafractalmemory.fullname" . }}
+  labels:
+    {{- include "somafractalmemory.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "somafractalmemory.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- with .Values.networkPolicy.ingress }}
+  ingress:
+    {{- toYaml . | nindent 4 }}
+  {{- else }}
+  ingress:
+    - from:
+        - podSelector: {}
+  {{- end }}
+  {{- with .Values.networkPolicy.egress }}
+  egress:
+    {{- toYaml . | nindent 4 }}
+  {{- else }}
+  egress:
+    - to:
+        - podSelector: {}
+  {{- end }}
+{{- end }}

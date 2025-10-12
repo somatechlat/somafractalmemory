@@ -1,5 +1,6 @@
 .PHONY: setup test lint api metrics cli bench clean uv-install lock \
-        help prereqs prereqs-docker prereqs-k8s settings \
+	db-upgrade db-current db-revision \
+	help prereqs prereqs-docker prereqs-k8s settings \
         compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health compose-consumer-up compose-consumer-down compose-print-ports \
 	runtime-build kind-up kind-down kind-load helm-dev-install helm-dev-uninstall helm-dev-health \
 	sharedinfra-kind-bootstrap sharedinfra-kind-deploy sharedinfra-kind \
@@ -11,7 +12,6 @@
 
 # Default host ports (Compose) – used when services are not running
 API_PORT ?= 9595
-TEST_API_HOST_PORT ?= 8888
 POSTGRES_HOST_PORT ?= 5433
 REDIS_HOST_PORT ?= 6381
 QDRANT_HOST_PORT ?= 6333
@@ -28,7 +28,6 @@ endef
 
 # Resolve ports dynamically if possible
 API_PORT_RUNTIME := $(or $(call dc_port,api,9595),$(API_PORT))
-TEST_API_HOST_PORT_RUNTIME := $(or $(call dc_port,test_api,9595),$(TEST_API_HOST_PORT))
 POSTGRES_HOST_PORT_RUNTIME := $(or $(call dc_port,postgres,5432),$(POSTGRES_HOST_PORT))
 REDIS_HOST_PORT_RUNTIME := $(or $(call dc_port,redis,6379),$(REDIS_HOST_PORT))
 QDRANT_HOST_PORT_RUNTIME := $(or $(call dc_port,qdrant,6333),$(QDRANT_HOST_PORT))
@@ -61,7 +60,6 @@ prereqs-k8s: ## Check kubectl, kind, and helm
 settings: ## Print detected settings (ports, images, helm values)
 	@echo "Compose runtime ports (detected if running):" && \
 	echo "  API:              http://127.0.0.1:$(API_PORT_RUNTIME)" && \
-	echo "  Test API (sandbox): http://127.0.0.1:$(TEST_API_HOST_PORT_RUNTIME)" && \
 	echo "  Postgres:         127.0.0.1:$(POSTGRES_HOST_PORT_RUNTIME)" && \
 	echo "  Redis:            127.0.0.1:$(REDIS_HOST_PORT_RUNTIME)" && \
 	echo "  Qdrant:           127.0.0.1:$(QDRANT_HOST_PORT_RUNTIME)" && \
@@ -145,6 +143,16 @@ cli:
 bench:
 	~/.local/bin/uv run python examples/benchmark.py --n 2000 --dim 256
 
+db-upgrade: ## Run Alembic migrations against POSTGRES_URL (defaults from alembic.ini)
+	~/.local/bin/uv run alembic upgrade head
+
+db-current: ## Show current Alembic revision for the configured database
+	~/.local/bin/uv run alembic current
+
+db-revision: ## Generate a new Alembic migration skeleton with message MSG="..."
+	@MSG=$${MSG:-"describe change"}; \
+	~/.local/bin/uv run alembic revision -m "$$MSG"
+
 .PHONY: clean
 clean:
 	rm -rf .pytest_cache __pycache__ somafractalmemory.egg-info qdrant.db *_qdrant *.index audit_log.jsonl .ipynb_checkpoints
@@ -179,7 +187,6 @@ compose-health: prereqs-docker ## Wait for API /healthz to return 200
 
 compose-print-ports: prereqs-docker ## Print actual published ports for running services
 	@echo "API:       http://127.0.0.1:$$(docker compose port api 9595 | awk -F: 'END{print $$NF}')" || true
-	@echo "Test API:  http://127.0.0.1:$$(docker compose port test_api 9595 | awk -F: 'END{print $$NF}')" || true
 	@echo "Postgres:  127.0.0.1:$$(docker compose port postgres 5432 | awk -F: 'END{print $$NF}')" || true
 	@echo "Redis:     127.0.0.1:$$(docker compose port redis 6379 | awk -F: 'END{print $$NF}')" || true
 	@echo "Qdrant:    127.0.0.1:$$(docker compose port qdrant 6333 | awk -F: 'END{print $$NF}')" || true

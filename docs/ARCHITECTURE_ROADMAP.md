@@ -78,7 +78,7 @@ Store sprint artefacts under `docs/infra/sprints/<sprint-id>/` with command tran
 - [ ] Implement GitHub Actions workflow `deploy-<service>.yml` matching playbook §4 (image build/push, Helm upgrade, readiness wait).
 - [ ] Add health snapshot script (`scripts/sharedinfra-health.sh`) aggregating `kubectl get pods`, `repmgr cluster show`, and Kafka offset checks.
 - [ ] Ensure `make deploy-kind-full MODE=<mode>` target runs in CI and stores artefacts for inspection.
-- [ ] Introduce NetworkPolicy, PodSecurityContext defaults, and initial HPA manifests sourced from production readiness gaps; validate via Kind tests.
+- [x] Introduce NetworkPolicy, PodSecurityContext defaults, and initial HPA manifests sourced from production readiness gaps; Kind validation pending follow-up.
 - [ ] Enable TLS (Ingress + backend DSNs) and enforce bearer auth / rate limiting in the API chart to close high-severity security items.
 - **Acceptance evidence**: CI run URL, structured log sample, Jaeger span capture, health script output archived in sprint artefacts.
 
@@ -100,7 +100,7 @@ Store sprint artefacts under `docs/infra/sprints/<sprint-id>/` with command tran
 | TLS for Ingress and backend DSNs | High | Sprint 2 (prep), Sprint 3 (enable) | Add TLS secrets/Ingress templates, set `sslmode`/SASL flags for Postgres/Kafka/Redis, document cert management. | Kind deploy with TLS-enabled values; manual curl/grpcurl over TLS. |
 | Secrets management via Vault/K8s Secrets | High | Sprint 2 | ExternalSecrets templates, secretRef usage, rotation doc. | `kubectl describe secret` redaction, Vault policy records. |
 | Persistence + backups | High | Sprint 4 | Enable PVCs by default; add backup/restore CronJobs + runbook. | PVC status screenshots/logs; backup artifact check. |
-| Alembic migrations + DB schema guard | High | Sprint 4 | Introduce Alembic migrations; CI check for head. | Migration repo; CI job output. |
+| Alembic migrations + DB schema guard | High | Sprint 4 | Baseline committed; add CI head check and deployment hook. | Migration repo; CI job output. |
 | Kafka HA, DLQ, monitoring | High | Sprint 4 | Extend Helm to support multi-broker + DLQ consumer; add lag dashboards/alerts. | Helm values diff; Grafana screenshot; DLQ test log. |
 | NetworkPolicy & Pod security | High | Sprint 3 | Deny-by-default policies; runAsNonRoot, drop capabilities. | Manifest review; `kubectl get networkpolicy`; conformance test. |
 | Secrets rotation / compliance documentation | High | Sprint 4 | Publish rotation procedures and compliance statements in runbook. | Doc excerpt; rotation rehearsal log. |

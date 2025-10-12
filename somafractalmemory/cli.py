@@ -65,20 +65,12 @@ def get_mode(mode_str: str) -> MemoryMode:
     # Accept both legacy names and the new v2 canonical names. Map any
     # accepted string (case-insensitive) to the canonical MemoryMode enum.
     # v2 canonical names only. Legacy mode strings were removed in v2.
-    mapping = {
-        "development": MemoryMode.DEVELOPMENT,
-        "test": MemoryMode.TEST,
-        "evented_enterprise": MemoryMode.EVENTED_ENTERPRISE,
-        "cloud_managed": MemoryMode.CLOUD_MANAGED,
-    }
-
-    key = (mode_str or "").strip().lower()
-    try:
-        return mapping[key]
-    except KeyError as exc:
+    key = (mode_str or "").strip().lower() or MemoryMode.EVENTED_ENTERPRISE.value
+    if key != MemoryMode.EVENTED_ENTERPRISE.value:
         raise ValueError(
-            f"Unsupported mode: {mode_str}. Supported modes: {', '.join(sorted(mapping.keys()))}"
-        ) from exc
+            f"Unsupported mode: {mode_str}. Only '{MemoryMode.EVENTED_ENTERPRISE.value}' is supported."
+        )
+    return MemoryMode.EVENTED_ENTERPRISE
 
 
 async def _run_command_async(args) -> None:
@@ -169,9 +161,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="soma", description="SomaFractalMemory CLI")
     parser.add_argument(
         "--mode",
-        default="development",
-        choices=["development", "test", "evented_enterprise", "cloud_managed"],
-        help="Memory system mode (v2 canonical names)",
+        default=MemoryMode.EVENTED_ENTERPRISE.value,
+        choices=[MemoryMode.EVENTED_ENTERPRISE.value],
+        help="Memory system mode (evented_enterprise only)",
     )
     parser.add_argument("--namespace", default="cli_ns")
     parser.add_argument(

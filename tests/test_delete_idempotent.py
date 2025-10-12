@@ -10,7 +10,7 @@ def mem(tmp_path) -> SomaFractalMemoryEnterprise:
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
         "redis": {"testing": True},
     }
-    return create_memory_system(MemoryMode.DEVELOPMENT, "idempotent_ns", config=config)
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "idempotent_ns", config=config)
 
 
 def test_delete_idempotent(mem: SomaFractalMemoryEnterprise):

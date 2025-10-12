@@ -15,7 +15,7 @@ def mem(tmp_path) -> SomaFractalMemoryEnterprise:
         "redis": {"testing": True},
         "memory_enterprise": {"max_memory_size": 3},
     }
-    return create_memory_system(MemoryMode.DEVELOPMENT, ns, config=config)
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, ns, config=config)
 
 
 def test_memory_limit_prunes_old_low_importance(mem: SomaFractalMemoryEnterprise):

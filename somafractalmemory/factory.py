@@ -1,4 +1,5 @@
 # Standard library imports
+import os
 from collections.abc import Iterator, Mapping
 from enum import Enum
 from typing import Any
@@ -98,37 +99,18 @@ class PostgresRedisHybridStore(IKeyValueStore):
 
 
 class MemoryMode(Enum):
-    """
-    Enum for supported memory system modes (v2).
+    """Single supported memory mode."""
 
-    Modes:
-    - DEVELOPMENT: Local development (default).
-    - TEST: CI/test mode with in-memory components.
-    - EVENTED_ENTERPRISE: Production event-driven mode (Kafka + Postgres + Qdrant).
-    - CLOUD_MANAGED: Alias for EVENTED_ENTERPRISE using managed services.
-    - LEGACY_COMPAT: Hidden compatibility mode for short-term migration.
-    """
-
-    DEVELOPMENT = "development"
-    TEST = "test"
     EVENTED_ENTERPRISE = "evented_enterprise"
-    CLOUD_MANAGED = "cloud_managed"
-    # LEGACY_COMPAT removed — project is v2 JSON-first only.
 
-
-# Note: legacy aliases were intentionally removed for v2. Callers should use
-# the canonical v2 mode names (DEVELOPMENT, TEST, EVENTED_ENTERPRISE,
-# CLOUD_MANAGED). This module enforces the new names to avoid ambiguity.
-
-
-# Backwards-compatible aliases for older enum names used in tests and existing code.
-# These provide a short-term compatibility shim so tests referencing the previous
-# names (e.g. LOCAL_AGENT, ON_DEMAND, ENTERPRISE) do not immediately break.
-# Keep this shim small and temporary — it's better to update callers to the new
-# v2 mode names in follow-up work.
-# Map the historical LOCAL_AGENT to LEGACY_COMPAT so older behavior (WAL format,
-# storage expectations) remains available for tests and short-term compatibility.
-# Legacy aliases removed — project is v2 JSON-first only.
+    @classmethod
+    def from_string(cls, value: str | None) -> "MemoryMode":
+        key = (value or cls.EVENTED_ENTERPRISE.value).strip().lower()
+        if key != cls.EVENTED_ENTERPRISE.value:
+            raise ValueError(
+                f"Unsupported memory mode '{value}'. Only '{cls.EVENTED_ENTERPRISE.value}' is supported."
+            )
+        return cls.EVENTED_ENTERPRISE
 
 
 def create_memory_system(
@@ -140,7 +122,7 @@ def create_memory_system(
     Parameters
     ----------
     mode : MemoryMode
-        The mode to use (ON_DEMAND, LOCAL_AGENT, ENTERPRISE).
+        Must be ``MemoryMode.EVENTED_ENTERPRISE``.
     namespace : str
         The namespace for the memory system.
     config : Optional[Dict[str, Any]]
@@ -170,94 +152,56 @@ def create_memory_system(
     vector_store = None
     graph_store = None
 
-    vector_cfg = config.get("vector", {})
     enterprise_cfg = config.get("memory_enterprise", {})
 
-    # ------------------------------------------------------------
-    # Development mode – local development with optional Redis cache.
-    # ------------------------------------------------------------
-    if mode == MemoryMode.DEVELOPMENT:
-        # Redis configuration (may include testing flag)
-        redis_cfg = config.get("redis", {})
-        redis_enabled = redis_cfg.get("enabled", True)
-        redis_store = RedisKeyValueStore(**redis_cfg) if redis_cfg and redis_enabled else None
+    if mode != MemoryMode.EVENTED_ENTERPRISE:
+        raise ValueError(
+            f"Unsupported memory mode: {mode}. Only '{MemoryMode.EVENTED_ENTERPRISE.value}' is supported."
+        )
 
-        # PostgreSQL configuration – optional. If a URL is provided we create a Postgres store,
-        # otherwise we fall back to using the Redis store directly (or an in‑memory stub).
-        postgres_cfg = config.get("postgres", {})
-        pg_url = postgres_cfg.get("url")
-        if pg_url:
-            pg_store = PostgresKeyValueStore(url=pg_url)
-        else:
-            pg_store = None
+    redis_cfg = dict(config.get("redis", {}))
+    postgres_cfg = dict(config.get("postgres", {}))
+    qdrant_cfg = dict(config.get("qdrant", {}))
 
-        # Combine stores only when both are present; otherwise use the available one.
-        if pg_store and redis_store:
-            kv_store = PostgresRedisHybridStore(pg_store=pg_store, redis_store=redis_store)
-        elif redis_store:
-            kv_store = redis_store
-        elif pg_store:
-            kv_store = pg_store
-        else:
-            # As a last resort use an in‑memory KV store (Redis in testing mode).
-            kv_store = RedisKeyValueStore(testing=True)
-
-        # Vector store selection (Qdrant or in‑memory)
-        qdrant_cfg = config.get("qdrant", {})
-        if vector_cfg.get("backend") == "qdrant" or qdrant_cfg.get("path"):
-            qconf = qdrant_cfg if qdrant_cfg else {"location": ":memory:"}
-            vector_store = QdrantVectorStore(collection_name=namespace, **qconf)
-        else:
-            vector_store = InMemoryVectorStore()
-        graph_store = NetworkXGraphStore()
-
-        # Event‑publishing flag – default to True.
-        eventing_enabled = config.get("eventing", {}).get("enabled", True)
-
-    # ------------------------------------------------------------
-    # Test mode – deterministic in‑memory stores.
-    # ------------------------------------------------------------
-    elif mode == MemoryMode.TEST:
-        kv_store = RedisKeyValueStore(testing=True)
-        vector_store = InMemoryVectorStore()
-        graph_store = NetworkXGraphStore()
-        # Event-publishing not relevant in test mode; default to False to avoid accidental Kafka use.
-        eventing_enabled = False
-
-    # ------------------------------------------------------------
-    # Evented enterprise / cloud managed – production configuration.
-    # ------------------------------------------------------------
-    elif mode in (MemoryMode.EVENTED_ENTERPRISE, MemoryMode.CLOUD_MANAGED):
-        # Evented enterprise / cloud managed – production configuration.
-        redis_cfg = config.get("redis", {})
-        qdrant_config = config.get("qdrant", {})
-
-        # Ensure path is not passed if other connection details are present for Qdrant
-        if "url" in qdrant_config or "host" in qdrant_config or "location" in qdrant_config:
-            qdrant_config.pop("path", None)
-
-        # Use Redis for KV store (as per tests) – real client if host/port provided, else testing fake.
-        # Determine if a Postgres URL is supplied – if so, build a hybrid store (Postgres primary, Redis cache).
-        postgres_cfg = config.get("postgres", {})
-        if postgres_cfg.get("url"):
-            # Create concrete Postgres and Redis stores.
-            pg_store = PostgresKeyValueStore(url=postgres_cfg["url"])
-            redis_store = (
-                RedisKeyValueStore(**redis_cfg) if redis_cfg else RedisKeyValueStore(testing=True)
-            )
-            kv_store = PostgresRedisHybridStore(pg_store=pg_store, redis_store=redis_store)
-        else:
-            # No Postgres configured – fall back to Redis only (or a testing fake).
-            kv_store = (
-                RedisKeyValueStore(**redis_cfg) if redis_cfg else RedisKeyValueStore(testing=True)
-            )
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_config)
-        graph_store = NetworkXGraphStore()
-        # Event-publishing flag for production
-        eventing_enabled = config.get("eventing", {}).get("enabled", True)
-
+    # Redis store configuration – default to testing stub when no host/port provided.
+    redis_testing = bool(redis_cfg.pop("testing", False))
+    if redis_cfg:
+        # Retain only supported kwargs
+        redis_kwargs = {k: redis_cfg[k] for k in ("host", "port", "db") if k in redis_cfg}
     else:
-        raise ValueError(f"Unsupported memory mode: {mode}")
+        redis_kwargs = {}
+    if redis_testing or not redis_kwargs:
+        redis_store = RedisKeyValueStore(testing=True)
+    else:
+        redis_store = RedisKeyValueStore(**redis_kwargs)
+
+    # Optional Postgres primary store
+    pg_url = postgres_cfg.get("url")
+    pg_store = PostgresKeyValueStore(url=pg_url) if pg_url else None
+
+    if pg_store and redis_store:
+        kv_store = PostgresRedisHybridStore(pg_store=pg_store, redis_store=redis_store)
+    elif pg_store:
+        kv_store = pg_store
+    else:
+        kv_store = redis_store
+
+    # Vector store selection – support explicit Qdrant config, otherwise fall back to in-memory.
+    vector_cfg = config.get("vector", {})
+    vector_backend = (vector_cfg.get("backend") or "").strip().lower()
+    use_memory_vectors = vector_backend == "memory" or qdrant_cfg.pop("testing", False)
+
+    if not qdrant_cfg:
+        # Provide sane defaults when nothing supplied.
+        qdrant_cfg = {"url": os.getenv("QDRANT_URL", "http://quadrant:8080")}
+
+    if use_memory_vectors:
+        vector_store = InMemoryVectorStore()
+    else:
+        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_cfg)
+
+    graph_store = NetworkXGraphStore()
+    eventing_enabled = config.get("eventing", {}).get("enabled", True)
 
     memory = SomaFractalMemoryEnterprise(
         namespace=namespace,

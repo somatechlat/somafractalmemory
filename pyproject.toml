@@ -58,6 +58,10 @@ dev = [
   "ruff",
   "bandit",
   "build",
+  "alembic>=1.14.0",
+]
+ops = [
+  "alembic>=1.14.0",
 ]
 
 [project.urls]

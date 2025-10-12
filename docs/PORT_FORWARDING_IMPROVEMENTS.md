@@ -77,7 +77,7 @@ pkill -f "kubectl port-forward"
 ./scripts/port_forward_api.sh stop
 
 # 2. Restart services
-./scripts/start_stack.sh development
+./scripts/start_stack.sh evented_enterprise
 kubectl rollout restart deployment -n soma-memory
 
 # 3. Wait for readiness

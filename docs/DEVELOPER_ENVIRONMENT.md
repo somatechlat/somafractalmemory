@@ -302,6 +302,16 @@ kubectl -n soma-memory logs pod/<pod-name> -c somafractalmemory   # API logs
 kubectl -n soma-memory logs pod/<consumer-pod> -c somafractalmemory-consumer   # consumer logs
 ```
 
+### 5.7 Inspect the cluster with Lens
+
+Lens (the Kubernetes IDE) can attach to the same kubeconfig you use locally. The Helm chart now ships the standard `app.kubernetes.io/*` labels (`name`, `instance`, `part-of`, `version`, `managed-by`) so Lens groups the API, consumer, and backing services under one release. Quick steps:
+
+1. Export your kubeconfig context (`kind get kubeconfig --name sfm > ~/.kube/config-kind-sfm` or `kubectl config view --minify --flatten > ~/.kube/config-soma-dev`).
+2. Add the file in Lens (**Add Cluster → Browse kubeconfig**), selecting the `soma-memory` namespace by default.
+3. Optionally install `metrics-server` so Lens can render CPU/Memory charts.
+
+Detailed workflows (port-forwarding, RBAC, troubleshooting) live in `docs/ops/LENS_INTEGRATION.md`.
+
 ---
 
 ## 6. Development Workflow

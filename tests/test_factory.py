@@ -9,8 +9,12 @@ from somafractalmemory.implementations.storage import (
 )
 
 
-def test_create_on_demand_mode():
-    memory = create_memory_system(MemoryMode.TEST, "test_on_demand")
+def test_create_evented_in_memory():
+    memory = create_memory_system(
+        MemoryMode.EVENTED_ENTERPRISE,
+        "test_on_demand",
+        config={"redis": {"testing": True}, "vector": {"backend": "memory"}},
+    )
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
@@ -19,12 +23,12 @@ def test_create_on_demand_mode():
     assert isinstance(memory.vector_store, InMemoryVectorStore)
 
 
-def test_create_local_agent_mode(tmp_path):
+def test_create_evented_with_disk_qdrant(tmp_path):
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
         "redis": {"testing": True},  # Use fakeredis for local agent test
     }
-    memory = create_memory_system(MemoryMode.DEVELOPMENT, "test_local_agent", config=config)
+    memory = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_local_agent", config=config)
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)

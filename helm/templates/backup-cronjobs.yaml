@@ -1,0 +1,169 @@
+{{- if or .Values.backup.postgres.enabled .Values.backup.qdrant.enabled }}
+{{- $fullName := include "somafractalmemory.fullname" . }}
+{{- $labels := include "somafractalmemory.labels" . }}
+{{- $selector := include "somafractalmemory.selectorLabels" . }}
+{{- if .Values.backup.postgres.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ printf "%s-postgres-backup" $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.postgres.schedule | quote }}
+  successfulJobsHistoryLimit: {{ default 3 .Values.backup.postgres.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ default 1 .Values.backup.postgres.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- $selector | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+{{- with .Values.backup.serviceAccountName }}
+          serviceAccountName: {{ . }}
+{{- end }}
+          containers:
+            - name: postgres-backup
+              image: "{{ .Values.backup.postgres.image.repository }}:{{ .Values.backup.postgres.image.tag }}"
+              imagePullPolicy: {{ .Values.backup.postgres.image.pullPolicy | default "IfNotPresent" }}
+              env:
+                - name: POSTGRES_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "somafractalmemory.secretName" . }}
+                      key: {{ .Values.backup.postgres.postgresUrlKey | default "POSTGRES_URL" }}
+{{- with .Values.backup.postgres.s3.bucket }}
+                - name: BACKUP_BUCKET
+                  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.backup.postgres.s3.prefix }}
+                - name: BACKUP_PREFIX
+                  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.backup.postgres.s3.region }}
+                - name: AWS_DEFAULT_REGION
+                  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.backup.postgres.extraEnv }}
+{{ toYaml . | nindent 16 }}
+{{- end }}
+{{- with .Values.backup.postgres.awsSecretName }}
+              envFrom:
+                - secretRef:
+                    name: {{ . }}
+{{- end }}
+              command:
+                - /bin/sh
+                - -c
+              args:
+                - |-
+                  set -euo pipefail
+                  apk add --no-cache postgresql15-client aws-cli curl jq >/dev/null
+                  : "${BACKUP_BUCKET:?BACKUP_BUCKET must be set}"
+                  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+                  tmp_file="/tmp/postgres-${ts}.dump"
+                  pg_dump --dbname="${POSTGRES_URL}" --format=custom --file="${tmp_file}"
+                  dest_prefix="${BACKUP_PREFIX:-postgres}"
+                  bucket="${BACKUP_BUCKET%/}"
+                  if [ -n "${dest_prefix}" ]; then
+                    dest="s3://${bucket}/${dest_prefix%/}/${ts}.dump"
+                  else
+                    dest="s3://${bucket}/${ts}.dump"
+                  fi
+                  aws s3 cp "${tmp_file}" "${dest}"
+                  rm -f "${tmp_file}"
+{{- with .Values.backup.postgres.resources }}
+              resources:
+{{ toYaml . | nindent 16 }}
+{{- end }}
+---
+{{- end }}
+{{- if .Values.backup.qdrant.enabled }}
+{{- $qdrantURL := .Values.backup.qdrant.qdrantUrl | default (printf "http://%s-qdrant.%s.svc.cluster.local:%v" $fullName .Release.Namespace .Values.qdrant.port) }}
+{{- $collectionDefault := "api_ns" }}
+{{- if and .Values.env (hasKey .Values.env "SOMA_MEMORY_NAMESPACE") }}
+{{- $collectionDefault = index .Values.env "SOMA_MEMORY_NAMESPACE" }}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ printf "%s-qdrant-backup" $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.qdrant.schedule | quote }}
+  successfulJobsHistoryLimit: {{ default 3 .Values.backup.qdrant.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ default 1 .Values.backup.qdrant.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- $selector | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+{{- with .Values.backup.serviceAccountName }}
+          serviceAccountName: {{ . }}
+{{- end }}
+          containers:
+            - name: qdrant-backup
+              image: "{{ .Values.backup.qdrant.image.repository }}:{{ .Values.backup.qdrant.image.tag }}"
+              imagePullPolicy: {{ .Values.backup.qdrant.image.pullPolicy | default "IfNotPresent" }}
+              env:
+                - name: QDRANT_URL
+                  value: {{ $qdrantURL | quote }}
+                - name: QDRANT_COLLECTION
+                  value: {{ (.Values.backup.qdrant.collection | default $collectionDefault) | quote }}
+{{- with .Values.backup.qdrant.s3.bucket }}
+                - name: BACKUP_BUCKET
+                  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.backup.qdrant.s3.prefix }}
+                - name: BACKUP_PREFIX
+                  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.backup.qdrant.s3.region }}
+                - name: AWS_DEFAULT_REGION
+                  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.backup.qdrant.extraEnv }}
+{{ toYaml . | nindent 16 }}
+{{- end }}
+{{- with .Values.backup.qdrant.awsSecretName }}
+              envFrom:
+                - secretRef:
+                    name: {{ . }}
+{{- end }}
+              command:
+                - /bin/sh
+                - -c
+              args:
+                - |-
+                  set -euo pipefail
+                  apk add --no-cache aws-cli curl jq >/dev/null
+                  : "${BACKUP_BUCKET:?BACKUP_BUCKET must be set}"
+                  collection="${QDRANT_COLLECTION:-api_ns}"
+                  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+                  response="$(curl -sf -X POST "${QDRANT_URL}/collections/${collection}/snapshots" -H 'Content-Type: application/json' -d '{}')"
+                  snapshot_name="$(echo "${response}" | jq -r '.result.name')"
+                  curl -sf "${QDRANT_URL}/collections/${collection}/snapshots/${snapshot_name}?download=true" -o "/tmp/${snapshot_name}"
+                  dest_prefix="${BACKUP_PREFIX:-qdrant}"
+                  bucket="${BACKUP_BUCKET%/}"
+                  if [ -n "${dest_prefix}" ]; then
+                    dest="s3://${bucket}/${dest_prefix%/}/${snapshot_name}"
+                  else
+                    dest="s3://${bucket}/${snapshot_name}"
+                  fi
+                  aws s3 cp "/tmp/${snapshot_name}" "${dest}"
+                  rm -f "/tmp/${snapshot_name}"
+{{- with .Values.backup.qdrant.resources }}
+              resources:
+{{ toYaml . | nindent 16 }}
+{{- end }}
+---
+{{- end }}
+{{- end }}

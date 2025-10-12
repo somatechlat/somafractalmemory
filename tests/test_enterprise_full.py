@@ -11,7 +11,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
     config = {"qdrant": {"path": str(tmp_path / "qdrant.db")}, "redis": {"testing": True}}
-    return create_memory_system(MemoryMode.DEVELOPMENT, "test_ns", config=config)
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_ns", config=config)
 
 
 def test_basic_store_and_retrieve(mem: SomaFractalMemoryEnterprise):
@@ -73,7 +73,7 @@ def test_memory_decay(tmp_path):
             "pruning_interval_seconds": 1,
         },
     }
-    mem = create_memory_system(MemoryMode.DEVELOPMENT, "decaytest", config=config)
+    mem = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "decaytest", config=config)
 
     coordinate = (1, 1, 1)
     data = {"test_field": "value", "permanent_field": "value2"}

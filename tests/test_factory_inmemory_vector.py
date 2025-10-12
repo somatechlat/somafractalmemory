@@ -5,10 +5,10 @@ from somafractalmemory.implementations.storage import InMemoryVectorStore
 
 def test_on_demand_inmemory_vector_toggle(tmp_path):
     mem = create_memory_system(
-        MemoryMode.TEST,
+        MemoryMode.EVENTED_ENTERPRISE,
         "od_mem",
         config={
-            "vector": {"backend": "inmemory"},
+            "vector": {"backend": "memory"},
             "redis": {"testing": True},
         },
     )

@@ -8,7 +8,7 @@ def test_lock_redlock_stub(tmp_path):
         "memory_enterprise": {},
         # locks config passed to kv store via redis config for now
     }
-    mem = create_memory_system(MemoryMode.DEVELOPMENT, "lock_ns", config=cfg)
+    mem = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "lock_ns", config=cfg)
     lock = mem.acquire_lock("test_lock", timeout=1)
     assert lock is not None
     with lock:

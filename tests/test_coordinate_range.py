@@ -4,7 +4,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 def test_find_by_coordinate_range(tmp_path):
     mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "box_ns",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
     )
@@ -23,7 +23,7 @@ def test_find_by_coordinate_range(tmp_path):
 
 def test_find_by_coordinate_range_with_type(tmp_path):
     mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "box_type",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
     )

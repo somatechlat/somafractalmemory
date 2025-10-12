@@ -2,7 +2,7 @@
 
 This document captures the current gaps between the repository’s state and a production‑ready deployment, with concrete remediation actions, locations to change, and acceptance criteria. It complements `docs/PRODUCTION_READINESS.md` (checklist) and references Make-based canonical entrypoints.
 
-Updated: 2025‑10‑10
+Updated: 2025‑10‑12
 
 ---
 
@@ -10,16 +10,16 @@ Updated: 2025‑10‑10
 
 | Area | Current state (where) | Gap/Risk | Impact | Severity | Actions to close (what/where) |
 |---|---|---|---|---|---|
-| API auth & security | Optional bearer token; not enforced broadly (somafractalmemory/http_api.py; docs) | Weak auth; no roles/tenants; CORS not formalized | Data exposure/misuse | High | Enforce auth on write/admin routes; explicit 401/403 paths; configure CORS. Add tests under `tests/`. |
-| TLS (edge and backends) | No Ingress/TLS in Helm; DSNs lack sslmode/tls | Insecure transport to API/Postgres/Qdrant/Kafka | Interception risk | High | Add `helm/templates/ingress.yaml` with TLS; enable in `values-production.yaml`. Add TLS/SASL envs for backends via Secrets. |
-| Secrets management | DSNs/tokens in env and values files | Plaintext secrets; no rotation | Compliance | High | Move to Kubernetes Secrets; adopt SOPS/SealedSecrets or cloud KMS; document rotation. |
-| Persistence & backups | PVCs disabled by default; Compose volumes; no backups | Data loss on restart; no restore plan | Durability | High | Enable PVCs in prod values; add backup/restore Jobs and runbooks (Postgres pg_dump/restore; Qdrant snapshot). |
-| DB schema/migrations | Direct psycopg2, no migrations framework | Drift across envs | Integrity | High | Introduce Alembic with versioned DDL; CI gate to ensure head. |
+| API auth & security | Bearer token enforced globally (somafractalmemory/http_api.py; docs refreshed) | Roles/tenants still missing; CORS allowlist manual | Data exposure/misuse if token leaked | Medium | Integrate role-aware auth, central secret rotation, and structured CORS policy. Extend tests for multi-tenant flows. |
+| TLS (edge and backends) | Ingress expects TLS; Helm DSNs set `sslmode=require`; cert provisioning still manual | Misconfiguration can leave traffic plaintext | Interception risk | High | Automate certificate issuance (cert-manager/ACM), distribute CA bundles to pods, and enable TLS settings for Kafka/Qdrant. |
+| Secrets management | Helm renders Secret or ExternalSecret; runbook updated with rotation + reloader guidance (`docs/ops/SECRET_MANAGEMENT.md`); Vault path standardized to `secret/data/shared-infra/soma-memory/<env>` | Runtime values still include dev defaults; AWS backup secret/service account not provisioned yet | Compliance | Medium | Flip to external secrets (`externalSecret.*`), disable inline secret, install Reloader (or GitOps equivalent), provision `soma-memory-backup-aws`, and capture rotation evidence in change tickets. |
+| Persistence & backups | PVCs disabled by default in dev; production values enable premium-rwo; S3 backup CronJobs for Postgres/Qdrant added | Restore workflow untested; S3 bucket/retention ownership unclear | Durability | High | Wire PVCs to managed storage, configure bucket policies, run the CronJobs in staging, and document a full restore drill (Postgres pg_restore + Qdrant snapshot upload). |
+| DB schema/migrations | Alembic baseline committed (`kv_store`, `memory_events`) | No automated cutover; CI gate missing | Integrity | Medium | Embed `make db-upgrade` in deployment flow, add CI check for `alembic current`, and document rollback steps. |
 | Kafka resilience | Single broker; no DLQ/Schema Registry | Message loss, schema breakage | Reliability | High | Use managed Kafka or 3‑broker; add DLQ topic + consumer; (optional) Schema Registry; lag dashboards/alerts. |
-| Network policies | None in Helm | Lateral movement possible | Security | High | Add NetworkPolicy (deny‐all then allowlist for API/consumers↔backends). |
-| Pod security | securityContext not enforced | Privilege escalation | Security | Med | Set runAsNonRoot, readOnlyRootFilesystem, drop caps in all Deployments. |
-| Autoscaling | Probes exist; no HPA | No auto‑scale | Availability | Med | Add HPA for API and consumer; validate probe timings. |
-| Observability | Metrics exported; no scrape/alerts | Limited dashboards/alerts | MTTR | Med | Add ServiceMonitor/annotations; Grafana dashboards; alert rules (p95, 5xx, lag). |
+| Network policies | Optional deny-by-default NetworkPolicy via values | Ingress/egress rules must be tailored per environment; RBAC audit outstanding | Security | Medium | Enable `networkPolicy.enabled`, restrict to required namespaces/IPs, and document RBAC posture. |
+| Pod security | Default pod/container contexts enforce non-root + RuntimeDefault seccomp | Sidecars/stateful dependencies still run with upstream defaults; image digests unpinned | Security | Low | Keep non-root contexts, extend to stateful sets or forked charts, and pin signed images. |
+| Autoscaling | HPAs templated for API & consumer (prod values enable them) | Metrics/thresholds require load-test tuning | Availability | Low | Run load tests, adjust HPA targets, and align CPU/memory requests with observed usage. |
+| Observability | ServiceMonitor + scrape annotations available; dashboards/alerts pending | Limited dashboards/alerts | MTTR | Medium | Enable ServiceMonitor in each env, publish Grafana dashboards, and codify alert rules (p95, 5xx, consumer lag). |
 | Rate limiting/WAF | Env knobs; no edge/WAF | Abuse risk | Security | Med | Default rate limits; put behind Ingress/WAF; IP allowlists as needed. |
 | CI quality gates | Security scans non‑blocking; heavy tests skipped | Issues may slip | Governance | Med | Split PR vs nightly: nightly blocks on HIGH/CRITICAL and runs Kind+Helm e2e. |
 | Config governance | Multiple sources (env + optional settings) | Drift/confusion | Operability | Med | Log startup config (redacted); validate env via pydantic‑settings; central schema doc. |
@@ -32,9 +32,9 @@ Updated: 2025‑10‑10
 ## Remediation plan (what and where)
 
 1) Security and access
-- Add Ingress with TLS termination (new `helm/templates/ingress.yaml`); enable via `helm/values-production.yaml`.
+- Automate Ingress TLS (cert-manager/ACM) and ship production values referencing managed cert secrets.
 - Enforce bearer auth on write/admin endpoints; add CORS policy (edit `somafractalmemory/http_api.py`).
-- Replace plaintext envs with Kubernetes Secrets (new `helm/templates/secret.yaml`, ref via `envFrom` or `secretKeyRef`).
+- Back secrets with Vault/ExternalSecret (chart now mounts Secret; wire it to rotation pipelines).
 
 Acceptance: All write/admin routes require Authorization; TLS enabled at edge; no secrets in plaintext manifests; unauthorized tests fail as expected.
 
@@ -46,14 +46,14 @@ Acceptance: PVCs Bound; manual backup/restore walkthrough succeeds; persistence 
 
 3) Reliability and scale
 - Kafka: adopt managed or 3‑broker stateful set; add DLQ topic and consumer; (optional) Schema Registry; create lag dashboards + alerts.
-- Introduce Alembic migrations; add CI step to assert migration head.
-- Add HPA for API and consumer; adjust probes; set connection pool sizes via env.
-- Add NetworkPolicy and PodSecurityContext to all pods.
+- Enforce Alembic migrations via the committed baseline; add CI step to assert migration head and capture revision output during deploys.
+- Tune HPAs for API and consumer (templates in chart); adjust probes; set connection pool sizes via env.
+- Harden NetworkPolicy/PodSecurityContext coverage for stateful dependencies and shared services.
 
-Acceptance: API and consumers autoscale; network restricted; migrations applied cleanly in all envs; DLQ drains.
+Acceptance: API and consumers autoscale with tuned thresholds; network restricted across workloads; migrations applied cleanly in all envs; DLQ drains.
 
 4) Observability and operations
-- Add Prometheus scrape (ServiceMonitor or annotations) and Grafana dashboards (API latency, 5xx rate, consumer lag, DB connections).
+- Prometheus scrape wired via ServiceMonitor/annotations; next add Grafana dashboards (API latency, 5xx rate, consumer lag, DB connections).
 - Add alerting rules; centralize structured logging; print redacted startup config summary.
 
 Acceptance: Dashboards render data; alerts fire on threshold breach; logs show config summary with secrets redacted.
@@ -130,11 +130,11 @@ This section inventories the major modules and classes and lists production chec
 - Purpose: Concrete storage clients for KV and vectors.
 - Checks & gaps:
 	- Redis: Add explicit timeouts, retries with backoff, and pipeline usage for bulk ops; document key schema and TTL where applicable.
-	- Postgres: Migrations absent; ensure prepared statements, statement timeouts, connection pool sizing, and autocommit/transaction boundaries are explicit. Reconnect logic exists—verify thread safety and cursor lifecycle. Add read-only health checks that don’t allocate connections under pressure.
+	- Postgres: Alembic baseline in place; still ensure prepared statements, statement timeouts, connection pool sizing, and autocommit/transaction boundaries are explicit. Reconnect logic exists—verify thread safety and cursor lifecycle. Add read-only health checks that don’t allocate connections under pressure.
 	- Qdrant: Ensure collection existence/idempotent schema creation; vector dimension checks; timeouts and retries; handle backpressure when index operations lag; expose index status metrics.
 	- Hybrid store: Clarify cache consistency and eviction (write-through vs write-behind); document retry order and fallback when one backend is down.
 - Remediation:
-	- Introduce Alembic migrations; set `statement_timeout` and pool sizes via env. Add retry/backoff wrappers; export metrics per backend op. Add collection bootstrap and schema validation for Qdrant.
+	- Enforce Alembic migrations (CI head check, deploy hook); set `statement_timeout` and pool sizes via env. Add retry/backoff wrappers; export metrics per backend op. Add collection bootstrap and schema validation for Qdrant.
 
 ### somafractalmemory/implementations/async_storage.py
 - Classes: `AsyncRedisKeyValueStore`, `AsyncPostgresKeyValueStore`.

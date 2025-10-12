@@ -8,7 +8,7 @@ def test_encryption_roundtrip_if_available(tmp_path):
     crypt = pytest.importorskip("cryptography.fernet")
     key = crypt.Fernet.generate_key()
     mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "enc_ns",
         config={
             "redis": {"testing": True},

@@ -14,15 +14,15 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 ## Core Environment Variables
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `MEMORY_MODE` | Selects backend wiring (`development`, `test`, `evented_enterprise`, `cloud_managed`). | `development` |
+| `MEMORY_MODE` | Selects backend wiring (only `evented_enterprise`). | `evented_enterprise` |
 | `SOMA_MEMORY_NAMESPACE` | Namespace passed to `create_memory_system` by `somafractalmemory/http_api.py`. | `api_ns` |
 | `POSTGRES_URL` | PostgreSQL DSN read by the factory, API, CLI, and consumers. | *(unset)* |
 | `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis connection hints (host/port/db override URL when provided). | `redis://localhost:6379/0` (Compose exposes Redis on host 6381) |
 | `QDRANT_URL` or (`QDRANT_HOST`, `QDRANT_PORT`) | Qdrant endpoint when not using a local file path. | `localhost` / `6333` |
 | `KAFKA_BOOTSTRAP_SERVERS` | Broker address for event publishing/consumption. | `localhost:19092` (Compose external) |
 | `EVENTING_ENABLED` | When set (e.g. `false`), overrides the factory toggle via `config["eventing"]["enabled"]`. | `true` |
-| `SOMA_API_TOKEN` | Optional bearer token required by the FastAPI dependencies. | *(unset)* |
-| `SOMA_RATE_LIMIT_MAX` | Requests per endpoint per minute for the sample API (minimum 1; set `0` to disable). | `60` |
+| `SOMA_API_TOKEN` | Required bearer token enforced by the FastAPI dependencies (provide via env or secret file). | *(secret; no default)* |
+| `SOMA_RATE_LIMIT_MAX` | Redis-backed per-endpoint request budget (minimum 1; set `0` to disable). | `60` |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window for the limiter (seconds). | `60` |
 | `UVICORN_PORT` | API process port (kept at `9595` in charts/Compose). | `9595` |
 | `UVICORN_WORKERS` | Worker count for the FastAPI container images. | `4` |
@@ -34,6 +34,13 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 
 ---
 
+### Kubernetes secrets & TLS defaults
+- The Helm chart now provisions a `Secret` when `secret.enabled=true` (default). Populate `secret.data` with connection strings and tokens, or set `secret.existingSecret` to reference a managed secret.
+- Sensitive defaults include `POSTGRES_URL` with `?sslmode=require`; ensure your Postgres endpoint presents a trusted certificate or override the value for non-TLS development clusters.
+- When the ingress is enabled, TLS is expected (`ingress.tls=true` by default). Provide `ingress.tlsSecretName` or allow cert-manager to issue a certificate that matches the host.
+
+---
+
 ## `SOMA_` Prefixed Vars (read inside `SomaFractalMemoryEnterprise`)
 | Variable | Purpose | Default |
 |----------|---------|---------|
@@ -42,7 +49,7 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `SOMA_PRUNING_INTERVAL_SECONDS` | Sleep interval for the decay thread. | `600` |
 | `SOMA_VECTOR_DIM` | Embedding dimensionality. | `768` |
 | `SOMA_MODEL_NAME` | HuggingFace model used for embeddings. | `microsoft/codebert-base` |
-| `SOMA_API_TOKEN` | Optional bearer token required by the FastAPI example. | *(unset)* |
+| `SOMA_API_TOKEN` | Required bearer token enforced by the FastAPI example. | *(secret; no default)* |
 | `SFM_FAST_CORE` | Enable flat in-process contiguous vector slabs (fast path). Accepts `1/true/yes`. | `0` |
 | `SOMA_HYBRID_RECALL_DEFAULT` | Make hybrid recall (vector + keyword boosts) the default for `/recall`. Accepts `1/true/yes` to enable or `0/false/no` to disable. | `1` |
 
@@ -118,14 +125,14 @@ config = {
         "port": 6379,
         "db": 0,
         "testing": True,   # use fakeredis
-        "enabled": True,   # only relevant in DEVELOPMENT mode
+  "enabled": True,   # enable Redis cache when a host is available
     },
     "postgres": {
   "url": "postgresql://postgres:postgres@postgres:5432/somamemory",
     },
 }
 ```
-* When both Redis and Postgres are provided in development or enterprise modes, `PostgresRedisHybridStore` caches writes in Redis while keeping Postgres canonical.
+* When both Redis and Postgres are provided, `PostgresRedisHybridStore` caches writes in Redis while keeping Postgres canonical.
 * When only one is configured, the factory falls back to the available backend. In test mode, Redis always runs in fakeredis mode.
 
 When `POSTGRES_URL` is configured, the API and core will attempt to leverage Postgres features (e.g., pg_trgm) when present for faster keyword paths. If permissions are restricted, the system falls back gracefully to KV scanning for `keyword_search` and the keyword phase of hybrid recall.
@@ -183,7 +190,7 @@ Settings file values are merged with environment variables; any explicit `config
 | `OTEL_TRACES_EXPORTER` | Default `otlp`. Set to `none` to silence exporter errors in development. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Endpoint used when OTLP is enabled. |
 | `SOMA_LANGFUSE_*` | Langfuse credentials (see above). |
-| `SOMA_RATE_LIMIT_MAX` | Per-endpoint request budget per minute for the FastAPI example (default `60`). |
+| `SOMA_RATE_LIMIT_MAX` | Redis-backed per-endpoint request budget for the FastAPI example (default `60`). |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Customise the limiter window size if the default 60 s bucket is too coarse. |
 
 Metrics (`api_requests_total`, `api_request_latency_seconds`, `http_404_requests_total`) are emitted via the Prometheus client. Hit at least one endpoint after startup so counters appear on `/metrics`.

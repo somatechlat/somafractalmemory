@@ -10,6 +10,7 @@ services:
     environment:
       MEMORY_MODE: evented_enterprise
       SOMA_RATE_LIMIT_MAX: "5000"
+      SOMA_API_TOKEN: dev-token
       UVICORN_WORKERS: "2"
       UVICORN_TIMEOUT_GRACEFUL: "60"
       POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/somamemory_test

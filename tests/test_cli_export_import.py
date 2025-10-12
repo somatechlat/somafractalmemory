@@ -7,7 +7,7 @@ def test_cli_export_import_shared_mem(tmp_path, capsys):
 
     # Use one shared memory instance behind CLI to avoid local qdrant lock issues
     shared_mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "cli_ei",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "ei.db")}},
     )
@@ -23,7 +23,7 @@ def test_cli_export_import_shared_mem(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_ei",
         "--config-json",
@@ -44,7 +44,7 @@ def test_cli_export_import_shared_mem(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_ei",
         "--config-json",
@@ -62,7 +62,7 @@ def test_cli_export_import_shared_mem(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_ei",
         "--config-json",

@@ -4,7 +4,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 def test_wal_reconcile_on_vector_failure(tmp_path, monkeypatch):
     mem: SomaFractalMemoryEnterprise = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "wal_ns",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}},
     )

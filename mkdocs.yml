@@ -14,6 +14,7 @@ nav:
   - Ops:
       - Kafka (Open Source): ops/KAFKA_OPEN_SOURCE.md
       - Kubernetes Deploy: ops/KUBERNETES.md
+      - Observability: ops/OBSERVABILITY.md
       - Port Forwarding Improvements: PORT_FORWARDING_IMPROVEMENTS.md
       - Helm Values (Local): ../helm/values-local.yaml
       - Helm Values (Kind): ../helm/values-kind.yaml

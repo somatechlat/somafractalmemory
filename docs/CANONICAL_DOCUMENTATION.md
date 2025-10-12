@@ -31,7 +31,6 @@ This document is the operational source of truth for developers and operators. I
    ```
 3. **Access endpoints**:
    * API: <http://localhost:9595>
-   * Sandbox API (`test_api`): <http://localhost:8888>
    * Prometheus metrics: `/metrics`
    * Swagger UI: `/docs`
 4. (Tip) Print resolved ports and NodePort: `make settings`.
@@ -134,18 +133,12 @@ is missing, the script prints the failing component and exits non-zero.
 
 ---
 
-## 4. Alternative Startup Modes (`scripts/start_stack.sh`)
-`start_stack.sh` is a convenience wrapper around `docker-compose.dev.yml`:
-
-| Mode | Services | Notes |
-|------|----------|-------|
-| `development` | Postgres + Qdrant (optionally Kafka with `--with-broker`) | Fast to start for local work. |
-| `evented_enterprise` / `cloud_managed` | Kafka, Postgres, Qdrant | Mirrors the evented production setup. |
-| `test` | No external services | Unit tests rely on in-memory stores. |
+## 4. Startup Mode (`scripts/start_stack.sh`)
+`start_stack.sh` now enforces the canonical evented topology and refuses any other mode. It wires Postgres, Qdrant, and (optionally via `--with-broker`) Kafka so local runs mirror production.
 
 Example usage:
 ```bash
-./scripts/start_stack.sh development --with-broker
+./scripts/start_stack.sh evented_enterprise --with-broker
 ```
 Follow up with `make compose-up` and `make compose-consumer-up` (or the equivalent `docker compose` commands) to launch the application containers against those services.
 
@@ -153,16 +146,18 @@ Follow up with `make compose-up` and `make compose-consumer-up` (or the equivale
 
 ## 5. Configuration Checklist
 Key environment variables (see `docs/CONFIGURATION.md` for the full list):
-- `MEMORY_MODE` – selects backend wiring.
+- `MEMORY_MODE` – fixed to `evented_enterprise`; CLI/API will override any other value.
 - `SOMA_MEMORY_NAMESPACE` – logical namespace for the API instance.
 - `POSTGRES_URL` – DSN for canonical storage.
 - `QDRANT_HOST` / `QDRANT_PORT` (or `qdrant.path` in config) – vector store.
 - `KAFKA_BOOTSTRAP_SERVERS` – broker location for event publishing.
 - `EVENTING_ENABLED` – set to `false` to disable Kafka emission when a broker is absent.
-- `SOMA_API_TOKEN` – optional bearer token required by the FastAPI dependencies.
+- `SOMA_API_TOKEN` – required bearer token enforced by every API surface (set via env or secret mount).
 - `SOMA_RATE_LIMIT_MAX` / `SOMA_RATE_LIMIT_WINDOW_SECONDS` – rate limiter budget and window for API endpoints (defaults 60 requests per 60 s).
 
-When running the CLI or FastAPI in-process, you can pass a dictionary to `create_memory_system` to override the same settings:
+Production helm deployments should start from `helm/values-production.yaml`, which disables inline secrets, enables the ExternalSecret template, and adds the Reloader annotations so credentials sourced from Vault trigger rollouts automatically.
+
+When running the CLI or FastAPI in-process, you can pass a dictionary to `create_memory_system` to override the same settings while always using `MemoryMode.EVENTED_ENTERPRISE`:
 ```python
 create_memory_system(
    MemoryMode.EVENTED_ENTERPRISE,

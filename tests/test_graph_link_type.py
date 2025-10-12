@@ -4,7 +4,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 def test_shortest_path_with_link_type(tmp_path):
     cfg = {"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "q.db")}}
-    mem = create_memory_system(MemoryMode.DEVELOPMENT, "lt_ns", config=cfg)
+    mem = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "lt_ns", config=cfg)
     a, b, c = (1, 1, 1), (2, 2, 2), (3, 3, 3)
     mem.store_memory(a, {"d": 1}, memory_type=MemoryType.EPISODIC)
     mem.store_memory(b, {"d": 2}, memory_type=MemoryType.EPISODIC)

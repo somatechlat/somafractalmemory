@@ -7,7 +7,7 @@ def test_report_outcome_without_prediction(tmp_path):
         "qdrant": {"path": str(tmp_path / "q.db")},
         "redis": {"testing": True},
     }
-    mem = create_memory_system(MemoryMode.DEVELOPMENT, "pred_ns", config=cfg)
+    mem = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "pred_ns", config=cfg)
     coord = (1, 2, 3)
     mem.store_memory(coord, {"task": "bar"}, memory_type=MemoryType.EPISODIC)
     stored = mem.retrieve(coord)

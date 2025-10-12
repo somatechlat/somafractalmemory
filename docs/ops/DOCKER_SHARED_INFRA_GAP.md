@@ -66,7 +66,7 @@ Sprint A — Compose hygiene and unification (1–2 days)
 - Decide on a single Kafka flavor for compose (recommended: Confluent cp-kafka to match current `docker-compose.yml`).
 - Update `docker-compose.test.yml` to use the same flavor and environment schema as `docker-compose.yml`.
 - Pin images: `qdrant/qdrant:<known-good>`, `redis:7.2.x`, `postgres:15-alpine`, `confluentinc/cp-kafka:7.6.1`.
-- Normalize healthchecks so each service checks itself (no cross-service `curl api` from consumer/test_api).
+- Normalize healthchecks so each service checks itself (no cross-service `curl api` from consumer containers).
 - Document ports and service names in README/QUICKSTART.
 
 Sprint B — Reset and lifecycle scripts (1 day)

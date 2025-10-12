@@ -17,7 +17,7 @@ def mem(tmp_path) -> SomaFractalMemoryEnterprise:
             "decayable_keys_by_level": [["scratch"]],
         },
     }
-    return create_memory_system(MemoryMode.DEVELOPMENT, "additional_ns", config=config)
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "additional_ns", config=config)
 
 
 def test_delete_removes_graph_and_kv(mem: SomaFractalMemoryEnterprise):

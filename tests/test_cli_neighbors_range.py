@@ -7,7 +7,7 @@ def test_cli_neighbors_and_range(tmp_path, capsys):
 
     # Use one shared memory instance for all CLI calls to avoid qdrant local locks
     shared_mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "cli_nr",
         config={
             "redis": {"testing": True},
@@ -27,7 +27,7 @@ def test_cli_neighbors_and_range(tmp_path, capsys):
         cli.sys.argv = [
             "soma",
             "--mode",
-            "development",
+            "evented_enterprise",
             "--namespace",
             "cli_nr",
             "--config-json",
@@ -47,7 +47,7 @@ def test_cli_neighbors_and_range(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_nr",
         "--config-json",
@@ -65,7 +65,7 @@ def test_cli_neighbors_and_range(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_nr",
         "--config-json",
@@ -85,7 +85,7 @@ def test_cli_neighbors_and_range(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_nr",
         "--config-json",
@@ -103,7 +103,7 @@ def test_cli_neighbors_and_range(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_nr",
         "--config-json",

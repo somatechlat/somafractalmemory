@@ -6,6 +6,9 @@ import time
 
 import pytest
 
+# Ensure FastAPI surface can import with mandatory auth in test runs.
+os.environ.setdefault("SOMA_API_TOKEN", "test-token")
+
 
 def _tcp_open(host: str, port: int, timeout: float = 1.0) -> bool:
     try:

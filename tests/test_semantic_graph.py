@@ -8,7 +8,7 @@ from somafractalmemory.implementations.graph import NetworkXGraphStore
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
     config = {"qdrant": {"path": str(tmp_path / "qdrant.db")}, "redis": {"testing": True}}
-    return create_memory_system(MemoryMode.DEVELOPMENT, "test_graph", config=config)
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_graph", config=config)
 
 
 def test_semantic_graph_basic(mem: SomaFractalMemoryEnterprise):

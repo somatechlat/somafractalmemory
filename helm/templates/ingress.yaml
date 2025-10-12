@@ -26,6 +26,6 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.host | quote }}
-      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+      secretName: {{ default (printf "%s-tls" (include "somafractalmemory.fullname" .)) .Values.ingress.tlsSecretName | quote }}
   {{- end }}
 {{- end }}

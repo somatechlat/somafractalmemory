@@ -4,7 +4,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 def test_find_hybrid_by_type_with_filters(tmp_path):
     mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "filters_ns",
         config={
             "redis": {"testing": True},

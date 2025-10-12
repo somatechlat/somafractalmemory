@@ -55,7 +55,7 @@ Logs are available via `docker compose --profile consumer logs -f somafractalmem
 ## Local Broker with `start_stack.sh`
 To run only the messaging layer without the full compose stack:
 ```bash
-./scripts/start_stack.sh development --with-broker   # starts the docker-compose broker (Kafka; legacy Redpanda if defined)
+./scripts/start_stack.sh evented_enterprise   # starts the docker-compose broker (Kafka; legacy Redpanda if defined)
 ```
 Combine this with a locally running API (e.g., `uvicorn examples.api:app`) after exporting the matching environment variables (such as `KAFKA_BOOTSTRAP_SERVERS=localhost:9092`).
 

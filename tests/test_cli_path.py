@@ -8,7 +8,7 @@ def test_cli_path(tmp_path, capsys):
 
     # Create a shared memory instance and monkeypatch the CLI factory to reuse it
     shared_mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "cli_path",
         config={"redis": {"testing": True}, "qdrant": {"path": str(tmp_path / "qp_shared.db")}},
     )
@@ -26,7 +26,7 @@ def test_cli_path(tmp_path, capsys):
         cli.sys.argv = [
             "soma",
             "--mode",
-            "development",
+            "evented_enterprise",
             "--namespace",
             "cli_path",
             "--config-json",
@@ -49,7 +49,7 @@ def test_cli_path(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_path",
         "--config-json",
@@ -72,7 +72,7 @@ def test_cli_path(tmp_path, capsys):
     cli.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_path",
         "--config-json",

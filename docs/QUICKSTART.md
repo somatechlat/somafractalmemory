@@ -44,7 +44,7 @@ from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
 
 mem = create_memory_system(
-  MemoryMode.DEVELOPMENT,
+  MemoryMode.EVENTED_ENTERPRISE,
   "quickstart",
   config={
     "redis": {"testing": True},
@@ -56,17 +56,17 @@ mem.store_memory((0.0, 0.0, 0.0), {"task": "quickstart", "importance": 4}, Memor
 print(mem.recall("quickstart"))
 PY
 ```
-This snippet exercises the in-process development mode (fakeredis + file-based Qdrant) without needing Docker.
+This snippet exercises the single supported mode. Provide `redis.testing=True` or `vector.backend="memory"` in config to run without external services.
 
 ---
 
 ## 4. Try the CLI
 ```bash
-uv run soma --mode development --namespace quickstart store \
+uv run soma --mode evented_enterprise --namespace quickstart store \
   --coord "1,2,3" \
   --payload '{"note": "CLI demo", "importance": 2}'
 
-uv run soma --mode development --namespace quickstart recall --query "CLI"
+uv run soma --mode evented_enterprise --namespace quickstart recall --query "CLI"
 ```
 Use `--config-json` if you need to specify Redis/Postgres/Qdrant endpoints explicitly.
 
@@ -83,7 +83,7 @@ curl -X POST http://localhost:9595/recall \
   -H 'Content-Type: application/json' \
   -d '{"query": "API"}'
 ```
-Enable bearer auth by setting `SOMA_API_TOKEN` in the API service environment (edit `docker-compose.yml` or an override file); include `Authorization: Bearer <token>` headers when enabled.
+Set `SOMA_API_TOKEN` in the API service environment (edit `docker-compose.yml` or an override file); all client calls must include `Authorization: Bearer <token>`.
 
 Docs and metrics:
 - Swagger UI: <http://localhost:9595/docs>
@@ -96,6 +96,12 @@ Kubernetes alternative (dev):
    make setup-dev-k8s
    make helm-dev-health
    ```
+ - Before deploying, create the API secret or point the chart at an existing one. Example (self-managed secret):
+    ```bash
+    kubectl create secret generic soma-memory-secrets \
+      --from-literal=SOMA_API_TOKEN=changeme \
+      --from-literal=POSTGRES_URL=postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory?sslmode=require
+    ```
  - Inspect resolved ports and endpoints:
    ```bash
    make settings

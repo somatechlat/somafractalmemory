@@ -8,6 +8,7 @@ in place for legacy imports.
 
 import logging
 import os
+import threading
 import time
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -26,6 +27,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from common.utils.logger import configure_logging
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
+
+try:  # pragma: no cover - optional dependency import path
+    import redis
+    from redis.exceptions import RedisError
+except Exception:  # pragma: no cover - redis is optional in some environments
+    redis = None  # type: ignore
+    RedisError = Exception  # type: ignore[misc]
 
 try:
     # Centralised settings and shared tracing (optional in CI environments)
@@ -81,11 +89,13 @@ if origins:
 
 
 def _resolve_memory_mode() -> MemoryMode:
-    mode_env = (os.getenv("MEMORY_MODE") or MemoryMode.DEVELOPMENT.value).lower()
-    for mode in MemoryMode:
-        if mode.value == mode_env:
-            return mode
-    return MemoryMode.DEVELOPMENT
+    mode_env = (os.getenv("MEMORY_MODE") or MemoryMode.EVENTED_ENTERPRISE.value).lower()
+    if mode_env != MemoryMode.EVENTED_ENTERPRISE.value:
+        logger.warning(
+            "Unsupported MEMORY_MODE '%s' requested; defaulting to evented_enterprise.",
+            mode_env,
+        )
+    return MemoryMode.EVENTED_ENTERPRISE
 
 
 def _redis_config(settings: Any | None = None) -> dict[str, Any]:
@@ -236,7 +246,9 @@ if not hasattr(mem, "prediction_provider"):
     mem.prediction_provider = _NoopPredictor()  # type: ignore[attr-defined]
 
 
-# Simple auth + rate limit stubs
+# ---------------------------------------------------------------------------
+# Authentication & rate limiting dependencies
+# ---------------------------------------------------------------------------
 def _load_api_token() -> str | None:
     # Support reading token from file (e.g., mounted Kubernetes Secret)
     token_file = os.getenv("SOMA_API_TOKEN_FILE")
@@ -250,9 +262,111 @@ def _load_api_token() -> str | None:
 
 
 API_TOKEN = _load_api_token()
-_RATE: dict[tuple[str, str], list[float]] = {}
+
+if not API_TOKEN:
+    raise RuntimeError(
+        "SOMA_API_TOKEN (or SOMA_API_TOKEN_FILE) must be set before importing somafractalmemory.http_api."
+    )
+
 _RATE_LIMIT_MAX = int(os.getenv("SOMA_RATE_LIMIT_MAX", "60"))
 _RATE_WINDOW = float(os.getenv("SOMA_RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+
+class _AlwaysAllowRateLimiter:
+    def allow(self, key: str) -> bool:
+        return True
+
+
+class _InMemoryRateLimiter:
+    def __init__(self, window: float, max_requests: int):
+        self.window = max(window, 0.0)
+        self.max_requests = max_requests
+        self._buckets: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        if self.max_requests <= 0 or self.window <= 0:
+            return True
+        now = time.time()
+        with self._lock:
+            bucket = self._buckets.setdefault(key, [])
+            # Drop entries outside the window
+            bucket[:] = [ts for ts in bucket if now - ts <= self.window]
+            if len(bucket) >= self.max_requests:
+                return False
+            bucket.append(now)
+            return True
+
+
+class _RedisRateLimiter:
+    def __init__(
+        self,
+        client: "redis.Redis",
+        window: float,
+        max_requests: int,
+        *,
+        prefix: str = "sfm:rate",
+        fallback: _InMemoryRateLimiter | None = None,
+    ):
+        self.client = client
+        self.window = max(int(window), 1)
+        self.max_requests = max_requests
+        self.prefix = prefix
+        self._fallback = fallback
+        self._warned = False
+
+    def allow(self, key: str) -> bool:
+        if self.max_requests <= 0:
+            return True
+        redis_key = f"{self.prefix}:{key}"
+        try:
+            with self.client.pipeline() as pipe:
+                pipe.incr(redis_key)
+                pipe.expire(redis_key, self.window)
+                count, _ = pipe.execute()
+            return int(count) <= self.max_requests
+        except RedisError as exc:
+            if not self._warned:
+                logger.warning("Rate limiter Redis error; falling back to in-memory: %s", exc)
+                self._warned = True
+            if self._fallback:
+                return self._fallback.allow(key)
+            return True
+
+
+def _build_rate_limiter(cfg: dict[str, Any]) -> object:
+    if _RATE_LIMIT_MAX <= 0 or _RATE_WINDOW <= 0:
+        return _AlwaysAllowRateLimiter()
+    fallback = _InMemoryRateLimiter(window=_RATE_WINDOW, max_requests=_RATE_LIMIT_MAX)
+    if not cfg or cfg.get("testing") or cfg.get("enabled") is False:
+        return fallback
+    if redis is None:
+        logger.warning("redis package unavailable; using in-memory rate limiter")
+        return fallback
+    try:
+        client = redis.Redis(
+            host=cfg.get("host", "localhost"),
+            port=int(cfg.get("port", 6379)),
+            db=int(cfg.get("db", 0)),
+            password=cfg.get("password"),
+            ssl=bool(cfg.get("ssl", False)),
+            socket_connect_timeout=float(cfg.get("socket_connect_timeout", 1.5)),
+            socket_timeout=float(cfg.get("socket_timeout", 1.5)),
+            retry_on_timeout=True,
+        )
+        client.ping()
+        return _RedisRateLimiter(
+            client=client,
+            window=_RATE_WINDOW,
+            max_requests=_RATE_LIMIT_MAX,
+            fallback=fallback,
+        )
+    except Exception as exc:  # pragma: no cover - network/path dependent
+        logger.warning("Unable to initialise Redis rate limiter; using in-memory fallback: %s", exc)
+        return fallback
+
+
+_RATE_LIMITER = _build_rate_limiter(redis_cfg)
 
 
 def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
@@ -272,17 +386,12 @@ def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
 
 
 def rate_limit_dep(path: str):
-    window = _RATE_WINDOW if _RATE_WINDOW > 0 else 60.0
-    max_reqs = max(_RATE_LIMIT_MAX, 1)
-    key = (path, "global")
-    now = time.time()
-    bucket = _RATE.setdefault(key, [])
-    # Drop old
-    while bucket and now - bucket[0] > window:
-        bucket.pop(0)
-    if len(bucket) >= max_reqs:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    bucket.append(now)
+    def _enforce(request: Request):
+        key = f"global:{path}"
+        if not _RATE_LIMITER.allow(key):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    return _enforce
 
 
 class StoreRequest(BaseModel):
@@ -486,7 +595,7 @@ async def metrics_middleware(request: Request, call_next):
     "/store",
     response_model=OkResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/store"))],
 )
 async def store(req: StoreRequest) -> OkResponse:
     mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
@@ -498,7 +607,7 @@ async def store(req: StoreRequest) -> OkResponse:
     "/recall",
     response_model=MatchesResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall"))],
 )
 async def recall(req: RecallRequest) -> MatchesResponse:
     mtype = None
@@ -521,7 +630,7 @@ async def recall(req: RecallRequest) -> MatchesResponse:
     "/recall",
     response_model=MatchesResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall"))],
 )
 def recall_get(
     query: str,
@@ -563,7 +672,7 @@ def recall_get(
     "/recall_batch",
     response_model=BatchesResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_batch"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_batch"))],
 )
 def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
     mtype = None
@@ -591,10 +700,14 @@ def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
     "/stats",
     response_model=StatsResponse,
     tags=["system"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/stats"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/stats"))],
 )
 def stats() -> StatsResponse:
-    return StatsResponse(**mem.memory_stats())
+    try:
+        return StatsResponse(**mem.memory_stats())
+    except Exception as exc:  # pragma: no cover - depends on backend state
+        logger.warning("stats endpoint failed", exc_info=exc)
+        raise HTTPException(status_code=503, detail="Backend stats unavailable") from exc
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -606,7 +719,7 @@ def health() -> HealthResponse:
     "/neighbors",
     response_model=NeighborsResponse,
     tags=["graph"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/neighbors"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/neighbors"))],
 )
 def neighbors(
     coord: str, link_type: str | None = None, limit: int | None = None
@@ -621,7 +734,7 @@ def neighbors(
     "/link",
     response_model=OkResponse,
     tags=["graph"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/link"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/link"))],
 )
 def link(req: LinkRequest) -> OkResponse:
     mem.link_memories(
@@ -637,7 +750,7 @@ def link(req: LinkRequest) -> OkResponse:
     "/shortest_path",
     response_model=PathResponse,
     tags=["graph"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/shortest_path"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/shortest_path"))],
 )
 def shortest_path(frm: str, to: str, link_type: str | None = None) -> PathResponse:
     path = mem.find_shortest_path(parse_coord(frm), parse_coord(to), link_type=link_type)
@@ -648,7 +761,7 @@ def shortest_path(frm: str, to: str, link_type: str | None = None) -> PathRespon
     "/store_bulk",
     response_model=StoreBulkResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/store_bulk"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/store_bulk"))],
 )
 def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
     from somafractalmemory.core import MemoryType
@@ -665,7 +778,7 @@ def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
     "/recall_with_scores",
     response_model=ScoresResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_scores"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_with_scores"))],
 )
 def recall_with_scores(req: RecallWithScoresBody) -> ScoresResponse:
     from somafractalmemory.core import MemoryType
@@ -692,7 +805,7 @@ def recall_with_scores(req: RecallWithScoresBody) -> ScoresResponse:
     "/keyword_search",
     response_model=ResultsResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/keyword_search"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/keyword_search"))],
 )
 def keyword_search(req: KeywordSearchRequest) -> ResultsResponse:
     from somafractalmemory.core import MemoryType
@@ -716,7 +829,7 @@ def keyword_search(req: KeywordSearchRequest) -> ResultsResponse:
     "/hybrid_recall_with_scores",
     response_model=HybridScoresResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/hybrid_recall_with_scores"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/hybrid_recall_with_scores"))],
 )
 def hybrid_recall_with_scores(req: HybridRecallRequest) -> HybridScoresResponse:
     from somafractalmemory.core import MemoryType
@@ -743,7 +856,7 @@ def hybrid_recall_with_scores(req: HybridRecallRequest) -> HybridScoresResponse:
     "/recall_with_context",
     response_model=ResultsResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/recall_with_context"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_with_context"))],
 )
 def recall_with_context(req: RecallWithContextBody) -> ResultsResponse:  # noqa: F811
     from somafractalmemory.core import MemoryType
@@ -761,7 +874,7 @@ def recall_with_context(req: RecallWithContextBody) -> ResultsResponse:  # noqa:
     "/range",
     response_model=dict[str, list[list[float]]],
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(lambda: rate_limit_dep("/range"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/range"))],
 )
 def range_search(min: str, max: str, type: str | None = None):
     from somafractalmemory.core import MemoryType

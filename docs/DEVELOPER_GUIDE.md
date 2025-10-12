@@ -140,7 +140,7 @@ Fixed host ports (aligns with test fixtures and examples):
 - Qdrant: `localhost:6333`
 - Kafka (external listener): `localhost:19092`
 
-Declarative configuration lives in `docker-compose.yml`. Override values ad hoc with `docker compose up -d api -e MEMORY_MODE=development` or by creating a `.env` file; environment variables take precedence over defaults baked into the compose file.
+Declarative configuration lives in `docker-compose.yml`. Keep `MEMORY_MODE` at `evented_enterprise`; override other values ad hoc via `docker compose --env-file` or a dedicated `.env` file.
 
 ### Kubernetes via Helm (dev and prod)
 
@@ -191,11 +191,9 @@ Backups and disaster recovery are out of scope for local dev. For production, us
 
 ### Minimal backends via `start_stack.sh`
 
-Use this path when you only need the API plus storage without Kafka:
+Use this path when you only need the Docker-backed services without running the full compose stack:
 ```bash
-./scripts/start_stack.sh development                 # Postgres + Qdrant
-./scripts/start_stack.sh development --with-broker   # Adds Kafka
-./scripts/start_stack.sh evented_enterprise          # Full parity with compose
+./scripts/start_stack.sh evented_enterprise   # Kafka + Postgres + Qdrant
 ```
 The script prints connection strings for each component. After it completes, run the example API with auto‑reload:
 ```bash
@@ -208,7 +206,7 @@ uv run uvicorn somafractalmemory.http_api:app --reload --host 0.0.0.0 --port 959
 ### CLI (`soma`)
 The CLI wraps `create_memory_system` and exposes commands for storing, recalling, and exporting memories. Example:
 ```bash
-soma --mode development --namespace cli_demo store \
+soma --mode evented_enterprise --namespace cli_demo store \
   --coord "1,2,3" \
   --payload '{"task": "triage", "importance": 3}'
 ```
@@ -220,7 +218,7 @@ Run the example app directly for rapid iteration:
 uvicorn somafractalmemory.http_api:app --reload
 ```
 On startup it:
-- Creates a development-mode memory system (`redis.testing=True`, Qdrant pointed at the configured host/port).
+- Creates an evented memory system (set `redis.testing=True` or `vector.backend="memory"` in config for in-memory tests).
 - Generates `openapi.json` in the repository root.
 - Publishes Prometheus metrics and rate limits using environment defaults.
 

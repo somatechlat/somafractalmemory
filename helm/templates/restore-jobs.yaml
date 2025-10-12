@@ -1,0 +1,136 @@
+{{- if or .Values.restore.postgres.enabled .Values.restore.qdrant.enabled }}
+{{- $fullName := include "somafractalmemory.fullname" . }}
+{{- $labels := include "somafractalmemory.labels" . }}
+{{- $selector := include "somafractalmemory.selectorLabels" . }}
+{{- if .Values.restore.postgres.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-postgres-restore" $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.restore.postgres.backoffLimit | default 3 }}
+  template:
+    metadata:
+      labels:
+        {{- $selector | nindent 8 }}
+        app.kubernetes.io/component: restore
+    spec:
+      restartPolicy: OnFailure
+{{- with .Values.restore.serviceAccountName }}
+      serviceAccountName: {{ . }}
+{{- end }}
+      containers:
+        - name: postgres-restore
+          image: "{{ .Values.restore.postgres.image.repository }}:{{ .Values.restore.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.restore.postgres.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "somafractalmemory.secretName" . }}
+                  key: {{ .Values.restore.postgres.postgresUrlKey | default "POSTGRES_URL" }}
+{{- with .Values.restore.postgres.s3Uri }}
+            - name: RESTORE_URI
+              value: {{ . | quote }}
+{{- end }}
+{{- with .Values.restore.postgres.s3.region }}
+            - name: AWS_DEFAULT_REGION
+              value: {{ . | quote }}
+{{- end }}
+{{- with .Values.restore.postgres.extraEnv }}
+{{ toYaml . | nindent 12 }}
+{{- end }}
+{{- with .Values.restore.postgres.awsSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+{{- end }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |-
+              set -euo pipefail
+              apk add --no-cache postgresql15-client aws-cli >/dev/null
+              : "${RESTORE_URI:?RESTORE_URI must be set}"
+              tmp_file="/tmp/postgres-restore.dump"
+              aws s3 cp "${RESTORE_URI}" "${tmp_file}"
+              pg_restore --clean --if-exists --dbname="${POSTGRES_URL}" "${tmp_file}"
+              rm -f "${tmp_file}"
+{{- with .Values.restore.postgres.resources }}
+          resources:
+{{ toYaml . | nindent 12 }}
+{{- end }}
+---
+{{- end }}
+{{- if .Values.restore.qdrant.enabled }}
+{{- $qdrantURL := .Values.restore.qdrant.qdrantUrl | default (printf "http://%s-qdrant.%s.svc.cluster.local:%v" $fullName .Release.Namespace .Values.qdrant.port) }}
+{{- $collectionDefault := "api_ns" }}
+{{- if and .Values.env (hasKey .Values.env "SOMA_MEMORY_NAMESPACE") }}
+{{- $collectionDefault = index .Values.env "SOMA_MEMORY_NAMESPACE" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-qdrant-restore" $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.restore.qdrant.backoffLimit | default 3 }}
+  template:
+    metadata:
+      labels:
+        {{- $selector | nindent 8 }}
+        app.kubernetes.io/component: restore
+    spec:
+      restartPolicy: OnFailure
+{{- with .Values.restore.serviceAccountName }}
+      serviceAccountName: {{ . }}
+{{- end }}
+      containers:
+        - name: qdrant-restore
+          image: "{{ .Values.restore.qdrant.image.repository }}:{{ .Values.restore.qdrant.image.tag }}"
+          imagePullPolicy: {{ .Values.restore.qdrant.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: QDRANT_URL
+              value: {{ $qdrantURL | quote }}
+            - name: QDRANT_COLLECTION
+              value: {{ (.Values.restore.qdrant.collection | default $collectionDefault) | quote }}
+{{- with .Values.restore.qdrant.snapshotUri }}
+            - name: SNAPSHOT_URI
+              value: {{ . | quote }}
+{{- end }}
+{{- with .Values.restore.qdrant.s3.region }}
+            - name: AWS_DEFAULT_REGION
+              value: {{ . | quote }}
+{{- end }}
+{{- with .Values.restore.qdrant.extraEnv }}
+{{ toYaml . | nindent 12 }}
+{{- end }}
+{{- with .Values.restore.qdrant.awsSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+{{- end }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |-
+              set -euo pipefail
+              apk add --no-cache aws-cli curl >/dev/null
+              : "${SNAPSHOT_URI:?SNAPSHOT_URI must be set}"
+              tmp_file="/tmp/qdrant-snapshot"
+              aws s3 cp "${SNAPSHOT_URI}" "${tmp_file}"
+              curl -sf -X POST "${QDRANT_URL}/collections/${QDRANT_COLLECTION}/snapshots/upload" \
+                   -F snapshot=@"${tmp_file}"
+              rm -f "${tmp_file}"
+{{- with .Values.restore.qdrant.resources }}
+          resources:
+{{ toYaml . | nindent 12 }}
+{{- end }}
+---
+{{- end }}
+{{- end }}

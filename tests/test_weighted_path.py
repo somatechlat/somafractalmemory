@@ -4,7 +4,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 def test_weighted_shortest_path(tmp_path):
     mem = create_memory_system(
-        MemoryMode.DEVELOPMENT,
+        MemoryMode.EVENTED_ENTERPRISE,
         "weighted_ns",
         config={
             "redis": {"testing": True},

@@ -9,7 +9,7 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 @pytest.fixture
 def mem(tmp_path):
     cfg = {"qdrant": {"path": str(tmp_path / "q.db")}, "redis": {"testing": True}}
-    return create_memory_system(MemoryMode.DEVELOPMENT, "score_ns", config=cfg)
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "score_ns", config=cfg)
 
 
 def test_recall_with_scores(mem):
@@ -42,7 +42,7 @@ def test_cli_delete_many(tmp_path, capsys):
         cli.sys.argv = [
             "soma",
             "--mode",
-            "development",
+            "evented_enterprise",
             "--namespace",
             "cli_batch",
             "--config-json",
@@ -70,7 +70,7 @@ def test_cli_delete_many(tmp_path, capsys):
     cli2.sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_batch",
         "--config-json",

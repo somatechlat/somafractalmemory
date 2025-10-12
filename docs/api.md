@@ -10,7 +10,7 @@ from somafractalmemory.factory import create_memory_system, MemoryMode
 from somafractalmemory.core import MemoryType
 
 mem = create_memory_system(
-    MemoryMode.DEVELOPMENT,
+    MemoryMode.EVENTED_ENTERPRISE,
     "demo",
     config={
         "redis": {"testing": True},
@@ -21,10 +21,7 @@ mem = create_memory_system(
 
 ### `MemoryMode`
 Enum defined in `somafractalmemory/factory.py`:
-- `DEVELOPMENT`
-- `TEST`
 - `EVENTED_ENTERPRISE`
-- `CLOUD_MANAGED`
 
 ### `MemoryType`
 Enum defined in `somafractalmemory/core.py`:
@@ -33,9 +30,9 @@ Enum defined in `somafractalmemory/core.py`:
 
 ### `create_memory_system(mode, namespace, config=None)`
 Returns a configured `SomaFractalMemoryEnterprise` instance. Key behaviour:
-- Selects Redis/Postgres/Qdrant implementations based on `mode` and `config`.
-- Attaches a `NetworkXGraphStore` in all modes.
-- Sets `memory.eventing_enabled` depending on configuration (forced `False` in `TEST`).
+- Selects Redis/Postgres/Qdrant implementations based on configuration while always running in `evented_enterprise` mode.
+- Attaches a `NetworkXGraphStore`.
+- Sets `memory.eventing_enabled` depending on configuration (`eventing.enabled` flag, defaults to `True`).
 
 ---
 
@@ -81,12 +78,12 @@ The `soma` entry point supports the following sub-commands:
 | `store-bulk` | Load a JSON file containing `coord/payload/type` items and store them batch-wise. |
 | `range` | Query coordinates within a bounding box. |
 
-All commands accept `--mode`, `--namespace`, and optional `--config-json` to provide a configuration dictionary identical to the one passed to `create_memory_system`.
+All commands accept `--mode`, `--namespace`, and optional `--config-json`. The `--mode` flag is retained for compatibility but only `evented_enterprise` is accepted.
 
 ---
 
 ## FastAPI Surface (`somafractalmemory/http_api.py`)
-The example application wires the selected `MEMORY_MODE` (default DEVELOPMENT) with Redis/Postgres/Qdrant based on environment, instruments endpoints for Prometheus, and serves OpenAPI at `/openapi.json`. Key routes:
+The example application wires `MEMORY_MODE=evented_enterprise` with Redis/Postgres/Qdrant based on environment, instruments endpoints for Prometheus, and serves OpenAPI at `/openapi.json`. Key routes:
 
 ### Memory Operations
 - `POST /store` – body: `{coord: str, payload: dict, type: "episodic"|"semantic"}`
@@ -111,7 +108,7 @@ The example application wires the selected `MEMORY_MODE` (default DEVELOPMENT) w
 - `GET  /readyz`
 - Root (`GET /`) returns a simple JSON banner with the metrics URL.
 
-Each endpoint uses FastAPI dependencies for optional bearer-token auth (`SOMA_API_TOKEN`) and simple rate limiting controlled by `SOMA_RATE_LIMIT_MAX`.
+Each endpoint requires the configured bearer token (`SOMA_API_TOKEN`) via FastAPI dependencies and enforces rate limiting controlled by `SOMA_RATE_LIMIT_MAX`.
 
 ---
 

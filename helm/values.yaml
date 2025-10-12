@@ -3,6 +3,74 @@
 
 replicaCount: 1
 
+podAnnotations: {}
+
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  supplementalGroups: []
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  enabled: true
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  privileged: false
+
+hpa:
+  api:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+  consumer:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+
+networkPolicy:
+  enabled: false
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9595
+  egress:
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 6333
+        - protocol: TCP
+          port: 9092
+
 # API container image
 image:
   # Single runtime image usable for both API and consumer; build via:
@@ -14,6 +82,7 @@ image:
 service:
   type: ClusterIP
   port: 9595  # reverted to original value
+  annotations: {}
   # Set type: NodePort and an explicit nodePort to expose on host without port-forward
   # nodePort: 9797
 
@@ -25,20 +94,15 @@ resources:
     cpu: "1200m"
     memory: "4Gi"   # higher limit to avoid OOM kills
 
-# Environment configuration for the API pod
+# Environment configuration for the API pod (non-secret values)
 env:
   MEMORY_MODE: "evented_enterprise"
   SOMA_MEMORY_NAMESPACE: "api_ns"
-  # Service names include the release prefix (soma-memory)
-  POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory"
-  REDIS_URL: "redis://soma-memory-somafractalmemory-redis:6379/0"
   REDIS_HOST: "soma-memory-somafractalmemory-redis"
   REDIS_PORT: "6379"
   REDIS_DB: "0"
-  QDRANT_URL: "http://soma-memory-somafractalmemory-qdrant:6333"
   QDRANT_HOST: "soma-memory-somafractalmemory-qdrant"
   QDRANT_PORT: "6333"
-  KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
   EVENTING_ENABLED: "true"
   UVICORN_PORT: "9595"  # reverted to original value
   SOMA_RATE_LIMIT_MAX: "5000"
@@ -47,6 +111,134 @@ env:
   POSTGRES_POOL_SIZE: "15"          # increased DB connection pool
   SKIP_SCHEMA_VALIDATION: "true"     # disable jsonschema validation for trusted internal calls
   VECTOR_INDEX_ASYNC: "true"         # move Qdrant upserts to background worker
+
+# Secret-backed environment values shared across workloads
+secret:
+  enabled: true
+  name: ""
+  existingSecret: ""
+  annotations: {}
+  data:
+    SOMA_API_TOKEN: "changeme-dev-token"
+    POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory?sslmode=require"
+    REDIS_URL: "redis://soma-memory-somafractalmemory-redis:6379/0"
+    QDRANT_URL: "http://soma-memory-somafractalmemory-qdrant:6333"
+    KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
+  rolloutRestart:
+    enabled: false
+    annotations: {}
+
+externalSecret:
+  enabled: false
+  name: ""
+  annotations: {}
+  refreshInterval: 1h
+  secretStoreRef:
+    name: ""
+    kind: ClusterSecretStore
+  target:
+    name: ""
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      metadata:
+        annotations: {}
+        labels: {}
+      type: Opaque
+  data: []
+  dataFrom: []
+
+tls:
+  mounts: []
+
+serviceMonitor:
+  api:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 5s
+    labels: {}
+    annotations: {}
+    metricRelabelings: []
+    relabelings: []
+    path: /metrics
+  consumer:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 5s
+    labels: {}
+    annotations: {}
+    metricRelabelings: []
+    relabelings: []
+    path: /metrics
+
+backup:
+  serviceAccountName: ""
+  postgres:
+    enabled: false
+    schedule: "0 2 * * *"
+    image:
+      repository: alpine
+      tag: "3.20"
+      pullPolicy: IfNotPresent
+    awsSecretName: ""
+    postgresUrlKey: POSTGRES_URL
+    s3:
+      bucket: ""
+      prefix: "postgres"
+      region: ""
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 1
+    extraEnv: []
+    resources: {}
+  qdrant:
+    enabled: false
+    schedule: "30 2 * * *"
+    image:
+      repository: alpine
+      tag: "3.20"
+    awsSecretName: ""
+    qdrantUrl: ""
+    collection: "api_ns"
+    s3:
+      bucket: ""
+      prefix: "qdrant"
+      region: ""
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 1
+    extraEnv: []
+    resources: {}
+
+restore:
+  serviceAccountName: ""
+  postgres:
+    enabled: false
+    image:
+      repository: alpine
+      tag: "3.20"
+    awsSecretName: ""
+    postgresUrlKey: POSTGRES_URL
+    s3Uri: ""
+    s3:
+      region: ""
+    backoffLimit: 3
+    extraEnv: []
+    resources: {}
+  qdrant:
+    enabled: false
+    image:
+      repository: alpine
+      tag: "3.20"
+    awsSecretName: ""
+    qdrantUrl: ""
+    collection: "api_ns"
+    snapshotUri: ""
+    s3:
+      region: ""
+    backoffLimit: 3
+    extraEnv: []
+    resources: {}
 
 # Liveness / readiness probe configuration
 probe:
@@ -73,15 +265,19 @@ consumer:
       memory: "4Gi"   # match API limit
   env:
     # Service names include the release prefix (soma-memory) and chart name (somafractalmemory)
-    POSTGRES_URL: "postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory"
     REDIS_HOST: "soma-memory-somafractalmemory-redis"
     REDIS_PORT: "6379"
     QDRANT_HOST: "soma-memory-somafractalmemory-qdrant"
     QDRANT_PORT: "6333"
-    KAFKA_BOOTSTRAP_SERVERS: "soma-memory-somafractalmemory-redpanda:9092"
     KAFKA_MEMORY_EVENTS_TOPIC: "memory.events"
     KAFKA_CONSUMER_GROUP: "soma-consumer-group"
     SOMA_RATE_MAX: "5000"
+  secretKeys: ["POSTGRES_URL", "KAFKA_BOOTSTRAP_SERVERS", "REDIS_URL", "QDRANT_URL"]
+  metrics:
+    port: 8001
+    service:
+      annotations: {}
+      enabled: false
 
 # Redis cache
 redis:
@@ -166,5 +362,5 @@ ingress:
   # className: "nginx"
   host: "sfm.local"
   annotations: {}
-  tls: false
-  # tlsSecretName: "sfm-tls"
+  tls: true
+  tlsSecretName: ""

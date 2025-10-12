@@ -9,7 +9,7 @@ def test_export_import_jsonl(tmp_path: Path):
     cfg1 = {"qdrant": {"path": str(tmp_path / "q1.db")}, "redis": {"testing": True}}
     cfg2 = {"qdrant": {"path": str(tmp_path / "q2.db")}, "redis": {"testing": True}}
 
-    m1 = create_memory_system(MemoryMode.DEVELOPMENT, "ns_export", config=cfg1)
+    m1 = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "ns_export", config=cfg1)
     c = (1.0, 2.0, 3.0)
     m1.store_memory(c, {"task": "export me", "importance": 3}, memory_type=MemoryType.EPISODIC)
     out = tmp_path / "mem.jsonl"
@@ -22,7 +22,7 @@ def test_export_import_jsonl(tmp_path: Path):
     assert rec.get("task") == "export me"
 
     # Import into separate instance
-    m2 = create_memory_system(MemoryMode.DEVELOPMENT, "ns_import", config=cfg2)
+    m2 = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "ns_import", config=cfg2)
     imported = m2.import_memories(str(out), replace=True)
     assert imported >= 1
     got = m2.retrieve(c)

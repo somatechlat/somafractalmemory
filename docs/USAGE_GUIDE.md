@@ -4,17 +4,17 @@ This guide explains how to use every public endpoint of the SomaFractalMemory (S
 
 - Deploying against the Soma shared infrastructure? Start with `docs/ops/SOMASTACK_SHARED_INFRA_PLAYBOOK.md` for environment bootstrap, Helm overlays, and verification steps. Sprint artefacts for completed work should be checked into `docs/infra/sprints/`.
 - Base URL: http://localhost:9595
-- Auth: Optional Bearer token via `SOMA_API_TOKEN` (when set, required on all endpoints except health/ready/metrics).
+- Auth: Bearer token is mandatory via `SOMA_API_TOKEN` (all mutating endpoints enforce it; health/ready/metrics remain open).
 - Rate limiting: Global soft limit via `SOMA_RATE_LIMIT_MAX` and `SOMA_RATE_LIMIT_WINDOW_SECONDS` with 429 responses once exceeded.
 - Namespacing: `SOMA_MEMORY_NAMESPACE` names the collection in vector/graph stores (default `api_ns`).
-- Mode: `MEMORY_MODE` controls the backend wiring: `development` (default), `test`, `evented_enterprise`, `cloud_managed`.
+- Mode: `MEMORY_MODE` is fixed to `evented_enterprise`; unset or legacy values are ignored.
 - Hybrid default: Core recall uses hybrid scoring by default; toggle with `SOMA_HYBRID_RECALL_DEFAULT`.
 
 ## Environment settings (server)
 
-- MEMORY_MODE: development | test | evented_enterprise | cloud_managed
+- MEMORY_MODE: evented_enterprise (only permitted value)
 - SOMA_MEMORY_NAMESPACE: string, default api_ns
-- SOMA_API_TOKEN: if set, API requires `Authorization: Bearer <token>`
+- SOMA_API_TOKEN: API requires `Authorization: Bearer <token>` on every request except health/ready/metrics.
 - SOMA_RATE_LIMIT_MAX: int, default 60 (requests/window)
 - SOMA_RATE_LIMIT_WINDOW_SECONDS: float, default 60
 - SOMA_HYBRID_RECALL_DEFAULT: 1|0 (default behavior in core.recall)
@@ -50,7 +50,7 @@ This guide explains how to use every public endpoint of the SomaFractalMemory (S
 4) GET /stats
    - Purpose: Basic memory counts.
    - Returns: { total_memories, episodic, semantic }
-   - Auth: Bearer required if SOMA_API_TOKEN set.
+   - Auth: Bearer required (always supply the configured SOMA_API_TOKEN).
 
 ## Memory write and bulk
 
@@ -180,7 +180,7 @@ This guide explains how to use every public endpoint of the SomaFractalMemory (S
 
 ## Error modes
 
-- 401/403 when SOMA_API_TOKEN set and missing/invalid Authorization.
+- 401/403 when Authorization header missing/invalid.
 - 429 rate limit when exceeding configured window.
 - 422 for validation errors (bad parameters or body).
 - 5xx surfaced from backends; /healthz can help diagnose.

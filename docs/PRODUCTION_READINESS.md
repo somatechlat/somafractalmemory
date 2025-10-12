@@ -1,33 +1,45 @@
 # Production Readiness & Deployment Guide
 
-At a glance (current state):
 - Local Docker Compose: persistent volumes enabled for Postgres, Redis (AOF), Qdrant, and Kafka. Verified persistence by inserting a record, restarting services, and confirming presence in Postgres (`kv_store`) afterward. API recall requires the background consumer when running in `EVENTED_ENTERPRISE` mode.
 - Kubernetes via Helm (dev release on port 9797): API exposed through NodePort 30797 on localhost when using `helm/values-dev-port9797.yaml`. By default, persistence is disabled for convenience; enable per-service `persistence.enabled: true` (or apply `k8s/pvcs.yaml` for Kind) to make data durable.
 
 Gap analysis for production hardening (local limitations noted):
 - Authentication and authorization
-  - API token support exists (SOMA_API_TOKEN) but is optional by default. NEEDS_ACTION for production: enforce auth, rotate secrets, and use an ingress with TLS + authN.
+  - API now enforces `SOMA_API_TOKEN` by default. Next actions: manage secrets centrally, rotate credentials, and front the service with an ingress providing TLS and additional authZ (e.g., OIDC). See `docs/ops/SECRET_MANAGEMENT.md`.
 - TLS everywhere
-  - Postgres, Kafka, and Qdrant support TLS via env flags. NEEDS_ACTION: terminate TLS at ingress and enable upstream TLS where available; provision certificates and CA trust.
+  - Ingress defaults to TLS and Helm DSNs append `sslmode=require`; NEEDS_ACTION: provision certificates/CA bundles, mount them via the runtime secret, and enable upstream TLS where available.
 - Secrets management
-  - DEV uses inline envs. NEEDS_ACTION: move to Kubernetes Secrets or an external secret store; do not commit secrets.
+  - Helm supports inline secrets for dev and an ExternalSecret for production deployments. NEEDS_ACTION: supply `helm/values-production.yaml`, point `externalSecret.secretStoreRef` at Vault (`secret/data/shared-infra/soma-memory/<env>`), install a restart controller (e.g., Stakater Reloader), provision the S3 credentials secret (`soma-memory-backup-aws`), and record rotation evidence.
 - Persistence and backups
-  - DEV chart disables PVCs. NEEDS_ACTION: enable PVCs with a production StorageClass; add scheduled Postgres and Qdrant backups and a tested restore runbook.
+  - DEV chart disables PVCs. NEEDS_ACTION: enable PVCs with a production StorageClass; configure the provided S3 backup CronJobs (Postgres + Qdrant) and complete a tested restore runbook.
 - Database migrations
-  - The `kv_store` table is created on first use; no Alembic migrations exist. NEEDS_ACTION: define migration strategy for future schema changes.
+  - Alembic baseline now tracks `kv_store` and `memory_events`. TODO: wire `make db-upgrade` (i.e. `alembic upgrade head`) into deploy pipelines and add a CI check that `alembic current` matches `head`. See `docs/ops/MIGRATIONS.md` for the runbook.
 - High availability and auto-scaling
-  - Single replicas by default. NEEDS_ACTION: set HPA for API/consumers; consider managed multi-AZ Postgres/Qdrant/Kafka.
+  - HorizontalPodAutoscalers are available for the API and consumer deployments via `hpa.*` values (production defaults enable them). TODO: consider managed multi-AZ Postgres/Qdrant/Kafka.
 - Network policies and RBAC
-  - Not included in the dev chart. NEEDS_ACTION: add NetworkPolicy to restrict east-west traffic; verify minimal RBAC.
-- Pod disruption budgets and graceful shutdown
-  - Not present. NEEDS_ACTION: add PDBs; define preStop hooks and ensure graceful shutdown under load.
+  - Chart now ships with an optional deny-by-default `NetworkPolicy`; enable it via `networkPolicy.enabled` and tailor ingress/egress selectors for your cluster. TODO: audit RBAC bindings for least privilege.
 - Security context & image hardening
-  - Images run as root in dev. NEEDS_ACTION: run as non-root, read-only root FS, drop capabilities; pin image digests and enable supply-chain scanning.
+  - Deployments now default to non-root pods with RuntimeDefault seccomp, read-only root filesystems, and dropped Linux capabilities. TODO: pin image digests and integrate supply-chain scanning.
 - Observability
-  - Metrics and traces are instrumented; dashboards and alerts are not in-repo. NEEDS_ACTION: wire to your Prometheus/Grafana and OTEL collector; add alert rules.
+  - Helm now exposes Prometheus scraping via ServiceMonitor (API + consumer) and optional scrape annotations (see `docs/ops/OBSERVABILITY.md`). TODO: layer Grafana dashboards, alert rules, and OTEL/exporter wiring.
 - Resilience to backend restarts
   - Observed a transient `psycopg2.InterfaceError: connection already closed` in `/stats` after Postgres restart. NEEDS_ACTION: add reconnect-on-failure logic in `PostgresKeyValueStore` and make stats robust to backend churn.
+---
 
+## Production preflight checklist
+
+1. **Secrets present** – Apply `helm/values-production.yaml` (or equivalent) so secrets flow from Vault via ExternalSecret. Confirm `SOMA_API_TOKEN`, database, Redis, Qdrant, and Kafka credentials are populated in `soma-memory-runtime-secrets`.
+2. **TLS assets mounted** – Provide CA bundles/client certs for Postgres, Qdrant, and Kafka as needed. Set `POSTGRES_SSL_*`, `QDRANT_TLS`, and `KAFKA_SECURITY_PROTOCOL` env vars accordingly.
+3. **Persistence enabled** – Review `helm/values-production.yaml`; ensure PVC sizes and storageClasses match the target environment. Verify S3 buckets and retention for both Postgres and Qdrant backups.
+4. **Migrations** – Run `make db-upgrade` (or `uv run alembic upgrade head`) against Postgres before traffic. Capture revision output in the change log and ensure a rollback plan exists.
+5. **Kafka readiness** – Create topics with required replication, enable idempotent producers, and configure DLQs. Update `workers/vector_indexer.py` settings via Helm values.
+6. **Observability** – Enable ServiceMonitor (or scrape annotations) for API and consumer, configure OTEL exporters and structured logging sinks, and validate dashboards + alert thresholds.
+7. **Access controls** – Lock down ingress with OIDC (or managed auth), define NetworkPolicies, and audit RBAC bindings.
+8. **Backup CronJobs running** – Confirm `CronJob/soma-memory-somafractalmemory-postgres-backup` and `CronJob/soma-memory-somafractalmemory-qdrant-backup` complete successfully and publish to the expected S3 prefixes.
+9. **Restart controller installed** – Deploy Stakater Reloader (or equivalent) in the cluster so pods roll on secret rotation.
+10. **Disaster recovery drill** – Execute the reset + restore workflow end-to-end (database restore, WAL replay, vector rebuild) before go-live.
+
+Document completion evidence for each step in `docs/PRODUCTION_READY_GAP.md`.
 This guide documents how to prepare, deploy and validate a production-capable
 Soma Fractal Memory cluster. It combines operational best-practices, the
 Helm-based deployment steps used for local Kind clusters and explicit

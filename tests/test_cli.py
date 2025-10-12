@@ -15,7 +15,7 @@ def run_cli(tmp_path: Path, args, qdrant_subdir: str = "qdrant.db"):
     sys.argv = [
         "soma",
         "--mode",
-        "development",
+        "evented_enterprise",
         "--namespace",
         "cli_ns",
         "--config-json",

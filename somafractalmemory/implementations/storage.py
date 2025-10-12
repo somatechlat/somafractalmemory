@@ -8,7 +8,7 @@ import json
 import os
 import threading
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -17,6 +17,8 @@ from typing import Any, Optional
 import psycopg2
 import qdrant_client
 import redis
+from psycopg2 import OperationalError
+from psycopg2 import errors as psycopg_errors
 
 try:  # optional test dependency
     import fakeredis  # type: ignore
@@ -281,7 +283,7 @@ class RedisKeyValueStore(IKeyValueStore):
         self.client.hset(key, mapping=dict(mapping))
 
 
-# Hybrid KV store for DEVELOPMENT mode: primary persistence in Postgres with optional Redis caching.
+# Hybrid KV store for the evented_enterprise configuration: primary persistence in Postgres with optional Redis caching.
 class PostgresRedisHybridStore(IKeyValueStore):
     """Combine a PostgresKeyValueStore (canonical) with a RedisKeyValueStore.
 
@@ -550,35 +552,63 @@ class PostgresKeyValueStore(IKeyValueStore):
             self._conn = psycopg2.connect(self._url, **conn_kwargs)
             self._conn.autocommit = True
 
+    def _reset_connection(self):
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+        self._conn = None
+
+    def _execute(self, fn: Callable[[Any], Any]) -> Any:
+        recoverable_errors: tuple[type[Exception], ...] = (
+            psycopg2.InterfaceError,
+            OperationalError,
+            psycopg_errors.InFailedSqlTransaction,
+        )
+
+        def _run() -> Any:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:  # type: ignore[union-attr]
+                return fn(cur)
+
+        try:
+            return _run()
+        except recoverable_errors:
+            self._reset_connection()
+            return _run()
+
     def _ensure_table(self):
-        with self._conn.cursor() as cur:
+        def _create(cur):
             cur.execute(
                 SQL(
                     "CREATE TABLE IF NOT EXISTS {} (key TEXT PRIMARY KEY, value JSONB NOT NULL);"
                 ).format(Identifier(self._TABLE_NAME))
             )
+
+        self._execute(_create)
         # Best-effort: enable pg_trgm and add helpful indexes for keyword search
         try:
-            with self._conn.cursor() as cur:
+
+            def _indexes(cur):
                 cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
-                # Trigram index on text representation for fast ILIKE searches
                 cur.execute(
                     SQL(
                         "CREATE INDEX IF NOT EXISTS idx_{}_val_trgm ON {} USING gin ((value::text) gin_trgm_ops);"
                     ).format(Identifier(self._TABLE_NAME), Identifier(self._TABLE_NAME))
                 )
-                # Memory type expression index for optional filtering
                 cur.execute(
                     SQL(
                         "CREATE INDEX IF NOT EXISTS idx_{}_memtype ON {} ((value->>'memory_type'));"
                     ).format(Identifier(self._TABLE_NAME), Identifier(self._TABLE_NAME))
                 )
-                # Namespace prefix on key to shrink scan for LIKE 'namespace:%:data'
                 cur.execute(
                     SQL(
                         "CREATE INDEX IF NOT EXISTS idx_{}_key_prefix ON {} (key text_pattern_ops);"
                     ).format(Identifier(self._TABLE_NAME), Identifier(self._TABLE_NAME))
                 )
+
+            self._execute(_indexes)
         except Exception:
             # Non-fatal if permissions are restricted
             pass
@@ -591,90 +621,53 @@ class PostgresKeyValueStore(IKeyValueStore):
         except Exception:
             # Fallback: store as plain string
             json_obj = value.decode("utf-8", errors="ignore")
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL(
-                        "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
-                    ).format(Identifier(self._TABLE_NAME)),
-                    (key, Json(json_obj)),
-                )
-        except psycopg2.InterfaceError:
-            # Connection dropped; reconnect and retry once
-            self._ensure_connection()
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL(
-                        "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
-                    ).format(Identifier(self._TABLE_NAME)),
-                    (key, Json(json_obj)),
-                )
+        payload = Json(json_obj)
+
+        def _write(cur):
+            cur.execute(
+                SQL(
+                    "INSERT INTO {} (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
+                ).format(Identifier(self._TABLE_NAME)),
+                (key, payload),
+            )
+
+        self._execute(_write)
 
     def get(self, key: str) -> bytes | None:
-        self._ensure_connection()
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL("SELECT value FROM {} WHERE key = %s;").format(
-                        Identifier(self._TABLE_NAME)
-                    ),
-                    (key,),
-                )
-                row = cur.fetchone()
-        except psycopg2.InterfaceError:
-            self._ensure_connection()
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL("SELECT value FROM {} WHERE key = %s;").format(
-                        Identifier(self._TABLE_NAME)
-                    ),
-                    (key,),
-                )
-                row = cur.fetchone()
+        def _read(cur):
+            cur.execute(
+                SQL("SELECT value FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
+                (key,),
+            )
+            return cur.fetchone()
+
+        row = self._execute(_read)
         if row:
             # row[0] is a Python dict (psycopg2 converts JSONB to dict)
             return json.dumps(row[0]).encode("utf-8")
         return None
 
     def delete(self, key: str):
-        self._ensure_connection()
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
-                    (key,),
-                )
-        except psycopg2.InterfaceError:
-            self._ensure_connection()
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
-                    (key,),
-                )
+        def _delete(cur):
+            cur.execute(
+                SQL("DELETE FROM {} WHERE key = %s;").format(Identifier(self._TABLE_NAME)),
+                (key,),
+            )
+
+        self._execute(_delete)
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
         # Convert glob pattern * to SQL %
         sql_pattern = pattern.replace("*", "%")
-        self._ensure_connection()
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL("SELECT key FROM {} WHERE key LIKE %s;").format(
-                        Identifier(self._TABLE_NAME)
-                    ),
-                    (sql_pattern,),
-                )
-                rows = cur.fetchall()
-        except psycopg2.InterfaceError:
-            self._ensure_connection()
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    SQL("SELECT key FROM {} WHERE key LIKE %s;").format(
-                        Identifier(self._TABLE_NAME)
-                    ),
-                    (sql_pattern,),
-                )
-                rows = cur.fetchall()
+
+        def _scan(cur):
+            cur.execute(
+                SQL("SELECT key FROM {} WHERE key LIKE %s;").format(Identifier(self._TABLE_NAME)),
+                (sql_pattern,),
+            )
+            return cur.fetchall()
+
+        rows = self._execute(_scan)
         for (k,) in rows:
             yield k
 
@@ -695,10 +688,8 @@ class PostgresKeyValueStore(IKeyValueStore):
 
     def health_check(self) -> bool:
         try:
-            self._ensure_connection()
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT 1;")
-                return True
+            self._execute(lambda cur: cur.execute("SELECT 1;"))
+            return True
         except Exception:
             return False
 

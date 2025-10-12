@@ -13,20 +13,75 @@ spec:
       app.kubernetes.io/component: consumer
   template:
     metadata:
+      {{- with (include "somafractalmemory.podAnnotations" .) }}
+      annotations:
+        {{- . | nindent 8 }}
+      {{- end }}
       labels:
         {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: consumer
     spec:
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext:
+        {{- toYaml (omit .Values.podSecurityContext "enabled") | nindent 8 }}
+      {{- end }}
       containers:
         - name: consumer
           image: "{{ .Values.consumer.image.repository }}:{{ .Values.consumer.image.tag }}"
           imagePullPolicy: {{ .Values.consumer.image.pullPolicy | default "IfNotPresent" }}
           command: ["sh","-c","sleep 10 && python scripts/run_consumers.py"]
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext:
+            {{- toYaml (omit .Values.containerSecurityContext "enabled") | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.consumer.metrics.port }}
+              name: http-metrics
           env:
             {{- range $key, $value := .Values.consumer.env }}
             - name: {{ $key }}
               value: "{{ $value }}"
             {{- end }}
+            - name: CONSUMER_METRICS_PORT
+              value: "{{ .Values.consumer.metrics.port }}"
+            {{- if .Values.secret.enabled }}
+            {{- $secretKeys := .Values.consumer.secretKeys | default (list "POSTGRES_URL") }}
+            {{- range $key, $value := .Values.secret.data }}
+            {{- if has $key $secretKeys }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "somafractalmemory.secretName" $ }}
+                  key: {{ $key }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.tls.mounts }}
+          volumeMounts:
+            {{- range . }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- if hasKey . "subPath" }}
+              subPath: {{ .subPath }}
+              {{- end }}
+              readOnly: {{ default true .readOnly }}
+            {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.consumer.resources | nindent 12 }}
+      {{- with .Values.tls.mounts }}
+      volumes:
+        {{- range . }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secretName }}
+            {{- with .items }}
+            items:
+              {{- range . }}
+              - key: {{ .key }}
+                path: {{ .path }}
+              {{- end }}
+            {{- end }}
+        {{- end }}
+      {{- end }}
 {{- end }}

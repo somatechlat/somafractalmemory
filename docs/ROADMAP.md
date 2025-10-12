@@ -1,13 +1,44 @@
 # Roadmap
 
-> Alignment note: `docs/ARCHITECTURE_ROADMAP.md` is the canonical sprint tracker for SomaStack integration. This document keeps the memory-core roadmap and summarizes the latest shared-infra alignment status below.
+> Alignment note: `docs/ARCHITECTURE_ROADMAP.md` remains the detailed task tracker for SomaStack integration. This file is the canonical roadmap for Soma Fractal Memory (SFM) core, security hardening, and deployment readiness.
 
-## Shared Infra Alignment Snapshot (Nov 2024)
-- [ACTIVE] **Sprint 0 – Readiness Gap Fixes**: adopt `scripts/reset-sharedinfra-compose.sh`, expand Docker parity docs, add Redis/Kafka recovery steps, and link onboarding guides to the SomaStack playbook.
-- [ACTIVE] **Sprint 1 – Kubernetes Baseline**: add Kind config (`infra/kind/soma-kind.yaml`), shared infra Kind bootstrap scripts, shared infra deploy helper, and Makefile target chaining the flow.
-- [TODO] **Sprint 2 – Shared Infra Wiring**: scaffold `infra/helm/soma-infra`, add Vault policy + ExternalSecret templates, wire ConfigMap contract, script DB/Kafka provisioning.
-- [TODO] **Sprint 3 – Observability & CI**: adopt structured logging/tracing, implement GitHub Actions deploy workflow, add health snapshot automation, close high-severity auth/TLS/network-policy gaps.
-- [TODO] **Sprint 4 – Go-Live Checklist**: document DR rehearsal, namespace access audit, incident bundle collector, production cutover checklist, and remaining production-readiness items (PVC backups, Alembic migrations, Kafka DLQ).
+## Roadmap Canonical (2025)
+
+| Phase | Sprint | Goals | Key Deliverables |
+|-------|--------|-------|------------------|
+| 0. Foundations | 0A | Confirm architecture & principles | Architecture doc refresh, dependency graph, shared glossary |
+| | 0B | Planning & guardrails | Sprint charters, risk register, KPIs (latency, ingest, MTTR) |
+| | 0C | Shared infra playbook readiness | `scripts/reset-sharedinfra-compose.sh` upkeep, Kind cluster reset automation, image preload validation, sprint checkpoints documented |
+| 1. Security & Access | 1 | Enforce auth + CORS + rate limits | Mandatory bearer auth, Redis-backed limiter, auth tests |
+| | 2 | Secrets & TLS everywhere | Helm Secrets, TLS ingress + upstream, NetworkPolicy baseline |
+| 2. Reliability & Data | 3 | Durable stores & migrations | Alembic baseline, Postgres retry logic, WAL recovery tests, Vault and ExternalSecret automation with Pgpool HA test harness |
+| | 4 | Event pipeline resilience | Kafka idempotent producer, DLQ, consumer batch/backoff, observability, multi-broker bootstrap tooling |
+| 3. Architecture Simplification | 5 | Dependency injection & modular stores | MemorySystemBuilder, extracted store package, factory cleanup |
+| | 6 | Unified surfaces | HTTP/CLI/gRPC share runtime container, shared middleware, per-surface smoke tests |
+| 4. Observability & Operations | 7 | Metrics, alerts, dashboards | ServiceMonitor/annotations, Grafana baseline, alert rules, `/stats` hardening, shared infra health snapshot + incident bundle automation |
+| | 8 | CI/CD & automation | Nightly Kind + Helm run, security scan gates, migration drift checks, `make deploy-kind-full` CI gate |
+| 5. Scale & Optionality | 9 | Hot tier + retention gates | Fast-core slab benchmarks, gating automation (G1–G3), retention tests, namespace access audits |
+| | 10 | Production cutover | DR drill, runbooks, release handoff, final risk signoff, disaster recovery rehearsal evidence |
+
+### Phase Outcomes
+- **Security & Access**: API and gRPC surfaces require auth, secrets flow through managed stores, TLS enforced end-to-end, east-west access constrained.
+- **Reliability & Data**: Migrations deterministic, retries/backoff standardized, Kafka pipeline tolerant to spikes, backups verified.
+- **Architecture Simplification**: Core composed via explicit builders, no module-level singletons, surfaces share middleware and configs, docs up-to-date.
+- **Observability & Ops**: Metrics collected centrally with dashboards/alerts, `/stats` resilient to backend churn, CI enforces drift checks.
+- **Scale Options**: Fast core and retention features gated behind metrics, enabling production tuning without destabilizing base workloads.
+
+### Shared infra playbook integration
+- Foundations phase now tracks deterministic cluster reset, Kind provisioning, and image preload scripts as first-class roadmap items.
+- Reliability phase sprints expand to cover Vault roles, ExternalSecrets, Pgpool HA verification, and Kafka multi-broker bootstrap jobs per playbook Sections 3 and 7.
+- Observability phase incorporates health snapshot and incident bundle automation matching playbook Section 8, plus CI `make deploy-kind-full` gating.
+- Scale phase extends to disaster recovery rehearsals and namespace access audits in line with playbook Section 11.
+- Each addition maps to concrete sprint stories (docs, scripts, CI jobs) maintained alongside `docs/infra/sprints/` evidence.
+
+### Next sprint (Sprint 3) focus
+- Implement Vault and ExternalSecret flows for API and consumers, including rotation scripts and CI validation.
+- Add Alembic migrations with retry/backoff across storage layers and reinforce `/stats` endpoint resilience.
+- Begin Kafka resilience work: DLQ topic wiring, consumer lag metrics, and batch retry/backoff guards.
+Once complete, update roadmap checkpoints and continue layering remaining playbook milestones through phases 4 and 5.
 
 See `docs/ARCHITECTURE_ROADMAP.md` for task-level breakdowns, production-readiness mapping (Section 4), evidence requirements, and dependencies.
 <!-- Canonical Roadmap for SomaFractalMemory (SFM) v2.1 -->

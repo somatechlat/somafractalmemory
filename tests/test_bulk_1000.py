@@ -1,9 +1,9 @@
 # tests/test_bulk_1000.py
 """Load 1000 memories via the FastAPI API and verify they are stored.
 
-The test uses the FastAPI app (somafractalmemory/http_api.py) which runs in
-DEVELOPMENT mode. We point the app at the real Redis, Postgres and Qdrant
-services that are started by `docker compose up`.
+The test uses the FastAPI app (somafractalmemory/http_api.py) in the
+evented-enterprise configuration. It expects Redis, Postgres, and Qdrant to
+be available (via Docker Compose or shared infrastructure).
 """
 
 import os
@@ -17,7 +17,7 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("QDRANT_HOST", "localhost")
 os.environ.setdefault("QDRANT_PORT", "6333")
 
-# Prefer SOMA_TEST_API_BASE_URL override; else try primary 9595 then fallback to 8888 mapping (test_api service)
+# Prefer SOMA_TEST_API_BASE_URL override; else try the canonical port 9595
 BASE_URL = os.getenv("SOMA_TEST_API_BASE_URL", "http://localhost:9595")
 
 
@@ -27,7 +27,7 @@ def _resolve_base_url():
         return os.getenv("SOMA_TEST_API_BASE_URL")
     import requests
 
-    for candidate in ["http://localhost:9595", "http://localhost:8888"]:
+    for candidate in ["http://localhost:9595"]:
         try:
             requests.get(f"{candidate}/healthz", timeout=0.4)
             return candidate
