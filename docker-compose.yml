@@ -174,9 +174,9 @@ services:
       KAFKA_MESSAGE_MAX_BYTES: 10485760
       KAFKA_REPLICA_FETCH_MAX_BYTES: 10485760
       KAFKA_JVM_PERFORMANCE_OPTS: '-Xms256m -Xmx512m'
-  # Let Kafka generate a valid CLUSTER_ID for local runs. If you need a
-  # deterministic cluster id, set CLUSTER_ID to a base64-encoded 16-byte
-  # UUID value (not a plain string).
+  # Deterministic cluster id for local KRaft. This must be a base64-encoded
+  # 16-byte UUID (not a plain string). Generated once for this local setup.
+  CLUSTER_ID: 'fIUFCStWQOSeDDC57Fc7wA=='
     ports:
       - "9092:9092"
       - "${KAFKA_OUTSIDE_PORT:-19092}:19092"
