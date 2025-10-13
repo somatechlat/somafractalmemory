@@ -36,14 +36,25 @@ done
 
 # Named volumes to remove (both primary and test stacks).
 VOLUMES=(
+  # Primary stack volumes (current canonical compose uses sfm_ prefixes)
+  sfm_postgres_data
+  sfm_redis_data
+  sfm_kafka_data
+  sfm_qdrant_data
+  sfm_prometheus_data
+  sfm_grafana_data
+  sfm_vault_data
+  sfm_etcd_data
+  sfm_quadrant_data
+  # Test/legacy volumes
+  postgres_test_data
+  redis_test_data
+  kafka_test_data
+  qdrant_test_storage
   postgres_data
   redis_data
   kafka_data
   qdrant_storage
-  postgres_test_data
-  redis_test_data
-  redpanda_test_data
-  qdrant_test_storage
 )
 
 echo "Removing Docker volumes (if present)..."
