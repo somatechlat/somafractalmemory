@@ -1,0 +1,14 @@
+# Local quadrant Caddyfile used for local-production profile
+:8080 {
+  handle_path /healthz {
+    respond "quadrant-ok"
+  }
+  # Qdrant proxy prefix - runtime route can also be applied via admin API
+  handle_path /qdrant/* {
+    uri strip_prefix /qdrant
+    reverse_proxy qdrant:6333
+  }
+  handle {
+    respond "quadrant-router"
+  }
+}

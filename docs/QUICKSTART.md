@@ -22,11 +22,24 @@ pip install -e .[api,events,dev]
 
 ## 2. Start Supporting Services (Docker Compose)
 ```bash
+# Recommended (profile-driven): start the core local developer stack (API, consumer, Kafka, Postgres, Redis, Qdrant)
+docker compose --profile core up -d
+
+# Start shared infra only (useful when multiple apps reuse the same infra)
+docker compose --profile shared up -d
+
+# Start only the consumer workers (optional)
+docker compose --profile consumer up -d somafractalmemory_kube
+
+# Optional: start monitoring or ops when needed
+docker compose --profile monitoring up -d
+docker compose --profile ops up -d
+
+# Backwards compatible: existing Make targets retained for quick ergonomics
 make setup-dev
-# optional: start the consumer profile when you need background reconciliation
 make compose-consumer-up
 ```
-The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker), the FastAPI service on `http://localhost:9595`, and an auxiliary API on `http://localhost:8888`. Configuration lives directly in `docker-compose.yml`; no `.env` copy is required.
+The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker in KRaft mode), the FastAPI service on `http://localhost:9595`, and an auxiliary API on `http://localhost:8888`. Configuration lives directly in `docker-compose.yml`; no `.env` copy is required.
 
 Health check and teardown:
 ```bash

@@ -58,6 +58,8 @@ qdrant.db/
 # --- Generated docs/site ---
 site/
 
+openapi.json
+
 # --- Node / JS ---
 node_modules/
 

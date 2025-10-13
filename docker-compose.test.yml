@@ -122,11 +122,11 @@ services:
     ports:
       - "19092:19092"
     volumes:
-      - redpanda_test_data:/var/lib/kafka/data
+      - kafka_test_data:/var/lib/kafka/data
     restart: unless-stopped
 
 volumes:
   qdrant_test_storage:
   postgres_test_data:
   redis_test_data:
-  redpanda_test_data:
+  kafka_test_data:

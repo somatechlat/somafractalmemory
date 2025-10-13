@@ -192,8 +192,9 @@ def create_memory_system(
     use_memory_vectors = vector_backend == "memory" or qdrant_cfg.pop("testing", False)
 
     if not qdrant_cfg:
-        # Provide sane defaults when nothing supplied.
-        qdrant_cfg = {"url": os.getenv("QDRANT_URL", "http://quadrant:8080")}
+        # Provide sane defaults when nothing supplied. Prefer the dedicated
+        # `qdrant` service over the legacy `quadrant` proxy for local compose.
+        qdrant_cfg = {"url": os.getenv("QDRANT_URL", "http://qdrant:6333")}
 
     if use_memory_vectors:
         vector_store = InMemoryVectorStore()
