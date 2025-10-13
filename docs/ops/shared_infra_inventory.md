@@ -1,4 +1,4 @@
-# Shared infra inventory (soma_docker_shared_infra)
+# Shared infra inventory (Somafractalmemory)
 
 This document records the snapshot of the shared docker infra that lives on the
 local Docker host (project `soma_docker_shared_infra`) and the minimal, safe
@@ -12,13 +12,13 @@ changes applied during the troubleshooting and remediation of the vector-store
 
 ## Container snapshot (observed)
 
-- soma_docker_shared_infra-qdrant-standalone — image: `qdrant/qdrant:latest` — host port `6333` → container `6333` — role: vector store (fallback)
-- soma_docker_shared_infra-postgres-1 — image: `postgres:16-alpine` — host port `5434` → container `5432`
-- soma_docker_shared_infra-redis-1 — image: `redis:7.2.4-alpine` — host port `6380` → container `6379`
-- soma_docker_shared_infra-kafka-1 — image: `apache/kafka:3.8.0` — host port `9096` → container `9092`
-- soma_docker_shared_infra-grafana-1 — image: `grafana/grafana:10.2.3` — host port `3131` → container `3000`
-- soma_docker_shared_infra-prometheus-1 — image: `prom/prometheus:v2.47.2` — host port `9095` → container `9090`
-- soma_docker_shared_infra-quadrant-1 — image: `caddy:2.8.4-alpine` — host port `8088` → container `8080` — role: HTTP gateway / reverse-proxy
+- somafractalmemory_qdrant_standalone — image: `qdrant/qdrant:latest` — host port `6333` → container `6333` — role: vector store (fallback)
+- somafractalmemory_postgres — image: `postgres:16-alpine` — host port `5434` → container `5432`
+- somafractalmemory_redis — image: `redis:7.2.4-alpine` — host port `6380` → container `6379`
+- somafractalmemory_kafka — image: `apache/kafka:3.8.0` — host port `9096` → container `9092`
+- somafractalmemory_grafana — image: `grafana/grafana:10.2.3` — host port `3131` → container `3000`
+- somafractalmemory_prometheus — image: `prom/prometheus:v2.47.2` — host port `9095` → container `9090`
+- somafractalmemory_quadrant — image: `caddy:2.8.4-alpine` — host port `8088` → container `8080` — role: HTTP gateway / reverse-proxy
 - other supporting services: etcd, vault, opa, UI containers and kind nodes (see `docker ps` / `docker network inspect` for full list)
 
 > The inventory above was inspected from the `soma_docker_shared_infra_soma-network`
