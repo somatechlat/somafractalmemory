@@ -64,8 +64,10 @@ spec:
             initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
             periodSeconds: {{ .Values.probe.periodSeconds }}
             timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
-          {{- with .Values.tls.mounts }}
           volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            {{- with .Values.tls.mounts }}
             {{- range . }}
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
@@ -74,9 +76,12 @@ spec:
               {{- end }}
               readOnly: {{ default true .readOnly }}
             {{- end }}
-          {{- end }}
-      {{- with .Values.tls.mounts }}
+            {{- end }}
       volumes:
+        - name: tmp-volume
+          emptyDir:
+            medium: Memory
+        {{- with .Values.tls.mounts }}
         {{- range . }}
         - name: {{ .name }}
           secret:
@@ -89,4 +94,4 @@ spec:
               {{- end }}
             {{- end }}
         {{- end }}
-      {{- end }}
+        {{- end }}

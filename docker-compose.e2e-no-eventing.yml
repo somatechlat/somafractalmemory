@@ -1,0 +1,7 @@
+version: '3.8'
+
+services:
+  api:
+    environment:
+      # Temporarily disable event publishing to avoid blocking on Kafka during E2E tests.
+      EVENTING_ENABLED: "false"

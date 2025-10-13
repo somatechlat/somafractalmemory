@@ -1,13 +1,14 @@
 import hashlib
 import json
-import logging
 import os
 
 import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
 
-logger = logging.getLogger(__name__)
+from common.utils.logger import get_logger
+
+logger = get_logger("somafractalmemory").bind(component="vector_indexer")
 
 # Configuration (environment variables, with defaults matching docker-compose.dev.yml)
 _QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -40,7 +41,11 @@ def _ensure_collection(client: QdrantClient, collection_name: str):
     except Exception as e:
         # Log the error but allow the client to continue; the calling code will
         # handle any further failures.
-        logger.error(f"Failed to ensure Qdrant collection {collection_name}: {e}")
+        logger.error(
+            "Failed to ensure Qdrant collection",
+            collection=collection_name,
+            error=str(e),
+        )
 
 
 def _embed(payload: dict) -> list[float]:
@@ -74,10 +79,16 @@ def index_event(record: dict) -> bool:
     """
     required = ("id", "event_id", "payload")
     if not all(k in record for k in required):
-        logger.warning("Record missing required fields for vector indexing: %s", record)
+        logger.warning(
+            "Record missing required fields for vector indexing",
+            record=record,
+        )
         return False
     if not record.get("payload"):
-        logger.warning("No payload to index for record %s", record.get("event_id"))
+        logger.warning(
+            "No payload to index",
+            event_id=record.get("event_id"),
+        )
         return False
     client = _get_client()
     try:
@@ -98,7 +109,9 @@ def index_event(record: dict) -> bool:
                 client.upsert(collection_name=namespace, points=[point])
             except Exception as ns_exc:  # pragma: no cover
                 logger.warning(
-                    "Failed to index into namespace collection %s: %s", namespace, ns_exc
+                    "Failed to index into namespace collection",
+                    namespace=namespace,
+                    error=str(ns_exc),
                 )
 
         # Optional extra collection (useful for tests to keep scroll windows small)
@@ -108,11 +121,17 @@ def index_event(record: dict) -> bool:
                 client.upsert(collection_name=_QDRANT_EXTRA_COLLECTION, points=[point])
             except Exception as ex_exc:  # pragma: no cover
                 logger.warning(
-                    "Failed to index into extra collection %s: %s", _QDRANT_EXTRA_COLLECTION, ex_exc
+                    "Failed to index into extra collection",
+                    collection=_QDRANT_EXTRA_COLLECTION,
+                    error=str(ex_exc),
                 )
 
-        logger.info("Indexed event %s into Qdrant", record["event_id"])
+        logger.info("Indexed event into Qdrant", event_id=record["event_id"])
         return True
     except Exception as exc:  # pragma: no cover – runtime error handling
-        logger.exception("Failed to upsert vector for record %s: %s", record.get("event_id"), exc)
+        logger.exception(
+            "Failed to upsert vector for record",
+            event_id=record.get("event_id"),
+            error=str(exc),
+        )
         return False

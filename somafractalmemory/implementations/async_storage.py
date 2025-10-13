@@ -9,7 +9,6 @@ real credentials (no mocks or bypasses).
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import AsyncIterator
 
 try:
@@ -22,7 +21,9 @@ try:
 except Exception:  # pragma: no cover - runtime dep
     asyncpg = None  # type: ignore
 
-LOGGER = logging.getLogger(__name__)
+from common.utils.logger import get_logger
+
+LOGGER = get_logger("somafractalmemory").bind(component="async_storage")
 
 
 class AsyncRedisKeyValueStore:
@@ -152,7 +153,7 @@ class AsyncPostgresKeyValueStore:
                 await conn.execute("SELECT 1")
             return True
         except Exception as e:
-            LOGGER.error("Postgres health_check failed: %s", e)
+            LOGGER.error("Postgres health_check failed", error=str(e))
             return False
 
 

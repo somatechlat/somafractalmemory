@@ -103,12 +103,18 @@ env:
   REDIS_DB: "0"
   QDRANT_HOST: "soma-memory-somafractalmemory-qdrant"
   QDRANT_PORT: "6333"
+  QDRANT_TLS: "false"
+  QDRANT_TLS_CERT: ""
   EVENTING_ENABLED: "true"
   UVICORN_PORT: "9595"  # reverted to original value
   SOMA_RATE_LIMIT_MAX: "5000"
   UVICORN_WORKERS: "4"
   UVICORN_TIMEOUT_GRACEFUL: "60"
   POSTGRES_POOL_SIZE: "15"          # increased DB connection pool
+  POSTGRES_SSL_MODE: ""
+  POSTGRES_SSL_ROOT_CERT: ""
+  POSTGRES_SSL_CERT: ""
+  POSTGRES_SSL_KEY: ""
   SKIP_SCHEMA_VALIDATION: "true"     # disable jsonschema validation for trusted internal calls
   VECTOR_INDEX_ASYNC: "true"         # move Qdrant upserts to background worker
 
@@ -172,6 +178,41 @@ serviceMonitor:
     metricRelabelings: []
     relabelings: []
     path: /metrics
+
+prometheusRule:
+  enabled: false
+  namespace: ""
+  labels: {}
+  annotations: {}
+  api:
+    service: ""
+    latency:
+      enabled: true
+      percentile: 0.95
+      window: 5m
+      thresholdSeconds: 0.75
+      for: 5m
+      severity: warning
+    errorRate:
+      enabled: true
+      window: 5m
+      thresholdRatio: 0.05
+      for: 10m
+      severity: critical
+  consumer:
+    service: ""
+    failureRate:
+      enabled: true
+      window: 5m
+      thresholdPerSecond: 0.1
+      for: 5m
+      severity: warning
+    stall:
+      enabled: true
+      window: 10m
+      minMessages: 1
+      for: 10m
+      severity: critical
 
 backup:
   serviceAccountName: ""
@@ -272,6 +313,9 @@ consumer:
     KAFKA_MEMORY_EVENTS_TOPIC: "memory.events"
     KAFKA_CONSUMER_GROUP: "soma-consumer-group"
     SOMA_RATE_MAX: "5000"
+    KAFKA_SECURITY_PROTOCOL: "PLAINTEXT"
+    KAFKA_SSL_CA_LOCATION: ""
+    KAFKA_SASL_MECHANISM: ""
   secretKeys: ["POSTGRES_URL", "KAFKA_BOOTSTRAP_SERVERS", "REDIS_URL", "QDRANT_URL"]
   metrics:
     port: 8001

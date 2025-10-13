@@ -132,17 +132,41 @@ For the developer Kind slice, the chart exposes port **9797** in-cluster and Nod
 ---
 
 ## ☸️ Kubernetes Deployment
-The Helm chart in `helm/` deploys the API, consumer, and all backing services into a namespace (defaults to `soma-memory`). For local development on Kind, use the canonical entrypoint:
 
+**Choose your deployment mode:**
+
+### App-Only (connects to existing infrastructure):
 ```bash
-make setup-dev-k8s
-```
-When deploying to a real cluster, override the image coordinates and pull policy:
+# Build and load image
+make image-local
+kind load docker-image somafractalmemory-runtime:local --name soma
 
+# Deploy only app pods (requires existing Postgres, Redis, Qdrant, Kafka)
+helm upgrade --install soma-memory ./helm -n soma-memory --create-namespace --values helm/values-app-only.yaml --wait
+
+# Access API
+curl http://localhost:9595/health
+```
+
+### Full Stack (self-contained for development):
+```bash
+# Build and load image
+make image-local
+kind load docker-image somafractalmemory-runtime:local --name soma
+
+# Deploy app + infrastructure
+helm upgrade --install soma-memory ./helm -n soma-memory --create-namespace --values helm/values-dev-port9797.yaml --wait
+
+# Access via NodePort
+curl http://localhost:30797/health
+```
+
+For production deployments, override image coordinates:
 ```bash
 helm upgrade --install soma-memory ./helm \
   --namespace soma-memory \
   --create-namespace \
+  --values helm/values-app-only.yaml \
   --set image.repository=somatechlat/soma-memory-api \
   --set image.tag=v2.1.0 \
   --set image.pullPolicy=IfNotPresent \

@@ -1,6 +1,6 @@
 # Standard library imports
 import json
-import logging
+import os
 import uuid
 from concurrent import futures
 from typing import Any
@@ -17,12 +17,17 @@ from qdrant_client.http.models import Distance, PointStruct, VectorParams
 # Local imports
 try:
     from common.config.settings import load_settings
+    from common.utils.logger import configure_logging
+    from common.utils.trace import configure_tracer
 except Exception:  # pragma: no cover - optional in CI environments
     load_settings = None  # type: ignore
 
 from somafractalmemory import memory_pb2, memory_pb2_grpc
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = configure_logging(
+    "somafractalmemory-grpc",
+    level=os.getenv("LOG_LEVEL", "INFO"),
+).bind(component="grpc_sync")
 
 
 class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
@@ -89,7 +94,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             conn.close()
             return memory_pb2.StoreResponse(ok=True, id=point_id)
         except Exception as exc:
-            logging.exception("Store failed: %s", exc)
+            LOGGER.exception("Store failed", error=str(exc))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(exc))
             return memory_pb2.StoreResponse(ok=False, id="")
@@ -139,7 +144,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
                 out.memories.append(mem)
             return out
         except Exception as exc:
-            logging.exception("Recall failed: %s", exc)
+            LOGGER.exception("Recall failed", error=str(exc))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(exc))
             return memory_pb2.RecallResult()
@@ -170,7 +175,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             conn.close()
             return memory_pb2.DeleteResponse(ok=True)
         except Exception as exc:
-            logging.exception("Delete failed: %s", exc)
+            LOGGER.exception("Delete failed", error=str(exc))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(exc))
             return memory_pb2.DeleteResponse(ok=False)
@@ -183,7 +188,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             r = redis.Redis(host=redis_host, port=6381, db=0, socket_connect_timeout=2)
             status["redis"] = bool(r.ping())
         except Exception as e:
-            LOGGER.debug("Redis health error: %s", e)
+            LOGGER.debug("Redis health error", error=str(e))
             status["redis"] = False
 
         try:
@@ -199,7 +204,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             conn.close()
             status["postgres"] = True
         except Exception as e:
-            LOGGER.debug("Postgres health error: %s", e)
+            LOGGER.debug("Postgres health error", error=str(e))
             status["postgres"] = False
 
         try:
@@ -207,7 +212,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             r = requests.get(f"http://{qdrant_host}:6333/collections", timeout=2)
             status["qdrant"] = r.status_code == 200
         except Exception as e:
-            LOGGER.debug("Qdrant health error: %s", e)
+            LOGGER.debug("Qdrant health error", error=str(e))
             status["qdrant"] = False
 
         ok = all(status.values())
@@ -216,6 +221,11 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
 
 
 def serve(host: str = "0.0.0.0", port: int = 50053):
+    try:
+        configure_tracer("somafractalmemory-grpc")
+    except Exception:
+        LOGGER.warning("Tracer configuration failed", exc_info=True)
+
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
     # Load centralized settings if available
     settings_obj = load_settings() if load_settings else None
@@ -232,7 +242,7 @@ def serve(host: str = "0.0.0.0", port: int = 50053):
     bind_addr = f"{host}:{port}"
     server.add_insecure_port(bind_addr)
     server.start()
-    LOGGER.info("gRPC server started on %s", bind_addr)
+    LOGGER.info("gRPC server started", bind_addr=bind_addr)
     try:
         server.wait_for_termination()
     except KeyboardInterrupt:
@@ -241,5 +251,4 @@ def serve(host: str = "0.0.0.0", port: int = 50053):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     serve()

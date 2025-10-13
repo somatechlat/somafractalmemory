@@ -14,7 +14,6 @@ consumer health can be monitored.
 
 import asyncio
 import json
-import logging
 import os
 import ssl
 import sys
@@ -53,13 +52,18 @@ PROCESS_LATENCY = Histogram(
 # ---------------------------------------------------------------------------
 # Configuration (environment variables – fall back to centralized settings or dev defaults)
 # ---------------------------------------------------------------------------
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+log = configure_logging(
+    "somafractalmemory-consumer",
+    level=LOG_LEVEL,
+).bind(component="consumer")
+
 _settings = load_settings()
 BROKER_URL = os.getenv("KAFKA_BOOTSTRAP_SERVERS") or f"{_settings.infra.kafka}:9092"
 TOPIC = os.getenv("KAFKA_MEMORY_EVENTS_TOPIC", "memory.events")
 GROUP_ID = os.getenv("KAFKA_CONSUMER_GROUP", "soma-consumer-group")
 METRICS_PORT = int(os.getenv("CONSUMER_METRICS_PORT", "8001"))
-
-log = logging.getLogger(__name__)
 
 
 async def consume() -> None:
@@ -107,7 +111,10 @@ async def consume() -> None:
                 try:
                     record = json.loads(msg.value)
                 except Exception:
-                    log.warning("Skipping non-JSON message: %r", msg.value)
+                    log.warning(
+                        "Skipping non-JSON message",
+                        value=repr(msg.value),
+                    )
                     continue
             with PROCESS_LATENCY.labels(component="kv_writer").time():
                 ok_kv = process_message(record)
@@ -115,30 +122,36 @@ async def consume() -> None:
                 ok_vec = index_event(record)
             if ok_kv and ok_vec:
                 PROCESS_SUCCESS.labels(component="both").inc()
-                log.info("Successfully processed event %s", record.get("event_id"))
+                log.info("Successfully processed event", event_id=record.get("event_id"))
             else:
                 # Count failures per component for easier debugging
                 if not ok_kv:
                     PROCESS_FAILURE.labels(component="kv_writer").inc()
                 if not ok_vec:
                     PROCESS_FAILURE.labels(component="vector_indexer").inc()
-                log.warning("Processing failed for event %s", record.get("event_id"))
+                log.warning(
+                    "Processing failed for event",
+                    event_id=record.get("event_id"),
+                )
     finally:
         await consumer.stop()
 
 
 def main() -> None:
-    # Structured logging
-    configure_logging("somafractalmemory-consumer", level=os.getenv("LOG_LEVEL", "INFO"))
     # Expose Prometheus metrics endpoint
     # Ensure the repository root (project root) is on the import path when
     # the script is executed (only required when running from source).
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
     start_http_server(METRICS_PORT)
-    log.info("Prometheus metrics exposed on http://localhost:%s/metrics", METRICS_PORT)
+    log.info(
+        "Prometheus metrics exposed",
+        host="localhost",
+        port=METRICS_PORT,
+        endpoint="/metrics",
+    )
     # Log broker URL for debugging
-    log.info("BROKER_URL=%s", BROKER_URL)
+    log.info("Broker configuration", broker_url=BROKER_URL)
     # Run the consumer loop
     asyncio.run(consume())
 

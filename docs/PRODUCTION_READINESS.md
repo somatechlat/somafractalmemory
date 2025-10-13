@@ -7,7 +7,7 @@ Gap analysis for production hardening (local limitations noted):
 - Authentication and authorization
   - API now enforces `SOMA_API_TOKEN` by default. Next actions: manage secrets centrally, rotate credentials, and front the service with an ingress providing TLS and additional authZ (e.g., OIDC). See `docs/ops/SECRET_MANAGEMENT.md`.
 - TLS everywhere
-  - Ingress defaults to TLS and Helm DSNs append `sslmode=require`; NEEDS_ACTION: provision certificates/CA bundles, mount them via the runtime secret, and enable upstream TLS where available.
+  - Ingress defaults to TLS and production values now mount Postgres/Kafka/Qdrant certificates via `.Values.tls.mounts` while exporting the matching env vars (`POSTGRES_SSL_*`, `QDRANT_TLS*`, `KAFKA_*`). TODO: automate certificate issuance (cert-manager/ACM) and document validation for each backend.
 - Secrets management
   - Helm supports inline secrets for dev and an ExternalSecret for production deployments. NEEDS_ACTION: supply `helm/values-production.yaml`, point `externalSecret.secretStoreRef` at Vault (`secret/data/shared-infra/soma-memory/<env>`), install a restart controller (e.g., Stakater Reloader), provision the S3 credentials secret (`soma-memory-backup-aws`), and record rotation evidence.
 - Persistence and backups
@@ -21,7 +21,7 @@ Gap analysis for production hardening (local limitations noted):
 - Security context & image hardening
   - Deployments now default to non-root pods with RuntimeDefault seccomp, read-only root filesystems, and dropped Linux capabilities. TODO: pin image digests and integrate supply-chain scanning.
 - Observability
-  - Helm now exposes Prometheus scraping via ServiceMonitor (API + consumer) and optional scrape annotations (see `docs/ops/OBSERVABILITY.md`). TODO: layer Grafana dashboards, alert rules, and OTEL/exporter wiring.
+  - Helm now exposes Prometheus scraping via ServiceMonitor (API + consumer) and optional scrape annotations (see `docs/ops/OBSERVABILITY.md`). TODO: codify alert rules and OTEL/exporter wiring; Grafana dashboards are intentionally deferred.
 - Resilience to backend restarts
   - Observed a transient `psycopg2.InterfaceError: connection already closed` in `/stats` after Postgres restart. NEEDS_ACTION: add reconnect-on-failure logic in `PostgresKeyValueStore` and make stats robust to backend churn.
 ---
@@ -29,11 +29,11 @@ Gap analysis for production hardening (local limitations noted):
 ## Production preflight checklist
 
 1. **Secrets present** – Apply `helm/values-production.yaml` (or equivalent) so secrets flow from Vault via ExternalSecret. Confirm `SOMA_API_TOKEN`, database, Redis, Qdrant, and Kafka credentials are populated in `soma-memory-runtime-secrets`.
-2. **TLS assets mounted** – Provide CA bundles/client certs for Postgres, Qdrant, and Kafka as needed. Set `POSTGRES_SSL_*`, `QDRANT_TLS`, and `KAFKA_SECURITY_PROTOCOL` env vars accordingly.
+2. **TLS assets mounted** – Populate the referenced secrets (`soma-memory-postgres-tls`, `soma-memory-kafka-tls`, `soma-memory-qdrant-tls` by default) so `/etc/soma/tls/*` exists in pods, and confirm env (`POSTGRES_SSL_*`, `QDRANT_TLS*`, `KAFKA_*`) resolve to those paths.
 3. **Persistence enabled** – Review `helm/values-production.yaml`; ensure PVC sizes and storageClasses match the target environment. Verify S3 buckets and retention for both Postgres and Qdrant backups.
 4. **Migrations** – Run `make db-upgrade` (or `uv run alembic upgrade head`) against Postgres before traffic. Capture revision output in the change log and ensure a rollback plan exists.
 5. **Kafka readiness** – Create topics with required replication, enable idempotent producers, and configure DLQs. Update `workers/vector_indexer.py` settings via Helm values.
-6. **Observability** – Enable ServiceMonitor (or scrape annotations) for API and consumer, configure OTEL exporters and structured logging sinks, and validate dashboards + alert thresholds.
+6. **Observability** – Enable ServiceMonitor (or scrape annotations) for API and consumer, configure OTEL exporters, define Prometheus alert thresholds, and capture query evidence in Prometheus (Grafana optional).
 7. **Access controls** – Lock down ingress with OIDC (or managed auth), define NetworkPolicies, and audit RBAC bindings.
 8. **Backup CronJobs running** – Confirm `CronJob/soma-memory-somafractalmemory-postgres-backup` and `CronJob/soma-memory-somafractalmemory-qdrant-backup` complete successfully and publish to the expected S3 prefixes.
 9. **Restart controller installed** – Deploy Stakater Reloader (or equivalent) in the cluster so pods roll on secret rotation.
@@ -78,21 +78,55 @@ Notes:
 
 ## 2. Helm deployment (Kind or cloud Kubernetes)
 
-Set the namespace and release name. This example uses the `soma-memory`
-namespace and release `soma-memory`.
+### 2.1 Deployment Modes
+
+SomaFractalMemory supports **two deployment modes**:
+
+**App-Only Mode (Recommended for Production)**:
+- Deploys only SomaFractalMemory pods (API + Consumer)
+- Connects to existing shared infrastructure services
+- Use when Postgres, Redis, Qdrant, Kafka are managed separately
+
+**Full Stack Mode (Development Only)**:
+- Deploys both app pods AND infrastructure services
+- Self-contained but not production-ready
+- Use for local development/testing only
+
+### 2.2 App-Only Deployment (Production)
+
+Use this when shared infrastructure exists elsewhere:
 
 ```bash
 kubectl create namespace soma-memory || true
+
+# Deploy only app pods - connects to existing shared infra
 helm upgrade --install soma-memory ./helm \
   -n soma-memory \
-  --values helm/values-production.yaml \
+  --values helm/values-app-only.yaml \
   --set image.tag=v2.1.0 \
   --wait
 
-# Check rollout status
+# Check rollout status (only 2 pods: API + Consumer)
 kubectl -n soma-memory get pods -l app.kubernetes.io/name=somafractalmemory
 kubectl -n soma-memory rollout status deployment/soma-memory-somafractalmemory
-kubectl -n soma-memory get pvc
+```
+
+### 2.3 Full Stack Deployment (Development)
+
+Use this for self-contained local development:
+
+```bash
+kubectl create namespace soma-memory || true
+
+# Deploy app + infrastructure (Postgres, Redis, Qdrant, etc.)
+helm upgrade --install soma-memory ./helm \
+  -n soma-memory \
+  --values helm/values-dev-port9797.yaml \
+  --set image.tag=local \
+  --wait
+
+# Check all pods including infrastructure
+kubectl -n soma-memory get pods,pvc
 ```
 
 If pods don't start, inspect logs:

@@ -69,14 +69,14 @@ Store sprint artefacts under `docs/infra/sprints/<sprint-id>/` with command tran
 - [ ] Update application Helm chart to consume ConfigMap contract and runtime secret references from playbook §3.4–3.5.
 - [ ] Move runtime credentials to Kubernetes Secrets/Vault (retire plaintext values) and document rotation path.
 - [ ] Automate DB provisioning snippet (psql client) and Kafka topic creation under `scripts/`.
-- [ ] Prepare TLS inputs for edge/backends (Ingress cert references, Postgres/Kafka SSL toggles) to unblock production deployment values.
+- [x] Prepare TLS inputs for edge/backends (Ingress cert references, Postgres/Kafka SSL toggles) in production values; follow-up automation pending.
 - **Acceptance evidence**: rendered manifests referencing shared DNS, `kubectl describe externalsecret` output, and CLI logs saved in `docs/infra/sprints/sprint-2/`.
 
-### Sprint 3 – Observability & CI `[TODO]`
-- [ ] Replace ad hoc logging with `common/utils/logger.py` JSON logger across API, CLI, and worker entry points.
+### Sprint 3 – Observability & CI `[ACTIVE]`
+- [x] Replace ad hoc logging with `common/utils/logger.py` JSON logger across API, CLI, and worker entry points.
 - [ ] Integrate tracing via `common/utils/trace.py` with settings toggles and document Jaeger configuration.
 - [ ] Implement GitHub Actions workflow `deploy-<service>.yml` matching playbook §4 (image build/push, Helm upgrade, readiness wait).
-- [ ] Add health snapshot script (`scripts/sharedinfra-health.sh`) aggregating `kubectl get pods`, `repmgr cluster show`, and Kafka offset checks.
+- [x] Add health snapshot script (`scripts/sharedinfra-health.sh`) aggregating `kubectl get pods`, `repmgr cluster show`, and Kafka offset checks.
 - [ ] Ensure `make deploy-kind-full MODE=<mode>` target runs in CI and stores artefacts for inspection.
 - [x] Introduce NetworkPolicy, PodSecurityContext defaults, and initial HPA manifests sourced from production readiness gaps; Kind validation pending follow-up.
 - [ ] Enable TLS (Ingress + backend DSNs) and enforce bearer auth / rate limiting in the API chart to close high-severity security items.

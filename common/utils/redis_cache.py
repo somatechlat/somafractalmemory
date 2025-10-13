@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 try:
     from redis.asyncio import Redis
 except ImportError:  # pragma: no cover - redis optional in some environments
     Redis = None  # type: ignore
-
-LOGGER = logging.getLogger(__name__)
 
 
 class RedisCache:

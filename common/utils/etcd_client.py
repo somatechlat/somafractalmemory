@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -10,8 +9,6 @@ try:
     import etcd3
 except ImportError:  # pragma: no cover - optional dependency
     etcd3 = None  # type: ignore
-
-LOGGER = logging.getLogger(__name__)
 
 
 class EtcdFeatureFlagClient:

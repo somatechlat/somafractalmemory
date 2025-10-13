@@ -6,7 +6,6 @@ available at ``somafractalmemory/http_api.py`` with a compatibility shim left
 in place for legacy imports.
 """
 
-import logging
 import os
 import threading
 import time
@@ -60,8 +59,9 @@ else:
     trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
 # Configure structured logging early (JSON output)
-configure_logging("somafractalmemory-api")
-logger = logging.getLogger(__name__)
+logger = configure_logging("somafractalmemory-api", level=os.getenv("LOG_LEVEL", "INFO")).bind(
+    component="http_api"
+)
 
 app = FastAPI(title="SomaFractalMemory API")
 # Instrument the FastAPI app for tracing
@@ -92,8 +92,8 @@ def _resolve_memory_mode() -> MemoryMode:
     mode_env = (os.getenv("MEMORY_MODE") or MemoryMode.EVENTED_ENTERPRISE.value).lower()
     if mode_env != MemoryMode.EVENTED_ENTERPRISE.value:
         logger.warning(
-            "Unsupported MEMORY_MODE '%s' requested; defaulting to evented_enterprise.",
-            mode_env,
+            "Unsupported memory mode requested; defaulting to evented_enterprise",
+            requested_mode=mode_env,
         )
     return MemoryMode.EVENTED_ENTERPRISE
 
@@ -222,15 +222,13 @@ def _log_startup_config():
     q = config.get("qdrant", {})
     q_loc = q.get("url") or f"{q.get('host','')}:{q.get('port','')}"
     logger.info(
-        "startup: api",
-        extra={
-            "mode": memory_mode.value,
-            "namespace": namespace_default,
-            "postgres": _redact_dsn(config.get("postgres", {}).get("url")),
-            "redis_host": redis_cfg.get("host"),
-            "qdrant": q_loc,
-            "eventing_enabled": config.get("eventing", {}).get("enabled", True),
-        },
+        "api startup",
+        mode=memory_mode.value,
+        namespace=namespace_default,
+        postgres=_redact_dsn(config.get("postgres", {}).get("url")),
+        redis_host=redis_cfg.get("host"),
+        qdrant=q_loc,
+        eventing_enabled=config.get("eventing", {}).get("enabled", True),
     )
 
 
@@ -327,7 +325,10 @@ class _RedisRateLimiter:
             return int(count) <= self.max_requests
         except RedisError as exc:
             if not self._warned:
-                logger.warning("Rate limiter Redis error; falling back to in-memory: %s", exc)
+                logger.warning(
+                    "Rate limiter Redis error; falling back to in-memory",
+                    error=str(exc),
+                )
                 self._warned = True
             if self._fallback:
                 return self._fallback.allow(key)
@@ -362,7 +363,10 @@ def _build_rate_limiter(cfg: dict[str, Any]) -> object:
             fallback=fallback,
         )
     except Exception as exc:  # pragma: no cover - network/path dependent
-        logger.warning("Unable to initialise Redis rate limiter; using in-memory fallback: %s", exc)
+        logger.warning(
+            "Unable to initialise Redis rate limiter; using in-memory fallback",
+            error=str(exc),
+        )
         return fallback
 
 
@@ -559,6 +563,11 @@ API_LATENCY = Histogram(
     "Latency of API requests in seconds",
     ["endpoint", "method"],
 )
+API_RESPONSES = Counter(
+    "api_responses_total",
+    "Total number of API responses by status code",
+    ["endpoint", "method", "status"],
+)
 
 
 # Lightweight global middleware for metrics to avoid signature issues from wrappers
@@ -570,6 +579,8 @@ async def metrics_middleware(request: Request, call_next):
     import time as _t
 
     start = _t.perf_counter()
+    status_code = "500"
+    response: Response | JSONResponse | None = None
     try:
         # Enforce a maximum request body size via Content-Length (fail fast)
         try:
@@ -580,15 +591,28 @@ async def metrics_middleware(request: Request, call_next):
             cl = request.headers.get("content-length")
             if cl and cl.isdigit():
                 if int(cl) > int(max_mb * 1024 * 1024):
-                    return JSONResponse(
+                    response = JSONResponse(
                         status_code=413, content={"detail": "Request entity too large"}
                     )
-        response = await call_next(request)
+                else:
+                    response = await call_next(request)
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
+        status_code = str(response.status_code)
         return response
+    except HTTPException as exc:  # pragma: no cover - FastAPI specific control flow
+        status_code = str(exc.status_code)
+        raise
+    except Exception:
+        status_code = "500"
+        raise
     finally:
         dur = max(_t.perf_counter() - start, 0.0)
         # Observe duration
         API_LATENCY.labels(endpoint=path, method=method).observe(dur)
+        API_RESPONSES.labels(endpoint=path, method=method, status=status_code).inc()
 
 
 @app.post(
@@ -706,7 +730,7 @@ def stats() -> StatsResponse:
     try:
         return StatsResponse(**mem.memory_stats())
     except Exception as exc:  # pragma: no cover - depends on backend state
-        logger.warning("stats endpoint failed", exc_info=exc)
+        logger.warning("stats endpoint failed", error=str(exc), exc_info=True)
         raise HTTPException(status_code=503, detail="Backend stats unavailable") from exc
 
 

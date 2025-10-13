@@ -1,0 +1,14 @@
+services:
+  # Safe override: route vector-store traffic through the shared 'quadrant' proxy
+  # This file is intended as a reversible override: pass it together with the
+  # main compose file when recreating the API/consumer containers.
+  api:
+    environment:
+      QDRANT_HOST: "quadrant"
+      QDRANT_PORT: "8080"
+      QDRANT_URL: "http://quadrant:8080/qdrant"
+  somafractalmemory_kube:
+    environment:
+      QDRANT_HOST: "quadrant"
+      QDRANT_PORT: "8080"
+      QDRANT_URL: "http://quadrant:8080/qdrant"

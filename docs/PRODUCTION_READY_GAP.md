@@ -11,7 +11,7 @@ Updated: 2025‑10‑12
 | Area | Current state (where) | Gap/Risk | Impact | Severity | Actions to close (what/where) |
 |---|---|---|---|---|---|
 | API auth & security | Bearer token enforced globally (somafractalmemory/http_api.py; docs refreshed) | Roles/tenants still missing; CORS allowlist manual | Data exposure/misuse if token leaked | Medium | Integrate role-aware auth, central secret rotation, and structured CORS policy. Extend tests for multi-tenant flows. |
-| TLS (edge and backends) | Ingress expects TLS; Helm DSNs set `sslmode=require`; cert provisioning still manual | Misconfiguration can leave traffic plaintext | Interception risk | High | Automate certificate issuance (cert-manager/ACM), distribute CA bundles to pods, and enable TLS settings for Kafka/Qdrant. |
+| TLS (edge and backends) | Ingress TLS enforced; production values mount Postgres/Kafka/Qdrant certs + env (`tls.mounts`) | Issuance/rotation automation and validation flows outstanding | Interception risk | High | Wire cert-manager/ACM automation, document rotation playbook, and add CI validation (e.g., smoke tests hitting HTTPS backends). |
 | Secrets management | Helm renders Secret or ExternalSecret; runbook updated with rotation + reloader guidance (`docs/ops/SECRET_MANAGEMENT.md`); Vault path standardized to `secret/data/shared-infra/soma-memory/<env>` | Runtime values still include dev defaults; AWS backup secret/service account not provisioned yet | Compliance | Medium | Flip to external secrets (`externalSecret.*`), disable inline secret, install Reloader (or GitOps equivalent), provision `soma-memory-backup-aws`, and capture rotation evidence in change tickets. |
 | Persistence & backups | PVCs disabled by default in dev; production values enable premium-rwo; S3 backup CronJobs for Postgres/Qdrant added | Restore workflow untested; S3 bucket/retention ownership unclear | Durability | High | Wire PVCs to managed storage, configure bucket policies, run the CronJobs in staging, and document a full restore drill (Postgres pg_restore + Qdrant snapshot upload). |
 | DB schema/migrations | Alembic baseline committed (`kv_store`, `memory_events`) | No automated cutover; CI gate missing | Integrity | Medium | Embed `make db-upgrade` in deployment flow, add CI check for `alembic current`, and document rollback steps. |
@@ -19,7 +19,7 @@ Updated: 2025‑10‑12
 | Network policies | Optional deny-by-default NetworkPolicy via values | Ingress/egress rules must be tailored per environment; RBAC audit outstanding | Security | Medium | Enable `networkPolicy.enabled`, restrict to required namespaces/IPs, and document RBAC posture. |
 | Pod security | Default pod/container contexts enforce non-root + RuntimeDefault seccomp | Sidecars/stateful dependencies still run with upstream defaults; image digests unpinned | Security | Low | Keep non-root contexts, extend to stateful sets or forked charts, and pin signed images. |
 | Autoscaling | HPAs templated for API & consumer (prod values enable them) | Metrics/thresholds require load-test tuning | Availability | Low | Run load tests, adjust HPA targets, and align CPU/memory requests with observed usage. |
-| Observability | ServiceMonitor + scrape annotations available; dashboards/alerts pending | Limited dashboards/alerts | MTTR | Medium | Enable ServiceMonitor in each env, publish Grafana dashboards, and codify alert rules (p95, 5xx, consumer lag). |
+| Observability | ServiceMonitor + scrape annotations available; `scripts/sharedinfra-health.sh` produces namespace snapshots; chart includes optional `PrometheusRule` | Prometheus alert tuning and longer-term SLO views pending | MTTR | Medium | Enable ServiceMonitor in each env, turn on `prometheusRule.enabled`, tune thresholds (p95, 5xx, consumer lag), capture query evidence, and attach health script outputs in sprint evidence (Grafana optional). |
 | Rate limiting/WAF | Env knobs; no edge/WAF | Abuse risk | Security | Med | Default rate limits; put behind Ingress/WAF; IP allowlists as needed. |
 | CI quality gates | Security scans non‑blocking; heavy tests skipped | Issues may slip | Governance | Med | Split PR vs nightly: nightly blocks on HIGH/CRITICAL and runs Kind+Helm e2e. |
 | Config governance | Multiple sources (env + optional settings) | Drift/confusion | Operability | Med | Log startup config (redacted); validate env via pydantic‑settings; central schema doc. |
@@ -32,7 +32,7 @@ Updated: 2025‑10‑12
 ## Remediation plan (what and where)
 
 1) Security and access
-- Automate Ingress TLS (cert-manager/ACM) and ship production values referencing managed cert secrets.
+- Automate Ingress TLS (cert-manager/ACM), keep production values pointing at managed TLS secrets, and add validation runbooks for backend TLS handshakes.
 - Enforce bearer auth on write/admin endpoints; add CORS policy (edit `somafractalmemory/http_api.py`).
 - Back secrets with Vault/ExternalSecret (chart now mounts Secret; wire it to rotation pipelines).
 
@@ -53,10 +53,10 @@ Acceptance: PVCs Bound; manual backup/restore walkthrough succeeds; persistence 
 Acceptance: API and consumers autoscale with tuned thresholds; network restricted across workloads; migrations applied cleanly in all envs; DLQ drains.
 
 4) Observability and operations
-- Prometheus scrape wired via ServiceMonitor/annotations; next add Grafana dashboards (API latency, 5xx rate, consumer lag, DB connections).
+- Prometheus scrape wired via ServiceMonitor/annotations; focus on alert rules and Prometheus queries for key SLOs (Grafana optional).
 - Add alerting rules; centralize structured logging; print redacted startup config summary.
 
-Acceptance: Dashboards render data; alerts fire on threshold breach; logs show config summary with secrets redacted.
+Acceptance: Prometheus targets scrape successfully; alerts fire on threshold breach; logs show config summary with secrets redacted.
 
 5) CI/CD governance
 - Split pipelines: PR (lint/format/unit/docs) vs nightly (Kind+Helm e2e + blocking security scans).

@@ -1,6 +1,6 @@
 import asyncio
 import json
-import logging
+import os
 import uuid
 from contextlib import nullcontext
 
@@ -8,6 +8,7 @@ import grpc
 import qdrant_client
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
 
+from common.utils.logger import configure_logging
 from common.utils.trace import configure_tracer
 from somafractalmemory import memory_pb2, memory_pb2_grpc
 from somafractalmemory.implementations.async_storage import (
@@ -15,7 +16,10 @@ from somafractalmemory.implementations.async_storage import (
     AsyncRedisKeyValueStore,
 )
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = configure_logging(
+    "somafractalmemory-async-grpc",
+    level=os.getenv("LOG_LEVEL", "INFO"),
+).bind(component="grpc_async")
 
 
 class AsyncMemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
@@ -83,12 +87,15 @@ class AsyncMemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
                 raise RuntimeError("Postgres client not initialised")
             val = json.dumps(json.loads(payload_json)).encode("utf-8")
             LOGGER.debug(
-                "Storing to Postgres key=%s type=%s sample=%s", point_id, type(val), str(val)[:200]
+                "Storing to Postgres",
+                key=point_id,
+                value_type=type(val).__name__,
+                sample=str(val)[:200],
             )
             await self._pg.set(point_id, val)
             return memory_pb2.StoreResponse(ok=True, id=point_id)
         except Exception as exc:
-            LOGGER.exception("async Store failed: %s", exc)
+            LOGGER.exception("async Store failed", error=str(exc))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(exc))
             return memory_pb2.StoreResponse(ok=False, id="")
@@ -140,7 +147,7 @@ class AsyncMemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
                 out.memories.append(mem)
             return out
         except Exception as exc:
-            LOGGER.exception("async Recall failed: %s", exc)
+            LOGGER.exception("async Recall failed", error=str(exc))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(exc))
             return memory_pb2.RecallResult()
@@ -167,7 +174,7 @@ class AsyncMemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
                     await self._pg.delete(point_id)
             return memory_pb2.DeleteResponse(ok=True)
         except Exception as exc:
-            LOGGER.exception("async Delete failed: %s", exc)
+            LOGGER.exception("async Delete failed", error=str(exc))
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(exc))
             return memory_pb2.DeleteResponse(ok=False)
@@ -199,7 +206,7 @@ async def serve(host: str = "0.0.0.0", port: int = 50054):
     bind = f"[::]:{port}"
     server.add_insecure_port(bind)
     await server.start()
-    LOGGER.info("Async gRPC server started on %s", bind)
+    LOGGER.info("Async gRPC server started", bind=bind)
     try:
         await server.wait_for_termination()
     finally:
@@ -207,5 +214,4 @@ async def serve(host: str = "0.0.0.0", port: int = 50054):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(serve())

@@ -50,9 +50,7 @@ postgres:
 redis:
   enabled: true
   fullnameOverride: sharedinfra-redis
-  architecture: replication
-  replica:
-    replicaCount: 1
+  architecture: standalone
   auth:
     enabled: false
   persistence:
@@ -66,11 +64,9 @@ redis:
       requests:
         cpu: 100m
         memory: 256Mi
-  replica:
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi
 
 kafka:
   enabled: true
@@ -106,17 +102,10 @@ vault:
       maxUnavailable: 1
 
 opa:
-  enabled: true
-  fullnameOverride: sharedinfra-opa
-  image:
-    repository: openpolicyagent/opa
-    tag: 0.57.0-debug
-  service:
-    type: ClusterIP
-    port: 8181
+  enabled: false
 
 prometheus:
-  enabled: true
+  enabled: false
   fullnameOverride: sharedinfra-prometheus
   server:
     persistentVolume:
@@ -126,8 +115,24 @@ prometheus:
     enabled: false
 
 grafana:
+  enabled: false
+
+qdrant:
   enabled: true
-  fullnameOverride: sharedinfra-grafana
+  fullnameOverride: sharedinfra-qdrant
+  image:
+    repository: qdrant/qdrant
+    tag: "v1.7.4"
   persistence:
     enabled: true
-    size: 5Gi
+    size: 10Gi
+  service:
+    type: ClusterIP
+    port: 6333
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi

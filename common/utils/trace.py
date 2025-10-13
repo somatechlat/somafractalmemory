@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import logging
+from common.utils.logger import get_logger
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger("somafractalmemory").bind(component="trace")
 
 
 def configure_tracer(
@@ -26,7 +26,10 @@ def configure_tracer(
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except Exception:  # pragma: no cover - optional dependency
-        LOGGER.debug("OpenTelemetry packages not found; tracer disabled for %s", service_name)
+        LOGGER.debug(
+            "OpenTelemetry packages not found; tracer disabled",
+            service_name=service_name,
+        )
         return None
 
     try:
@@ -37,7 +40,11 @@ def configure_tracer(
         try:
             exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
         except Exception as exc:  # pragma: no cover - exporter creation environment dependent
-            LOGGER.error("Failed to initialise OTLP exporter for %s: %s", service_name, exc)
+            LOGGER.error(
+                "Failed to initialise OTLP exporter",
+                service_name=service_name,
+                error=str(exc),
+            )
             exporter = None
 
         if exporter is not None:
@@ -47,7 +54,11 @@ def configure_tracer(
         trace.set_tracer_provider(provider)
         return trace.get_tracer(service_name)
     except Exception as exc:  # pragma: no cover - defensive
-        LOGGER.exception("Unexpected error configuring tracer for %s: %s", service_name, exc)
+        LOGGER.exception(
+            "Unexpected error configuring tracer",
+            service_name=service_name,
+            error=str(exc),
+        )
         return None
 
 

@@ -1,11 +1,12 @@
-import logging
 import os
 from datetime import datetime, timezone
 
 import psycopg2
 from psycopg2.extras import Json
 
-logger = logging.getLogger(__name__)
+from common.utils.logger import get_logger
+
+logger = get_logger("somafractalmemory").bind(component="kv_writer")
 
 
 # Connection parameters – prefer explicit env; otherwise fall back to centralized settings DNS.
@@ -69,7 +70,7 @@ def process_message(record: dict) -> bool:
     """
     required = ("event_id", "id", "namespace", "type", "timestamp", "payload")
     if not all(k in record for k in required):
-        logger.warning("Record missing required fields: %s", record)
+        logger.warning("Record missing required fields", record=record)
         return False
 
     conn = _get_connection()
@@ -113,8 +114,8 @@ def process_message(record: dict) -> bool:
                     Json(record["payload"]),
                 ),
             )
-        logger.info("Upserted event %s into Postgres", record["event_id"])
+        logger.info("Upserted event into Postgres", event_id=record["event_id"])
         return True
     except Exception as exc:  # pragma: no cover – runtime error handling
-        logger.exception("Failed to upsert record into Postgres: %s", exc)
+        logger.exception("Failed to upsert record into Postgres", error=str(exc))
         return False

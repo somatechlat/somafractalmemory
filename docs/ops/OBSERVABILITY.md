@@ -1,6 +1,6 @@
 # Observability Integration Guide
 
-This guide explains how to scrape Soma Fractal Memory metrics with Prometheus and surface them in Grafana.
+This guide focuses on exposing Soma Fractal Memory metrics to Prometheus. Grafana dashboards are optional and not covered here.
 
 ## 1. Enable ServiceMonitor (recommended)
 
@@ -37,30 +37,49 @@ prometheus.io/port: "<port>"
 
 Point your Prometheus scrape configuration at the `somafractalmemory` Service (API) and `somafractalmemory-consumer-metrics` Service (consumer).
 
-## 3. Grafana dashboards
+## 3. Alerts
 
-Import dashboards or create new ones using the following query starters:
+Enable the built-in `PrometheusRule` manifest by setting `prometheusRule.enabled=true`. The default rules cover:
 
-- API request latency: `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{app_kubernetes_io_name="somafractalmemory"}[5m])) by (le, route))`
-- Error rate: `sum(rate(fastapi_requests_total{status="500", app_kubernetes_io_name="somafractalmemory"}[5m]))`
-- Consumer throughput: `sum(rate(consumer_messages_consumed_total{app_kubernetes_io_component="consumer"}[5m]))`
-- Qdrant failures: `sum(rate(consumer_process_failure_total{component="vector_indexer"}[5m]))`
+- API p95 latency (`api_request_latency_seconds_bucket` histogram)
+- API 5xx ratio using the new `api_responses_total` counter
+- Consumer processing failures (`consumer_process_failure_total`)
+- Consumer stalls (no messages consumed in the configured window)
 
-Store final dashboards under `docs/ops/dashboards/` (JSON exports) and link them in this guide.
+Example production overrides:
 
-## 4. Alerts
+```yaml
+prometheusRule:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+  api:
+    service: soma-memory-somafractalmemory
+  consumer:
+    service: soma-memory-somafractalmemory-consumer-metrics
+```
 
-Define PrometheusRule resources (outside this chart for now) covering:
+Tune the thresholds under `prometheusRule.api.latency`, `.api.errorRate`, `.consumer.failureRate`, and `.consumer.stall` to match your SLOs.
 
-- Elevated API 5xx rate (p95 latency + error ratio)
-- Consumer backlog / stalled processing (low throughput, high failure counts)
-- Backup CronJob failures (CronJob status metrics)
+Record the alert definitions and response playbooks in `docs/ops/PRODUCTION_RUNBOOK.md` once validated.
 
-Record the alert rule links and on-call runbooks in `docs/ops/PRODUCTION_RUNBOOK.md` when available.
-
-## 5. Verification checklist
+## 4. Verification checklist
 
 - [ ] ServiceMonitor targets appear in Prometheus (`/targets` UI) and show `UP` status.
-- [ ] Dashboards display live metrics for API and consumer pods.
-- [ ] Alerts trigger when test thresholds are breached.
+- [ ] Prometheus queries confirm API throughput/latency and consumer lag within SLOs.
+- [ ] Alerts from the charted `PrometheusRule` trigger when test thresholds are breached.
 - [ ] Evidence captured in `docs/PRODUCTION_READY_GAP.md` for the Observability row.
+
+## 5. Shared infra health snapshot
+
+Use `scripts/sharedinfra-health.sh` to capture a namespace summary that operators can attach to incidents or sprint evidence:
+
+```bash
+./scripts/sharedinfra-health.sh \
+  --namespace soma-memory \
+  --release soma-memory \
+  --postgres-pod soma-memory-postgres-0 \
+  --consumer-pod soma-memory-consumer-0
+```
+
+The script aggregates Helm status, pods, StatefulSets, PVCs, CronJobs, ExternalSecrets, ServiceMonitors, recent events, and optional Postgres readiness plus consumer metrics. Store the output in `docs/infra/sprints/sprint-3/sharedinfra-health.sample.log` (or similar) whenever you refresh evidence for Sprint 3.

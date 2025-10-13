@@ -240,7 +240,31 @@ helm upgrade --install soma-memory ./helm \
   --wait --timeout=600s
 ```
 
-### 5.4 SomaStack shared infra bootstrap (Kind)
+### 5.4 Kubernetes Deployment Modes
+
+**IMPORTANT**: SomaFractalMemory has two distinct deployment modes:
+
+#### App-Only Mode (Connects to Existing Infrastructure)
+- **When**: Shared infrastructure (Postgres, Redis, Kafka, Qdrant) already exists
+- **What**: Deploys only 2 pods (API + Consumer)
+- **Why**: Production-ready, follows microservice separation
+
+```bash
+# Deploy only app pods
+helm upgrade --install soma-memory ./helm -n soma-memory --values helm/values-app-only.yaml
+```
+
+#### Full Stack Mode (Self-Contained Infrastructure)
+- **When**: Local development, no existing infrastructure
+- **What**: Deploys app pods + Postgres + Redis + Qdrant + Kafka
+- **Why**: Self-contained for development/testing
+
+```bash
+# Deploy app + all infrastructure
+helm upgrade --install soma-memory ./helm -n soma-memory --values helm/values-dev-port9797.yaml
+```
+
+### 5.5 SomaStack shared infra bootstrap (Kind)
 - Reset and recreate the shared infra Kind cluster, preload required images, and deploy Helm overlays in one shot:
   ```bash
   make sharedinfra-kind MODE=dev

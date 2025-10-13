@@ -15,7 +15,7 @@
 | | 4 | Event pipeline resilience | Kafka idempotent producer, DLQ, consumer batch/backoff, observability, multi-broker bootstrap tooling |
 | 3. Architecture Simplification | 5 | Dependency injection & modular stores | MemorySystemBuilder, extracted store package, factory cleanup |
 | | 6 | Unified surfaces | HTTP/CLI/gRPC share runtime container, shared middleware, per-surface smoke tests |
-| 4. Observability & Operations | 7 | Metrics, alerts, dashboards | ServiceMonitor/annotations, Grafana baseline, alert rules, `/stats` hardening, shared infra health snapshot + incident bundle automation |
+| 4. Observability & Operations | 7 | Metrics, alerts, dashboards | ServiceMonitor/annotations (done), Grafana baseline, alert rules, `/stats` hardening, shared infra health snapshot + incident bundle automation |
 | | 8 | CI/CD & automation | Nightly Kind + Helm run, security scan gates, migration drift checks, `make deploy-kind-full` CI gate |
 | 5. Scale & Optionality | 9 | Hot tier + retention gates | Fast-core slab benchmarks, gating automation (G1–G3), retention tests, namespace access audits |
 | | 10 | Production cutover | DR drill, runbooks, release handoff, final risk signoff, disaster recovery rehearsal evidence |

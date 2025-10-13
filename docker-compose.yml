@@ -29,9 +29,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       POSTGRES_URL: postgresql://soma:soma@postgres:5432/somaagent01
-      QDRANT_HOST: quadrant
-      QDRANT_PORT: 8080
-      QDRANT_URL: "http://quadrant:8080"
+      # Prefer an actual Qdrant vector store if available. The shared infra
+      # previously used a placeholder 'quadrant' proxy; switch to the
+      # dedicated 'qdrant' service (port 6333) when present.
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_URL: "http://qdrant:6333"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Toggle event publishing (true/false). In TEST mode this is forced off.
       EVENTING_ENABLED: "true"
@@ -67,9 +70,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       POSTGRES_URL: postgresql://soma:soma@postgres:5432/somaagent01
-      QDRANT_HOST: quadrant
-      QDRANT_PORT: 8080
-      QDRANT_URL: "http://quadrant:8080"
+      # Consumer should match the API's Qdrant settings when running
+      # against the shared infra vector store.
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_URL: "http://qdrant:6333"
       USE_REAL_INFRA: "1"
     restart: unless-stopped
     healthcheck:
