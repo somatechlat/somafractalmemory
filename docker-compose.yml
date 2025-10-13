@@ -97,7 +97,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: sfm_postgres
+    container_name: somafractalmemory_postgres
     profiles: [core, shared]
     environment:
       POSTGRES_USER: soma
@@ -117,7 +117,7 @@ services:
 
   redis:
     image: redis:7.2.4-alpine
-    container_name: sfm_redis
+    container_name: somafractalmemory_redis
     profiles: [core, shared]
     command: ["redis-server","--save","60","1","--appendonly","yes"]
     volumes:
@@ -134,7 +134,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.9.2
-    container_name: sfm_qdrant
+    container_name: somafractalmemory_qdrant
     profiles: [core, shared]
     volumes:
       - sfm_qdrant_data:/qdrant/storage
@@ -152,7 +152,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
-    container_name: sfm_kafka
+    container_name: somafractalmemory_kafka
     profiles: [core, shared]
     environment:
       # KRaft (no Zookeeper) configuration
@@ -186,7 +186,7 @@ services:
 
   quadrant:
     image: caddy:2.8.4-alpine
-    container_name: sfm_quadrant
+    container_name: somafractalmemory_quadrant
     profiles: [proxy]
     ports:
       - "8088:8080"   # HTTP
@@ -199,7 +199,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.47.2
-    container_name: sfm_prometheus
+    container_name: somafractalmemory_prometheus
     profiles: [monitoring]
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -211,7 +211,7 @@ services:
 
   grafana:
     image: grafana/grafana:10.2.3
-    container_name: sfm_grafana
+    container_name: somafractalmemory_grafana
     profiles: [monitoring]
     ports:
       - "3131:3000"
@@ -222,7 +222,7 @@ services:
 
   vault:
     image: hashicorp/vault:1.15.4
-    container_name: sfm_vault
+    container_name: somafractalmemory_vault
     profiles: [ops]
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: root
@@ -236,7 +236,7 @@ services:
 
   etcd:
     image: quay.io/coreos/etcd:v3.5.12
-    container_name: sfm_etcd
+    container_name: somafractalmemory_etcd
     profiles: [ops]
     command: ["etcd","--data-dir","/etcd-data","--advertise-client-urls","http://0.0.0.0:2379","--listen-client-urls","http://0.0.0.0:2379"]
     ports:
@@ -248,7 +248,7 @@ services:
 
   opa:
     image: openpolicyagent/opa:0.57.0
-    container_name: sfm_opa
+    container_name: somafractalmemory_opa
     profiles: [ops]
     command: ["run","--server","--set=decision_logs.console=true","/policy"]
     ports:

@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: soma_test_api
+    container_name: somafractalmemory_test_api
     ports:
       - "9999:9595"
     environment:
@@ -37,7 +37,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: soma_test_consumer
+    container_name: somafractalmemory_test_consumer
     command: ["python", "scripts/run_consumers.py"]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -57,7 +57,7 @@ services:
   # Infrastructure services (shared with DEV but different DBs/namespaces)
   postgres:
     image: postgres:15-alpine
-    container_name: soma_test_postgres
+    container_name: somafractalmemory_postgres_test
     environment:
       POSTGRES_DB: somamemory_test
       POSTGRES_USER: postgres
@@ -74,7 +74,7 @@ services:
 
   redis:
     image: redis:7.2.4-alpine
-    container_name: soma_test_redis
+    container_name: somafractalmemory_redis_test
     volumes:
       - redis_test_data:/data
     healthcheck:
@@ -86,7 +86,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.9.2
-    container_name: soma_test_qdrant
+    container_name: somafractalmemory_qdrant_test
     volumes:
       - qdrant_test_storage:/qdrant/storage
     healthcheck:
@@ -98,7 +98,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
-    container_name: kafka_test
+    container_name: somafractalmemory_kafka_test
     environment:
       KAFKA_PROCESS_ROLES: 'broker,controller'
       KAFKA_NODE_ID: 1
