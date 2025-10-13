@@ -249,3 +249,20 @@ sharedinfra-kind-deploy: prereqs-k8s ## Deploy shared infra Helm chart into the 
 	./scripts/deploy-kind-sharedinfra.sh MODE=$(MODE)
 
 sharedinfra-kind: sharedinfra-kind-bootstrap sharedinfra-kind-deploy ## Full shared infra reset + deploy
+	@echo "Deploying shared infra..."
+
+```
+# Helper targets for new scripts
+render-values:
+	@echo "Rendering helm values for mode '${MODE:=dev}'"
+	@./scripts/render-values-for-mode.sh ${MODE}
+
+deploy-kind-full:
+	@echo "Deploying full infra to kind (cluster: ${CLUSTER_NAME:=soma-kind})"
+	@./scripts/deploy-kind-full.sh ${CLUSTER_NAME}
+
+backup-postgres:
+	@echo "Backing up postgres from container: ${CONTAINER:=somafractalmemory_postgres_1}"
+	@./scripts/backup-postgres.sh ${CONTAINER} ${OUTFILE:-}
+
+```

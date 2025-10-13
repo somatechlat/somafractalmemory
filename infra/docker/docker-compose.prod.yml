@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  api:
+    image: somafractalmemory/api:latest
+    restart: unless-stopped
+    environment:
+      - ENV=production
+    ports:
+      - "9696:9696"
+    depends_on:
+      - postgres
+      - qdrant
+
+  postgres:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - pgdata-prod:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    restart: unless-stopped
+    volumes:
+      - qdrant-data-prod:/qdrant/storage
+
+volumes:
+  pgdata-prod:
+  qdrant-data-prod:
