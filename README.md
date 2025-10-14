@@ -25,10 +25,8 @@ The best way to get started is to follow the **[Quickstart Guide](docs/QUICKSTAR
 
 ## 📚 Documentation
 
-- **[Quickstart Guide](docs/QUICKSTART.md)**: Your first stop for getting the project running.
-- **[Architecture Overview](docs/ARCHITECTURE.md)**: A high-level look at the system's components and data flow.
-- **[Developer Guide](docs/DEVELOPER_GUIDE.md)**: Essential information for contributors.
-- **[Deployment Guide](docs/DEPLOYMENT.md)**: Instructions for deploying the application.
+- **[Developer User Manual](docs/DEVELOPER_MANUAL.md)**: The complete, enterprise-grade guide for developers.
+- **[Quickstart Guide](docs/QUICKSTART.md)**: A high-level guide to getting the project running quickly.
 - **[API Reference](docs/api.md)**: Detailed information about the API endpoints.
 
 ---

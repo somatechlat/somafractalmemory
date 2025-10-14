@@ -19,8 +19,8 @@ class TransformersEmbeddingProvider(IEmbeddingProvider):
             self.tokenizer = None
             self.model = None
         else:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModel.from_pretrained(model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, revision="main")
+            self.model = AutoModel.from_pretrained(model_name, revision="main")
 
     def embed_text(self, text: str) -> list[float]:
         return self.embed_texts([text])[0]

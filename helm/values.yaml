@@ -1,0 +1,67 @@
+# Default values for somafractalmemory.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: somafractalmemory
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+service:
+  type: ClusterIP
+  port: 9595
+
+postgres:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: postgres
+    tag: 15
+  service:
+    port: 5432
+  persistence:
+    enabled: false
+    size: 10Gi
+
+redis:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: redis
+    tag: 7
+  service:
+    port: 6379
+  persistence:
+    enabled: false
+    size: 5Gi
+
+qdrant:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: qdrant/qdrant
+    tag: latest
+  service:
+    port: 6333
+  persistence:
+    enabled: false
+    size: 10Gi
+
+kafka:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: confluentinc/cp-kafka
+    tag: latest
+  service:
+    port: 9092
+  persistence:
+    enabled: false
+    size: 10Gi
+
+secrets:
+  apiToken: "devtoken"
+  postgresPassword: "soma"

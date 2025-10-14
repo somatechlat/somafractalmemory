@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
@@ -611,6 +612,21 @@ async def metrics_middleware(request: Request, call_next):
         API_RESPONSES.labels(endpoint=path, method=method, status=status_code).inc()
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    logger.info(
+        "Request processed",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        process_time=process_time,
+    )
+    return response
+
+
 @app.post(
     "/store",
     response_model=OkResponse,
@@ -944,6 +960,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
     # For other errors, let FastAPI handle them
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"An unexpected error occurred: {exc}", exc_info=True)
+    return await fastapi_http_exception_handler(
+        request, HTTPException(status_code=500, detail="Internal Server Error")
+    )
 
 
 # Health and readiness endpoints

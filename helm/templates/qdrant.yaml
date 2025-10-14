@@ -1,0 +1,47 @@
+{{- if .Values.qdrant.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-qdrant
+spec:
+  serviceName: {{ .Release.Name }}-qdrant
+  replicas: {{ .Values.qdrant.replicaCount }}
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+    spec:
+      containers:
+      - name: qdrant
+        image: "{{ .Values.qdrant.image.repository }}:{{ .Values.qdrant.image.tag }}"
+        ports:
+        - containerPort: 6333
+        {{- if .Values.qdrant.persistence.enabled }}
+        volumeMounts:
+        - name: qdrant-storage
+          mountPath: /qdrant/storage
+  {{- if .Values.qdrant.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: qdrant-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: {{ .Values.qdrant.persistence.storageClass | quote }}
+      resources:
+        requests:
+          storage: {{ .Values.qdrant.persistence.size }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-qdrant
+spec:
+  ports:
+  - port: 6333
+  selector:
+    app: qdrant
+{{- end }}

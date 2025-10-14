@@ -5,11 +5,11 @@ services:
     image: postgres:15
     environment:
       POSTGRES_USER: soma
-      POSTGRES_PASSWORD: soma
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soma}
       POSTGRES_DB: somafractalmemory
     container_name: somafractalmemory_postgres
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     profiles:
@@ -19,7 +19,7 @@ services:
     image: redis:7
     container_name: somafractalmemory_redis
     ports:
-      - "6381:6379"
+      - "${REDIS_HOST_PORT:-6381}:6379"
     profiles:
       - core
 
@@ -27,7 +27,7 @@ services:
     image: qdrant/qdrant:latest
     container_name: somafractalmemory_qdrant
     ports:
-      - "6333:6333"
+      - "${QDRANT_HOST_PORT:-6333}:6333"
     profiles:
       - core
 
@@ -35,26 +35,19 @@ services:
     image: confluentinc/cp-kafka:latest
     container_name: somafractalmemory_kafka
     ports:
-      - "9092:9092"
-      - "19092:19092"
+      - "${KAFKA_HOST_PORT:-9092}:9092"
+      - "${KAFKA_OUTSIDE_PORT:-19092}:19092"
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    depends_on:
-      - zookeeper
-    profiles:
-      - core
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    container_name: somafractalmemory_zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NODE_ID: 1
     profiles:
       - core
 
@@ -64,13 +57,13 @@ services:
       dockerfile: Dockerfile
     container_name: somafractalmemory_api
     ports:
-      - "9595:9595"
+      - "${API_PORT:-9595}:9595"
     environment:
       POSTGRES_URL: postgresql://soma:soma@postgres:5432/somafractalmemory
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SOMA_API_TOKEN: devtoken
+      SOMA_API_TOKEN: ${SOMA_API_TOKEN:-devtoken}
     depends_on:
       - postgres
       - redis

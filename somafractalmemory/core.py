@@ -207,17 +207,17 @@ class SomaFractalMemoryEnterprise:
             # Quiet mode for CLI/tests: avoid printing to stdout
             try:
                 logger.debug("SOMA_FORCE_HASH_EMBEDDINGS enabled: using hash-based embeddings")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to log to stdout", error=str(e))
             self.tokenizer = None
             self.model = None
         else:
             try:
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    os.getenv("SOMA_MODEL_NAME", model_name)
+                    os.getenv("SOMA_MODEL_NAME", model_name), revision="main"
                 )
                 self.model = AutoModel.from_pretrained(
-                    os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True
+                    os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True, revision="main"
                 )
             except Exception as e:
                 logger.warning(
@@ -240,6 +240,18 @@ class SomaFractalMemoryEnterprise:
         self.store_latency = Histogram(
             "soma_memory_store_latency_seconds",
             "Store operation latency",
+            ["namespace"],
+            registry=self.registry,
+        )
+        self.recall_count = Counter(
+            "soma_memory_recall_total",
+            "Total recall operations",
+            ["namespace"],
+            registry=self.registry,
+        )
+        self.recall_latency = Histogram(
+            "soma_memory_recall_latency_seconds",
+            "Recall operation latency",
             ["namespace"],
             registry=self.registry,
         )
@@ -355,9 +367,8 @@ class SomaFractalMemoryEnterprise:
                 }
                 try:
                     self.kv_store.set(wal_key, serialize(wal_payload))
-                except Exception:
-                    # Best-effort: do not raise from WAL write failures
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to write WAL entry", error=str(e))
             except Exception:
                 pass
             # WAL entry written (JSON-first). Reconciliation runs separately.
@@ -697,6 +708,8 @@ class SomaFractalMemoryEnterprise:
             try:
                 qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
                 base = qdrant_url.rstrip("/")
+                if not base.startswith(("http://", "https://")):
+                    raise ValueError("Invalid Qdrant URL scheme")
                 try:
                     with urllib.request.urlopen(f"{base}/collections", timeout=3) as resp:
                         body = resp.read().decode("utf-8")
@@ -715,6 +728,8 @@ class SomaFractalMemoryEnterprise:
                         continue
                     try:
                         quoted = urllib.parse.quote(name, safe="")
+                        if not base.startswith(("http://", "https://")):
+                            raise ValueError("Invalid Qdrant URL scheme")
                         with urllib.request.urlopen(
                             f"{base}/collections/{quoted}", timeout=3
                         ) as r2:
@@ -800,18 +815,22 @@ class SomaFractalMemoryEnterprise:
         memory_type: Optional[MemoryType] = None,
     ):
         self._call_hook("before_recall", query, context, top_k, memory_type)
-        if context:
-            results = self.find_hybrid_with_context(
-                query, context, top_k=top_k, memory_type=memory_type
-            )
-        else:
-            if getattr(self, "hybrid_recall_default", True):
-                # Use hybrid scoring by default for best overall recall quality
-                scored = self.hybrid_recall_with_scores(query, top_k=top_k, memory_type=memory_type)
-                results = [r.get("payload") for r in scored if r.get("payload")]
+        with self.recall_latency.labels(self.namespace).time():
+            self.recall_count.labels(self.namespace).inc()
+            if context:
+                results = self.find_hybrid_with_context(
+                    query, context, top_k=top_k, memory_type=memory_type
+                )
             else:
-                # Legacy vector-only path
-                results = self.find_hybrid_by_type(query, top_k=top_k, memory_type=memory_type)
+                if getattr(self, "hybrid_recall_default", True):
+                    # Use hybrid scoring by default for best overall recall quality
+                    scored = self.hybrid_recall_with_scores(
+                        query, top_k=top_k, memory_type=memory_type
+                    )
+                    results = [r.get("payload") for r in scored if r.get("payload")]
+                else:
+                    # Legacy vector-only path
+                    results = self.find_hybrid_by_type(query, top_k=top_k, memory_type=memory_type)
         self._call_hook("after_recall", query, context, top_k, memory_type, results)
         return results
 
@@ -1016,9 +1035,8 @@ class SomaFractalMemoryEnterprise:
                             break
                 if filtered:
                     return filtered[:top_k]
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.warning("Failed to log to stdout", error=str(e))
         # Fallback in-memory scan
         out: List[Dict[str, Any]] = []
         for payload in self.iter_memories():
@@ -1223,7 +1241,9 @@ class SomaFractalMemoryEnterprise:
         value["importance_norm"], self._imp_method = self._adaptive_importance_norm(raw_f)
 
         # Persist via KV + vector store (legacy path) and optionally append to fast core slabs.
-        result = self.store(coord_t, value)
+        with self.store_latency.labels(self.namespace).time():
+            self.store_count.labels(self.namespace).inc()
+            result = self.store(coord_t, value)
         if self.fast_core_enabled:
             try:
                 # Reuse embedding work: embed serialized payload (same as store())
@@ -1571,6 +1591,7 @@ class SomaFractalMemoryEnterprise:
                 norm = float(np.linalg.norm(emb)) or 1.0
                 emb = emb / norm
             except Exception:
+                logger.warning("Failed to normalize embedding", error=str(e))
                 pass
             return emb
         except Exception:
@@ -1580,7 +1601,7 @@ class SomaFractalMemoryEnterprise:
                 norm = float(np.linalg.norm(fb)) or 1.0
                 fb = fb / norm
             except Exception:
-                pass
+                logger.warning("Failed to normalize fallback embedding", error=str(e))
             return fb
 
     def _enforce_memory_limit(self):

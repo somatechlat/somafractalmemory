@@ -23,7 +23,7 @@ try:  # ``yaml`` is optional; config files fall back to JSON when absent.
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     yaml = None
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +65,15 @@ class LangfuseSettings(BaseModel):
     host: str = Field(default="", alias="langfuse_host")
 
 
+class KafkaSettings(BaseSettings):
+    bootstrap_servers: str = "localhost:9092"
+    security_protocol: str = "PLAINTEXT"
+    ssl_ca_location: str | None = None
+    sasl_mechanism: str = "PLAIN"
+    sasl_username: str | None = None
+    sasl_password: str | None = None
+
+
 class SMFSettings(SomaBaseSettings):
     """Settings specific to the SomaFractalMemory service."""
 
@@ -76,6 +85,19 @@ class SMFSettings(SomaBaseSettings):
     grpc_port: int = Field(default=50053, description="gRPC service port")
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    kafka: KafkaSettings = Field(default_factory=KafkaSettings)
+
+    @validator("postgres_url")
+    def postgres_url_must_be_valid(cls, v):
+        if not v.startswith("postgresql://"):
+            raise ValueError("Invalid postgres_url scheme")
+        return v
+
+    @validator("qdrant_host")
+    def qdrant_host_must_be_valid(cls, v):
+        if "://" in v:
+            raise ValueError("qdrant_host should not include a scheme")
+        return v
 
     class Config:
         arbitrary_types_allowed = True
@@ -142,6 +164,7 @@ def load_settings(
 __all__ = [
     "InfraEndpoints",
     "LangfuseSettings",
+    "KafkaSettings",
     "SMFSettings",
     "SomaBaseSettings",
     "load_settings",

@@ -1,0 +1,31 @@
+# values-prod-ha.yaml
+# Overrides for a production, high-availability deployment.
+
+replicaCount: 3
+
+postgres:
+  replicaCount: 1 # Typically managed by a stateful set or external service in production
+  persistence:
+    enabled: true
+    storageClass: "gp2" # Example for AWS, change as needed
+  secrets:
+    apiToken: "changeme-in-production"
+    postgresPassword: "changeme-in-production"
+
+redis:
+  replicaCount: 2
+  persistence:
+    enabled: true
+    storageClass: "gp2" # Example for AWS, change as needed
+
+qdrant:
+  replicaCount: 2
+  persistence:
+    enabled: true
+    storageClass: "gp2" # Example for AWS, change as needed
+
+kafka:
+  replicaCount: 3
+  persistence:
+    enabled: true
+    storageClass: "gp2" # Example for AWS, change as needed

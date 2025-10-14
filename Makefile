@@ -1,7 +1,9 @@
 .PHONY: setup test lint api cli clean uv-install lock \
 	db-upgrade db-current db-revision \
 	help prereqs prereqs-docker \
-    compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health
+    compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health \
+	helm-install-local-dev helm-uninstall-local-dev \
+	helm-install-prod-ha helm-uninstall-prod-ha
 
 # Variables
 API_PORT ?= 9595
@@ -17,11 +19,9 @@ prereqs-docker: ## Check docker and docker compose
 	@docker compose version >/dev/null 2>&1 || { echo "Error: docker compose not available"; exit 1; }
 	@command -v curl >/dev/null 2>&1 || { echo "Error: curl not found in PATH"; exit 1; }
 
-setup-dev: prereqs-docker ## Canonical local setup: build, up, and wait for health
-	@echo "→ Starting evented enterprise stack"
-	$(MAKE) -s compose-build
-	$(MAKE) -s compose-up
-	$(MAKE) -s compose-health
+compose-up: prereqs-docker ## Start the full stack in the background
+	docker compose --profile core --profile consumer up -d
+	@echo "→ API will be available at: http://127.0.0.1:$(API_PORT)"
 
 docs-build: ## Build MkDocs documentation
 	@command -v mkdocs >/dev/null 2>&1 || { echo "mkdocs not found, skipping"; exit 0; }
@@ -71,7 +71,9 @@ db-revision: ## Generate a new Alembic migration
 clean:
 	rm -rf .pytest_cache __pycache__ somafractalmemory.egg-info qdrant.db *.index audit_log.jsonl .ipynb_checkpoints
 
-# Docker Compose workflows
+# ==============================================================================
+# Docker Compose Workflows (for local development)
+# ==============================================================================
 
 compose-build: prereqs-docker ## Build images for Docker Compose
 	docker compose build --progress=plain
@@ -102,3 +104,19 @@ compose-down: prereqs-docker ## Stop all services (keep volumes)
 
 compose-down-v: prereqs-docker ## Stop all services and remove volumes (DANGEROUS)
 	docker compose down -v
+
+# ==============================================================================
+# Kubernetes Workflows (via Helm)
+# ==============================================================================
+
+helm-install-local-dev: ## Install the Helm chart with local development values
+	helm upgrade --install somafractalmemory-local-dev ./helm -f ./helm/values-local-dev.yaml --create-namespace -n somafractalmemory-local-dev
+
+helm-uninstall-local-dev: ## Uninstall the local development Helm release
+	helm uninstall somafractalmemory-local-dev -n somafractalmemory-local-dev
+
+helm-install-prod-ha: ## Install the Helm chart with production HA values
+	helm upgrade --install somafractalmemory-prod-ha ./helm -f ./helm/values-prod-ha.yaml --create-namespace -n somafractalmemory-prod-ha
+
+helm-uninstall-prod-ha: ## Uninstall the production HA Helm release
+	helm uninstall somafractalmemory-prod-ha -n somafractalmemory-prod-ha

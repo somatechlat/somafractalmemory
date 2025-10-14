@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-somafractalmemory
+  labels:
+    app: somafractalmemory
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: somafractalmemory
+  template:
+    metadata:
+      labels:
+        app: somafractalmemory
+    spec:
+      containers:
+        - name: somafractalmemory
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            - name: POSTGRES_URL
+              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:5432/somafractalmemory"
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis:6379/0"
+            - name: QDRANT_URL
+              value: "http://{{ .Release.Name }}-qdrant:6333"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "{{ .Release.Name }}-kafka:9092"
+            - name: SOMA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-somafractalmemory-secrets
+                  key: SOMA_API_TOKEN
