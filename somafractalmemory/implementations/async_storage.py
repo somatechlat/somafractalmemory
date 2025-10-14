@@ -50,14 +50,15 @@ class AsyncRedisKeyValueStore:
 
     async def scan_iter(self, pattern: str) -> AsyncIterator[str]:
         async for k in self.client.scan_iter(match=pattern):
-            if isinstance(k, bytes | bytearray):
+            if isinstance(k, (bytes | bytearray)):
                 yield k.decode("utf-8")
             else:
                 yield str(k)
 
     async def hgetall(self, key: str) -> dict[bytes, bytes]:
         res = await self.client.hgetall(key)
-        return {k: v for k, v in res.items() if isinstance(k, bytes | bytearray)}
+        # normalize only byte-like keys/values into bytes; keep other types as-is
+        return {k: v for k, v in res.items() if isinstance(k, (bytes | bytearray))}
 
     async def hset(self, key: str, mapping: dict[bytes, bytes]) -> None:
         await self.client.hset(key, mapping=mapping)
@@ -94,7 +95,7 @@ class AsyncPostgresKeyValueStore:
     async def set(self, key: str, value: bytes) -> None:
         async with self._pool.acquire() as conn:
             # normalize value to a JSON string for storage
-            if isinstance(value, bytes | bytearray):
+            if isinstance(value, (bytes | bytearray)):
                 val_to_store = value.decode("utf-8")
             elif isinstance(value, dict):
                 val_to_store = json.dumps(value)
@@ -136,7 +137,7 @@ class AsyncPostgresKeyValueStore:
 
     async def hset(self, key: str, mapping: dict[bytes, bytes]) -> None:
         obj = {
-            k.decode("utf-8"): json.loads(v) if isinstance(v, bytes | bytearray) else v
+            k.decode("utf-8"): json.loads(v) if isinstance(v, (bytes | bytearray)) else v
             for k, v in mapping.items()
         }
         await self.set(key, json.dumps(obj).encode("utf-8"))

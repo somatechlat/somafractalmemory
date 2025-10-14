@@ -23,15 +23,6 @@ class IGraphStore(ABC):
         pass
 
     @abstractmethod
-    def find_shortest_path(
-        self,
-        from_coord: tuple[float, ...],
-        to_coord: tuple[float, ...],
-        link_type: str | None = None,
-    ) -> list[Any]:
-        pass
-
-    @abstractmethod
     def remove_memory(self, coordinate: tuple[float, ...]):
         pass
 

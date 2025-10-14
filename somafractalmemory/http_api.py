@@ -543,6 +543,9 @@ class StatsResponse(BaseModel):
     total_memories: int
     episodic: int
     semantic: int
+    vector_count: int | None = None
+    namespaces: dict[str, dict[str, int]] | None = None
+    vector_collections: dict[str, int] | None = None
 
 
 class HealthResponse(BaseModel):

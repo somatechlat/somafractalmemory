@@ -7,8 +7,14 @@ used in v2 to avoid insecure deserialization vectors.
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
+
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional dependency at runtime
+    np = None  # type: ignore
 
 
 def serialize(obj: Any) -> bytes:
@@ -35,7 +41,24 @@ def deserialize(raw: bytes) -> Any:
 
     if text is not None:
         try:
-            return json.loads(text)
+            obj = json.loads(text)
+
+            # post-process: if obj looks like a numpy envelope, reconstruct
+            def _reconstruct(o):
+                if isinstance(o, dict) and o.get("__np__") is True:
+                    if np is None:
+                        raise ValueError("numpy is required to deserialize matrix payloads")
+                    data = base64.b64decode(o["data"])
+                    dtype = np.dtype(o["dtype"])
+                    arr = np.frombuffer(data, dtype=dtype).reshape(tuple(o["shape"]))
+                    return arr
+                if isinstance(o, dict):
+                    return {k: _reconstruct(v) for k, v in o.items()}
+                if isinstance(o, list):
+                    return [_reconstruct(x) for x in o]
+                return o
+
+            return _reconstruct(obj)
         except Exception:
             pass
 
@@ -51,6 +74,17 @@ def _json_default(o: Any):
     if hasattr(o, "isoformat"):
         try:
             return o.isoformat()
+        except Exception:
+            pass
+    if np is not None and isinstance(o, np.ndarray):
+        # encode numpy array as base64 with dtype and shape metadata
+        try:
+            return {
+                "__np__": True,
+                "data": base64.b64encode(o.tobytes()).decode("utf-8"),
+                "dtype": o.dtype.name,
+                "shape": o.shape,
+            }
         except Exception:
             pass
     if isinstance(o, bytes):

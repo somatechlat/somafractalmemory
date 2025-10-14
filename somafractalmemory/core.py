@@ -15,9 +15,11 @@ from cryptography.fernet import Fernet
 from common.config.settings import load_settings
 import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Histogram
-from sklearn.ensemble import IsolationForest
 import structlog
 from transformers import AutoModel, AutoTokenizer
+import urllib.request
+import urllib.error
+import urllib.parse
 
 from langfuse import Langfuse
 
@@ -270,7 +272,8 @@ class SomaFractalMemoryEnterprise:
                 self.tokenizer = None
                 self.model = None
 
-        self.anomaly_detector = IsolationForest(contamination=0.1, random_state=42)
+        # anomaly_detector removed: cognitive functions are migrated out of the data plane
+        self.anomaly_detector = None
         self.cipher = Fernet(encryption_key or Fernet.generate_key()) if encryption_key else None
 
         self.registry = CollectorRegistry()
@@ -712,12 +715,99 @@ class SomaFractalMemoryEnterprise:
                         vector_count += 1
             except Exception:
                 vector_count = 0
+            # Build per-namespace breakdown via Postgres aggregation when available
+            namespaces: dict[str, dict[str, int]] = {}
+            try:
+                if pg_store is not None:
+
+                    def _nsagg(cur):
+                        cur.execute(
+                            SQL(
+                                "SELECT split_part(key,':',1) AS namespace, COUNT(*) AS total, SUM(CASE WHEN (value->>'memory_type')='episodic' THEN 1 ELSE 0 END) AS episodic, SUM(CASE WHEN (value->>'memory_type')='semantic' THEN 1 ELSE 0 END) AS semantic FROM {} WHERE key LIKE %s GROUP BY namespace;"
+                            ).format(Identifier(pg_store._TABLE_NAME)),
+                            (data_like,),
+                        )
+                        return cur.fetchall()
+
+                    rows = pg_store._execute(_nsagg)
+                    for ns, total, eps, sem in rows:
+                        namespaces[ns] = {
+                            "total": int(total or 0),
+                            "episodic": int(eps or 0),
+                            "semantic": int(sem or 0),
+                        }
+                else:
+                    # Fallback: build namespace map by scanning keys
+                    for key in self.kv_store.scan_iter(data_like):
+                        ns = key.split(":", 1)[0]
+                        namespaces.setdefault(ns, {"total": 0, "episodic": 0, "semantic": 0})
+                        namespaces[ns]["total"] += 1
+                        raw = self.kv_store.get(key)
+                        if not raw:
+                            continue
+                        try:
+                            obj = deserialize(raw)
+                        except Exception:
+                            continue
+                        mt = obj.get("memory_type")
+                        if mt == MemoryType.EPISODIC.value:
+                            namespaces[ns]["episodic"] += 1
+                        elif mt == MemoryType.SEMANTIC.value:
+                            namespaces[ns]["semantic"] += 1
+            except Exception:
+                namespaces = {}
+
+            # Obtain vector counts per collection by querying Qdrant HTTP API
+            vector_collections: dict[str, int] = {}
+            try:
+                qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+                base = qdrant_url.rstrip("/")
+                try:
+                    with urllib.request.urlopen(f"{base}/collections", timeout=3) as resp:
+                        body = resp.read().decode("utf-8")
+                        collections_info = json.loads(body)
+                except Exception:
+                    collections_info = {}
+
+                collections = (
+                    collections_info.get("result", {}).get("collections", [])
+                    if isinstance(collections_info, dict)
+                    else []
+                )
+                for c in collections:
+                    name = c.get("name") if isinstance(c, dict) else None
+                    if not name:
+                        continue
+                    try:
+                        quoted = urllib.parse.quote(name, safe="")
+                        with urllib.request.urlopen(
+                            f"{base}/collections/{quoted}", timeout=3
+                        ) as r2:
+                            info = r2.read().decode("utf-8")
+                            info_json = json.loads(info)
+                    except Exception:
+                        info_json = {}
+                    pts = None
+                    if isinstance(info_json, dict):
+                        pts = (
+                            info_json.get("result", {}).get("points_count")
+                            or info_json.get("result", {}).get("vectors_count")
+                            or info_json.get("result", {}).get("points", {}).get("count")
+                        )
+                    try:
+                        vector_collections[name] = int(pts or 0)
+                    except Exception:
+                        vector_collections[name] = 0
+            except Exception:
+                vector_collections = {}
 
             return {
                 "total_memories": int(kv_count or 0),
                 "episodic": int(episodic),
                 "semantic": int(semantic),
                 "vector_count": int(vector_count),
+                "namespaces": namespaces,
+                "vector_collections": vector_collections,
             }
         except Exception:
             # On error, fall back to previous behaviour (best-effort in-memory scan)

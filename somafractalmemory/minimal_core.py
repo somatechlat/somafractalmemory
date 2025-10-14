@@ -40,14 +40,5 @@ class MinimalSoma:
         self._coords.append(v.copy())
         self._payloads.append(dict(payload))
 
-    def recall(self, query: tuple[float, ...], top_k: int = 3) -> list[dict]:
-        if not self._coords:
-            return []
-        q = self._to_vec(query)
-        stack = np.vstack(self._coords)
-        dists = np.linalg.norm(stack - q.reshape(1, -1), axis=1)
-        idx = np.argsort(dists)[:top_k]
-        return [self._payloads[i] for i in idx]
-
     def all(self) -> list[dict]:
         return list(self._payloads)
