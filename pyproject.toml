@@ -38,13 +38,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-hash-embeddings = ["transformers", "Pillow", "tenacity"]
+hash-embeddings = ["transformers", "Pillow", "tenacity", "torch", "torchvision", "torchaudio"]
 api = [
   "fastapi",
   "uvicorn",
   "opentelemetry-sdk",
   "opentelemetry-instrumentation-fastapi",
   "jsonschema",
+  "httpx",
+]
+events = [
+    "aiokafka",
+    "confluent-kafka",
 ]
 dev = [
   "pytest",
@@ -54,6 +59,7 @@ dev = [
   "bandit",
   "build",
   "alembic>=1.14.0",
+  "requests",
 ]
 ops = [
   "alembic>=1.14.0",

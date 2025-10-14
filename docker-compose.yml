@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: soma
+      POSTGRES_DB: somafractalmemory
+    container_name: somafractalmemory_postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    profiles:
+      - core
+
+  redis:
+    image: redis:7
+    container_name: somafractalmemory_redis
+    ports:
+      - "6381:6379"
+    profiles:
+      - core
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: somafractalmemory_qdrant
+    ports:
+      - "6333:6333"
+    profiles:
+      - core
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: somafractalmemory_kafka
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    profiles:
+      - core
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: somafractalmemory_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    profiles:
+      - core
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: somafractalmemory_api
+    ports:
+      - "9595:9595"
+    environment:
+      POSTGRES_URL: postgresql://soma:soma@postgres:5432/somafractalmemory
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SOMA_API_TOKEN: devtoken
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - kafka
+    volumes:
+      - ./:/app:delegated
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9595/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - core
+
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: somafractalmemory_consumer
+    command: python -m somafractalmemory.workers.vector_indexer
+    environment:
+      POSTGRES_URL: postgresql://soma:soma@postgres:5432/somafractalmemory
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      - kafka
+      - postgres
+      - qdrant
+    profiles:
+      - consumer
+
+volumes:
+  pgdata:
+    driver: local

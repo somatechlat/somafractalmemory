@@ -7,31 +7,73 @@ This document provides a high-level view of **SomaFractalMemory** (SFM): the cor
 ## Component Diagram (conceptual)
 ```mermaid
 flowchart LR
-   Client[CLI / FastAPI] -->|Factory| Factory(create_memory_system)
-   Factory --> Core[SomaFractalMemoryEnterprise]
-   Core --> KV[(Postgres + Redis)]
-   Core --> Vec[(Qdrant or Fast Core)]
-   Core --> Graph[(NetworkX Graph)]
-   Core -->|publish| Kafka[(Kafka broker)]
-   Consumer[Worker Consumers] -->|read| Kafka
-   Consumer -->|upsert| KV
-   Consumer -->|index| Vec
+   subgraph "Client Layer"
+      CLI[CLI]
+      FastAPI[FastAPI]
+      gRPC[gRPC Server]
+   end
+
+   subgraph "Core System"
+      Factory(create_memory_system)
+      Core[SomaFractalMemoryEnterprise]
+      FastCore[Fast Core Cache]
+   end
+
+   subgraph "Storage Layer"
+      HybridStore[PostgresRedisHybridStore]
+      Postgres[(Postgres)]
+      Redis[(Redis)]
+      Qdrant[(Qdrant)]
+      GraphStore[NetworkXGraphStore]
+   end
+
+   subgraph "Eventing Layer"
+      Kafka[(Kafka broker)]
+      Consumer[Worker Consumers]
+   end
+
+   ClientLayer --> Factory
+   Factory --> Core
+   Core --> HybridStore
+   Core --> Qdrant
+   Core --> GraphStore
+   Core --> FastCore
+   HybridStore --> Postgres
+   HybridStore --> Redis
+   Core -- publishes events --> Kafka
+   Consumer -- consumes events --> Kafka
+   Consumer -- writes to --> HybridStore
+   Consumer -- indexes --> Qdrant
+
 ```
 
 ---
 
 ## Data Flow Narrative
-1. **Entry points** – Applications call the factory from the CLI (`somafractalmemory/cli.py`) or the FastAPI service (`somafractalmemory/http_api.py`). Both paths resolve to `create_memory_system(mode, namespace, config)`.
-2. **Factory wiring** – The factory always resolves to `MemoryMode.EVENTED_ENTERPRISE`. Configuration toggles (for example `redis.testing=True` or `vector.backend="memory"`) can swap specific backends to in-memory implementations for tests, but the mode itself never changes.
+1. **Entry points** – Applications call the factory from the CLI (`somafractalmemory/cli.py`), the FastAPI service (`somafractalmemory/http_api.py`), or the gRPC server (`somafractalmemory/grpc_server.py`). All paths resolve to `create_memory_system(mode, namespace, config)`.
+2. **Factory wiring** – The factory always resolves to `MemoryMode.EVENTED_ENTERPRISE`. It instantiates the appropriate storage backends, including the `PostgresRedisHybridStore`, `QdrantVectorStore`, and `NetworkXGraphStore`.
 3. **Core orchestration** – `SomaFractalMemoryEnterprise` owns the public API (`store_memory`, `recall`, graph helpers, decay, bulk import/export). It:
    * Serialises payloads to the KV store (JSON-first) and writes metadata for pruning.
    * Embeds payloads using a HuggingFace transformer (falls back to hash-based vectors). Embeddings are L2-normalized.
-   * Upserts vectors into Qdrant (or an in-memory store in test mode). When the `SFM_FAST_CORE` flag is enabled, a parallel flat in-process slab (contiguous float32 arrays) is appended for O(n) scan with efficient NumPy dot products, bypassing the external vector store during recall.
-   * Keeps an in-memory graph via `NetworkXGraphStore` for semantic links.
+   * Upserts vectors into Qdrant.
+   * Manages an in-memory graph via `NetworkXGraphStore` for semantic links.
    * Optionally publishes events through `eventing/producer.py` when `eventing_enabled` is true.
 4. **Background work** – A decay thread prunes fields based on configured thresholds; WAL reconciliation keeps vector upserts consistent if Qdrant fails temporarily.
-5. **Event consumers** – `scripts/run_consumers.py` subscribes to `memory.events`, upserts canonical records via `workers/kv_writer.py`, and indexes vectors via `workers/vector_indexer.py`. Both phases emit Prometheus metrics. The fast core slab is a purely in-process acceleration layer; events remain source-of-truth for durable indexing.
-6. **Observability** – API and consumers expose Prometheus metrics; OpenTelemetry instrumentation hooks psycopg2 and Qdrant at import time; Langfuse telemetry is optional and becomes a no-op when the package is missing.
+5. **Event consumers** – The consumer workers subscribe to `memory.events`, upsert canonical records into the `PostgresRedisHybridStore`, and index vectors in Qdrant. This ensures that the vector store is eventually consistent with the primary KV store.
+6. **Observability** – API and consumers expose Prometheus metrics; OpenTelemetry instrumentation hooks psycopg2 and Qdrant at import time.
+
+---
+
+## Fast Core
+The "Fast Core" is an in-process, in-memory cache designed to accelerate recall operations. It is enabled by setting the `SFM_FAST_CORE=1` environment variable.
+
+When enabled, the `SomaFractalMemoryEnterprise` instance maintains NumPy arrays (slabs) for:
+- **Vectors**: A contiguous float32 array of embeddings.
+- **Importance Scores**: A float32 array of normalized importance scores.
+- **Timestamps**: A float64 array of creation timestamps.
+- **Payloads**: A list of dictionaries containing the memory payloads.
+
+This allows for O(n) scans with highly efficient NumPy dot products, bypassing the need for a network call to an external vector store like Qdrant during recall. The Fast Core is a purely in-process acceleration layer; events remain the source-of-truth for durable indexing in Qdrant.
 
 ---
 
@@ -45,6 +87,7 @@ flowchart LR
 | Storage Implementations | `somafractalmemory/implementations/storage.py` | Redis/Postgres/Qdrant clients, plus an in-memory vector store for tests. |
 | Eventing | `eventing/producer.py`, `workers/*` | Schema-validated event builder, Kafka producer, and consumer workers. |
 | API Service | `somafractalmemory/http_api.py` | FastAPI surface used for local testing and documentation builds. |
+| gRPC Service | `somafractalmemory/grpc_server.py` | gRPC server for high-performance, low-latency communication. |
 | CLI | `somafractalmemory/cli.py` | Command-line interface wrapping the same factory as the API. |
 
 ---
@@ -52,7 +95,7 @@ flowchart LR
 ## Component Inventory
 | Layer | Responsibilities | Code anchors | Operational notes |
 |-------|------------------|--------------|-------------------|
-| **Ingress** | FastAPI, CLI, and async gRPC server all invoke the enterprise runtime. | `somafractalmemory/http_api.py`, `somafractalmemory/cli.py`, `somafractalmemory/async_grpc_server.py` | HTTP surface enforces bearer auth & rate limiting; gRPC exposes the same metrics/health checks. |
+| **Ingress** | FastAPI, CLI, and async gRPC server all invoke the enterprise runtime. | `somafractalmemory/http_api.py`, `somafractalmemory/cli.py`, `somafractalmemory/grpc_server.py` | HTTP surface enforces bearer auth & rate limiting; gRPC exposes the same metrics/health checks. |
 | **Configuration** | Load and validate settings, wire concrete stores. | `common/config/settings.py`, `somafractalmemory/factory.py` | `MemoryMode.EVENTED_ENTERPRISE` is enforced; invalid modes raise before runtime wiring. |
 | **Enterprise core** | Store/recall flows, decay, export/import, WAL reconciliation, graph helpers. | `somafractalmemory/core.py` | Maintains adaptive importance normaliser and sliceable hooks for before/after store & recall. |
 | **Persistence** | Durable KV + cache, vector storage, graph metadata. | `somafractalmemory/implementations/storage.py`, `somafractalmemory/implementations/graph.py` | Postgres remains canonical; Redis is optional (falls back to Postgres locks); Qdrant can be swapped for the in-memory vector store in tests. |

@@ -21,29 +21,28 @@ pip install -e .[api,events,dev]
 ---
 
 ## 2. Start Supporting Services (Docker Compose)
+The recommended way to start the complete stack is to use the automatic port assignment script. This will prevent conflicts with any other services running on your machine.
+
+### One-Command Evented Enterprise Stack:
 ```bash
-# Recommended (profile-driven): start the core local developer stack (API, consumer, Kafka, Postgres, Redis, Qdrant)
-docker compose --profile core up -d
-
-# Start shared infra only (useful when multiple apps reuse the same infra)
-docker compose --profile shared up -d
-
-# Start only the consumer workers (optional)
-docker compose --profile consumer up -d somafractalmemory_kube
-
-# Optional: start monitoring or ops when needed
-docker compose --profile monitoring up -d
-docker compose --profile ops up -d
-
-# Backwards compatible: existing Make targets retained for quick ergonomics
+./scripts/assign_ports_and_start.sh
+# OR
 make setup-dev
-make compose-consumer-up
 ```
-The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker in KRaft mode), the FastAPI service on `http://localhost:9595`, and an auxiliary API on `http://localhost:8888`. Configuration lives directly in `docker-compose.yml`; no `.env` copy is required.
 
-Note: this repository exposes two clear Docker modes:
-- LOCAL DEV FULL — use `make setup-dev` or `./scripts/assign_ports_and_start.sh` to bring up the full local stack. Memory API remains fixed on port 9595; infra ports are auto-assigned when conflicts occur and written to `.env`.
-- LOCAL SHARED PROD — use `docker compose --profile shared up -d` to start infra-only services that can be shared across app instances. Start the API separately in app-only mode to connect to the shared infra.
+This script will:
+- ✅ **Automatically detect and resolve port conflicts**
+- ✅ Assign free ports to all infrastructure services
+- ✅ Start complete evented enterprise stack (API + Consumer + PostgreSQL + Redis + Qdrant + Kafka)
+- ✅ Display final port assignments
+- ✅ Ensure **zero conflicts** with existing services
+
+### Server Access:
+- **Memory API**: http://localhost:9595 (fixed)
+- **Health**: http://localhost:9595/healthz
+- **Stats**: http://localhost:9595/stats
+- **API Docs**: http://localhost:9595/docs
+- **Infrastructure ports**: Auto-assigned (displayed at startup)
 
 Health check and teardown:
 ```bash
@@ -105,24 +104,6 @@ Set `SOMA_API_TOKEN` in the API service environment (edit `docker-compose.yml` o
 Docs and metrics:
 - Swagger UI: <http://localhost:9595/docs>
 - Prometheus metrics: <http://localhost:9595/metrics>
-
-Kubernetes alternative (dev):
-- Use the Helm chart dev values to run the API on 9797 and expose it on your host via NodePort 30797. Then hit `http://127.0.0.1:30797/healthz`.
- - Canonical entrypoint:
-   ```bash
-   make setup-dev-k8s
-   make helm-dev-health
-   ```
- - Before deploying, create the API secret or point the chart at an existing one. Example (self-managed secret):
-    ```bash
-    kubectl create secret generic soma-memory-secrets \
-      --from-literal=SOMA_API_TOKEN=changeme \
-      --from-literal=POSTGRES_URL=postgresql://postgres:postgres@soma-memory-somafractalmemory-postgres:5432/somamemory?sslmode=require
-    ```
- - Inspect resolved ports and endpoints:
-   ```bash
-   make settings
-   ```
 
 ---
 
