@@ -21,6 +21,8 @@ from transformers import AutoModel, AutoTokenizer
 
 from langfuse import Langfuse
 
+from psycopg2.sql import SQL, Identifier
+
 
 from .interfaces.graph import IGraphStore
 from .interfaces.storage import IKeyValueStore, IVectorStore
@@ -635,16 +637,100 @@ class SomaFractalMemoryEnterprise:
         return sorted(mems, key=lambda m: m.get("importance", 0), reverse=True)[:n]
 
     def memory_stats(self) -> Dict[str, Any]:
-        all_mems = self.get_all_memories()
-        return {
-            "total_memories": len(all_mems),
-            "episodic": sum(
-                1 for m in all_mems if m.get("memory_type") == MemoryType.EPISODIC.value
-            ),
-            "semantic": sum(
-                1 for m in all_mems if m.get("memory_type") == MemoryType.SEMANTIC.value
-            ),
-        }
+        # Prefer authoritative counts from the canonical Postgres store when
+        # available (avoids double-counting across Redis cache + Postgres).
+        try:
+            kv_count = None
+            episodic = 0
+            semantic = 0
+
+            # Pattern for data keys
+            data_like = f"%:data"
+
+            # If we have a Postgres-backed store available, query it directly
+            pg_store = None
+            if (
+                hasattr(self.kv_store, "pg_store")
+                and getattr(self.kv_store, "pg_store") is not None
+            ):
+                pg_store = self.kv_store.pg_store
+
+            if pg_store is not None:
+                # Count total data keys in Postgres
+                def _count(cur):
+                    cur.execute(
+                        SQL("SELECT COUNT(*) FROM {} WHERE key LIKE %s;").format(
+                            Identifier(pg_store._TABLE_NAME)
+                        ),
+                        (data_like,),
+                    )
+                    return cur.fetchone()[0]
+
+                kv_count = int(pg_store._execute(_count) or 0)
+
+                # Fetch values and compute episodic/semantic breakdown directly from JSONB
+                def _fetch(cur):
+                    cur.execute(
+                        SQL("SELECT value FROM {} WHERE key LIKE %s;").format(
+                            Identifier(pg_store._TABLE_NAME)
+                        ),
+                        (data_like,),
+                    )
+                    return [r[0] for r in cur.fetchall()]
+
+                rows = pg_store._execute(_fetch)
+                for val in rows:
+                    if isinstance(val, dict):
+                        mt = val.get("memory_type")
+                        if mt == MemoryType.EPISODIC.value:
+                            episodic += 1
+                        elif mt == MemoryType.SEMANTIC.value:
+                            semantic += 1
+            else:
+                # Fall back to scanning the kv_store interface (unique keys)
+                keys = set(self.kv_store.scan_iter(data_like))
+                kv_count = len(keys)
+                for key in keys:
+                    raw = self.kv_store.get(key)
+                    if not raw:
+                        continue
+                    try:
+                        obj = deserialize(raw)
+                    except Exception:
+                        continue
+                    mt = obj.get("memory_type")
+                    if mt == MemoryType.EPISODIC.value:
+                        episodic += 1
+                    elif mt == MemoryType.SEMANTIC.value:
+                        semantic += 1
+
+            # Optionally include a vector count (Qdrant) for visibility
+            vector_count = 0
+            try:
+                if hasattr(self.vector_store, "scroll"):
+                    for _ in self.vector_store.scroll():
+                        vector_count += 1
+            except Exception:
+                vector_count = 0
+
+            return {
+                "total_memories": int(kv_count or 0),
+                "episodic": int(episodic),
+                "semantic": int(semantic),
+                "vector_count": int(vector_count),
+            }
+        except Exception:
+            # On error, fall back to previous behaviour (best-effort in-memory scan)
+            all_mems = self.get_all_memories()
+            return {
+                "total_memories": len(all_mems),
+                "episodic": sum(
+                    1 for m in all_mems if m.get("memory_type") == MemoryType.EPISODIC.value
+                ),
+                "semantic": sum(
+                    1 for m in all_mems if m.get("memory_type") == MemoryType.SEMANTIC.value
+                ),
+            }
 
     # --------- Hooks & Agent helpers ---------
     def set_hook(self, event: str, func):
