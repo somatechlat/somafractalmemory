@@ -157,17 +157,18 @@ def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
     return {"host": host, "port": port}
 
 
-memory_mode = _resolve_memory_mode()
+mem = None
+_RATE_LIMITER = None
 
-# Load centralized settings (optional). Fallback to environment if not available.
-settings = None
-namespace_default = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
-try:
-    if load_settings:
-        settings = load_settings()
-        namespace_default = getattr(settings, "namespace", namespace_default)
-except Exception:
-    settings = None
+
+def _resolve_memory_mode() -> MemoryMode:
+    mode_env = (os.getenv("MEMORY_MODE") or MemoryMode.EVENTED_ENTERPRISE.value).lower()
+    if mode_env != MemoryMode.EVENTED_ENTERPRISE.value:
+        logger.warning(
+            "Unsupported memory mode requested; defaulting to evented_enterprise",
+            requested_mode=mode_env,
+        )
+    return MemoryMode.EVENTED_ENTERPRISE
 
 
 def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
@@ -188,21 +189,147 @@ def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
     return {"url": os.getenv("POSTGRES_URL")}  # final fallback (None or value)
 
 
-config: dict[str, Any] = {
-    "postgres": _postgres_config(settings),
-    "vector": {"backend": "qdrant"},
-    "qdrant": _qdrant_config(settings),
-}
+def _redis_config(settings: Any | None = None) -> dict[str, Any]:
+    """Build a Redis connection dict.
 
-redis_cfg = _redis_config(settings)
-if redis_cfg:
-    config["redis"] = redis_cfg
+    Preference order:
+    1. Values from ``SMFSettings.infra.redis`` (host) and optional ``REDIS_PORT``/``REDIS_DB`` env vars.
+    2. Legacy ``REDIS_URL`` parsing.
+    3. Individual ``REDIS_HOST``/``REDIS_PORT``/``REDIS_DB`` env vars.
+    """
+    cfg: dict[str, Any] = {"testing": False}
+    # Use the DNS name from the shared infra settings if available
+    if settings and getattr(settings, "infra", None):
+        cfg["host"] = settings.infra.redis
+    # Fallback to explicit URL parsing
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        parsed = urlparse(redis_url)
+        if parsed.hostname:
+            cfg["host"] = parsed.hostname
+        if parsed.port:
+            cfg["port"] = parsed.port
+        path = parsed.path.lstrip("/")
+        if path.isdigit():
+            cfg["db"] = int(path)
+    # Individual env vars override previous values
+    if host := os.getenv("REDIS_HOST"):
+        cfg["host"] = host
+    if port := os.getenv("REDIS_PORT"):
+        try:
+            cfg["port"] = int(port)
+        except ValueError:
+            pass
+    if db := os.getenv("REDIS_DB"):
+        try:
+            cfg["db"] = int(db)
+        except ValueError:
+            pass
+    return cfg
 
-eventing_env = os.getenv("EVENTING_ENABLED")
-if eventing_env is not None:
-    config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
 
-mem = create_memory_system(memory_mode, namespace_default, config=config)
+def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
+    """Return Qdrant connection parameters.
+
+    If a full URL is provided via ``QDRANT_URL`` we honour it.
+    Otherwise we build ``host``/``port`` using either the shared infra DNS name
+    (``settings.infra.qdrant`` – not defined explicitly, so we fall back to the
+    ``QDRANT_HOST`` env var) and the ``QDRANT_PORT`` env var.
+    """
+    url = os.getenv("QDRANT_URL")
+    if url:
+        return {"url": url}
+    # Prefer centralized settings DNS when available, else fall back to env or default.
+    host = getattr(getattr(settings, "infra", None), "qdrant", None) or os.getenv(
+        "QDRANT_HOST", "qdrant"
+    )
+    port = int(os.getenv("QDRANT_PORT", "6333"))
+    return {"host": host, "port": port}
+
+
+def _log_startup_config(memory_mode, namespace_default, config, redis_cfg):
+    q = config.get("qdrant", {})
+    q_loc = q.get("url") or f"{q.get('host','')}:{q.get('port','')}"
+    logger.info(
+        "api startup",
+        mode=memory_mode.value,
+        namespace=namespace_default,
+        postgres=_redact_dsn(config.get("postgres", {}).get("url")),
+        redis_host=redis_cfg.get("host"),
+        qdrant=q_loc,
+        eventing_enabled=config.get("eventing", {}).get("enabled", True),
+    )
+
+
+def _build_rate_limiter(cfg: dict[str, Any]) -> object:
+    if _RATE_LIMIT_MAX <= 0 or _RATE_WINDOW <= 0:
+        return _AlwaysAllowRateLimiter()
+    fallback = _InMemoryRateLimiter(window=_RATE_WINDOW, max_requests=_RATE_LIMIT_MAX)
+    if not cfg or cfg.get("testing") or cfg.get("enabled") is False:
+        return fallback
+    if redis is None:
+        logger.warning("redis package unavailable; using in-memory rate limiter")
+        return fallback
+    try:
+        client = redis.Redis(
+            host=cfg.get("host", "localhost"),
+            port=int(cfg.get("port", 6379)),
+            db=int(cfg.get("db", 0)),
+            password=cfg.get("password"),
+            ssl=bool(cfg.get("ssl", False)),
+            socket_connect_timeout=float(cfg.get("socket_connect_timeout", 1.5)),
+            socket_timeout=float(cfg.get("socket_timeout", 1.5)),
+            retry_on_timeout=True,
+        )
+        client.ping()
+        return _RedisRateLimiter(
+            client=client,
+            window=_RATE_WINDOW,
+            max_requests=_RATE_LIMIT_MAX,
+            fallback=fallback,
+        )
+    except Exception as exc:  # pragma: no cover - network/path dependent
+        logger.warning(
+            "Unable to initialise Redis rate limiter; using in-memory fallback",
+            error=str(exc),
+        )
+        return fallback
+
+
+try:
+    memory_mode = _resolve_memory_mode()
+
+    # Load centralized settings (optional). Fallback to environment if not available.
+    settings = None
+    namespace_default = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+    try:
+        if load_settings:
+            settings = load_settings()
+            namespace_default = getattr(settings, "namespace", namespace_default)
+    except Exception:
+        settings = None
+
+    config: dict[str, Any] = {
+        "postgres": _postgres_config(settings),
+        "vector": {"backend": "qdrant"},
+        "qdrant": _qdrant_config(settings),
+    }
+
+    redis_cfg = _redis_config(settings)
+    if redis_cfg:
+        config["redis"] = redis_cfg
+
+    eventing_env = os.getenv("EVENTING_ENABLED")
+    if eventing_env is not None:
+        config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
+
+    mem = create_memory_system(memory_mode, namespace_default, config=config)
+    _log_startup_config(memory_mode, namespace_default, config, redis_cfg)
+    _RATE_LIMITER = _build_rate_limiter(redis_cfg)
+except Exception as e:
+    logger.error(f"Error during initialization: {e}", exc_info=True)
+    mem = None
+    _RATE_LIMITER = None
 
 
 def _redact_dsn(url: str | None) -> str | None:

@@ -1,13 +1,12 @@
 # Soma Fractal Memory Documentation
 
-Welcome to the documentation portal for **SomaFractalMemory (SFM)**. This site mirrors the repository state and links directly to the configuration, architecture, and API references you will use in day-to-day development.
+Welcome to the official documentation for Soma Fractal Memory, a modular, agent-centric memory system written in Python.
 
-- **Need the full project overview?** See the `README.md` in the repository root for the canonical introduction, architecture diagram, and installation instructions.
-- **Ready to dive in?** Start with the [Quickstart](QUICKSTART.md) to spin up the stack and store your first memories.
-- **Looking for deeper context?** Use the navigation bar to jump to architecture notes, configuration references, operational runbooks, and the API surface.
+## Table of Contents
 
-All pages are generated from the checked-in Markdown files—no manual steps are required beyond keeping the docs up to date when code changes. If you spot discrepancies, update both the documentation and the relevant code/tests in the same change.
-
-> WARNING
->
-> This project does NOT allow mocking, mimicking, or changing production values for tests. All agents must operate against real configurations and real services. Any test that requires altering live settings is prohibited. Use dedicated test environments and real data fixtures instead.
+*   **[Developer User Manual](DEVELOPER_MANUAL.md)**: The complete, enterprise-grade guide for developers.
+*   **[API Reference](api.md)**: Detailed information about the API endpoints.
+*   **[Roadmap](ROADMAP.md)**: The high-level roadmap for the project.
+*   **[Architecture Roadmap](ARCHITECTURE_ROADMAP.md)**: A detailed breakdown of the engineering sprints and tasks.
+*   **[Configuration](CONFIGURATION.md)**: A detailed list of all configuration options.
+*   **[Deployment](DEPLOYMENT.md)**: A comprehensive guide to deploying the application.

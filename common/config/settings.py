@@ -23,7 +23,7 @@ try:  # ``yaml`` is optional; config files fall back to JSON when absent.
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     yaml = None
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -87,13 +87,13 @@ class SMFSettings(SomaBaseSettings):
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     kafka: KafkaSettings = Field(default_factory=KafkaSettings)
 
-    @validator("postgres_url")
+    @field_validator("postgres_url")
     def postgres_url_must_be_valid(cls, v):
         if not v.startswith("postgresql://"):
             raise ValueError("Invalid postgres_url scheme")
         return v
 
-    @validator("qdrant_host")
+    @field_validator("qdrant_host")
     def qdrant_host_must_be_valid(cls, v):
         if "://" in v:
             raise ValueError("qdrant_host should not include a scheme")
