@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: soma
+      POSTGRES_DB: somafractalmemory
+    # Do not bind to a fixed host port for development; let Docker assign automatically
+    # Container name uses the somafractalmemory_ prefix per request
+    container_name: somafractalmemory_postgres
+    ports:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    # dynamic host port mapping to avoid conflicts on developer machines
+    container_name: somafractalmemory_redis
+    ports:
+      - "6379"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    # let Docker pick the host port for Qdrant
+    container_name: somafractalmemory_qdrant
+    ports:
+      - "6333"
+
+  memory-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ENABLE_REAL_EMBEDDINGS: '1'
+    environment:
+      # Prefer full DSN to ensure the app uses the in-network Postgres instance
+      POSTGRES_URL: postgresql://soma:soma@postgres:5432/somafractalmemory
+      # Useful fallbacks; some code paths read REDIS_URL / QDRANT_URL
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      # Compatibility: also set individual host/port envs
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: soma
+      POSTGRES_DB: somafractalmemory
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      SOMA_API_TOKEN: devtoken
+    # By default bind the API to host port 9595. Override by setting HOST_API_PORT
+    # Example: HOST_API_PORT=0 docker compose -f docker-compose.development.yml up
+    container_name: somafractalmemory_memory-api
+    # Use dynamic host port assignment so Docker picks a free host port
+    ports:
+      - "9595"
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+    volumes:
+      - ./:/app:delegated
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9595/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    driver: local
