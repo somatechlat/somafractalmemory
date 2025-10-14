@@ -21,11 +21,6 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
-from langfuse import Langfuse
-
-from psycopg2.sql import SQL, Identifier
-
-
 from .interfaces.graph import IGraphStore
 from .interfaces.storage import IKeyValueStore, IVectorStore
 from .serialization import deserialize, serialize
@@ -92,47 +87,6 @@ class SomaFractalMemoryEnterprise:
             List of coordinates representing the shortest path.
         """
         return self.graph_store.find_shortest_path(from_coord, to_coord, link_type)
-
-    def report_outcome(self, coordinate: Tuple[float, ...], outcome: Any) -> Dict[str, Any]:
-        """
-        Report the actual outcome for a memory and update any stored prediction feedback.
-
-        If a predicted outcome was recorded and differs from the reported outcome, a corrective
-        semantic memory is created.
-
-        Parameters
-        ----------
-        coordinate : Tuple[float, ...]
-            The coordinate of the memory.
-        outcome : Any
-            The actual outcome to report.
-
-        Returns
-        -------
-        Dict[str, Any]
-            The updated memory dictionary, with error status and feedback.
-        """
-        mem = self.retrieve(coordinate)
-        if mem is None:
-            return {"error": True, "message": "Memory not found"}
-        predicted = mem.get("predicted_outcome")
-        mem["reported_outcome"] = outcome
-        error = False
-        if predicted is not None:
-            error = predicted != outcome
-        mem["error"] = error
-        self.store_memory(
-            coordinate, mem, memory_type=MemoryType(mem.get("memory_type", "episodic"))
-        )
-        if error:
-            corrective_mem = {
-                "corrective_for": coordinate,
-                "original_payload": mem,
-                "correction": outcome,
-                "timestamp": time.time(),
-            }
-            self.store_memory(coordinate, corrective_mem, memory_type=MemoryType.SEMANTIC)
-        return mem
 
     def _reconcile_once(self):
         """
@@ -291,16 +245,7 @@ class SomaFractalMemoryEnterprise:
         )
 
         # Langfuse configuration is provided via the shared SMFSettings.langfuse
-        try:
-            lf_public = getattr(config.langfuse, "public_key", "pk-lf-123")
-            lf_secret = getattr(config.langfuse, "secret_key", "sk-lf-456")
-            lf_host = getattr(config.langfuse, "host", "http://localhost:3000")
-        except Exception:
-            # Defensive fallback if config structure is unexpected
-            lf_public = "pk-lf-123"
-            lf_secret = "sk-lf-456"
-            lf_host = "http://localhost:3000"
-        self.langfuse = Langfuse(public_key=lf_public, secret_key=lf_secret, host=lf_host)
+        self.langfuse = None
 
         self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
         self._sync_graph_from_memories()
@@ -459,23 +404,13 @@ class SomaFractalMemoryEnterprise:
             except Exception:
                 return False
 
-        # Include prediction_provider if present to align with API HealthResponse model
-        result = {
+        # Return the basic store health checks. Prediction/policy providers are
+        # optional and intentionally not part of the data-plane health payload.
+        return {
             "kv_store": safe(self.kv_store.health_check),
             "vector_store": safe(self.vector_store.health_check),
             "graph_store": safe(self.graph_store.health_check),
         }
-        if hasattr(self, "prediction_provider") and hasattr(
-            self.prediction_provider, "health_check"
-        ):
-            try:
-                result["prediction_provider"] = safe(self.prediction_provider.health_check)
-            except Exception:
-                result["prediction_provider"] = False
-        else:
-            # Maintain key presence to satisfy schema even if provider missing
-            result["prediction_provider"] = False
-        return result
 
     def set_importance(self, coordinate: Tuple[float, ...], importance: int = 1):
         data_key, _ = _coord_to_key(self.namespace, coordinate)
@@ -1306,16 +1241,7 @@ class SomaFractalMemoryEnterprise:
             self._enforce_memory_limit()
         except Exception as e:
             logger.debug(f"Memory limit enforcement failed: {e}")
-        # Phase 2: publish a memory‑created event if eventing is enabled
-        if getattr(self, "eventing_enabled", True):
-            try:
-                from .eventing.producer import build_memory_event, produce_event
-
-                event = build_memory_event(self.namespace, value)
-                produce_event(event)
-            except Exception as ev_err:
-                logger.warning(f"Failed to publish memory event: {ev_err}")
-        return result
+        pass
 
     # ---------------- Fast Core Helpers -----------------
     def _fast_append(

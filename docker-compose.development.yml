@@ -55,9 +55,11 @@ services:
     # By default bind the API to host port 9595. Override by setting HOST_API_PORT
     # Example: HOST_API_PORT=0 docker compose -f docker-compose.development.yml up
     container_name: somafractalmemory_memory-api
-    # Use dynamic host port assignment so Docker picks a free host port
+    # Prefer binding the host port 9595 to container port 9595. If 9595
+    # is busy on the host, Docker will error — caller can change HOST_API_PORT
+    # or run with HOST_API_PORT=0 for dynamic assignment.
     ports:
-      - "9595"
+      - "9595:9595"
     depends_on:
       - postgres
       - redis

@@ -234,14 +234,8 @@ def _log_startup_config():
 
 _log_startup_config()
 
-# Some tests expect a prediction_provider attribute for health endpoints; provide a no-op stub
-if not hasattr(mem, "prediction_provider"):
-
-    class _NoopPredictor:
-        def health_check(self):
-            return True
-
-    mem.prediction_provider = _NoopPredictor()  # type: ignore[attr-defined]
+# Prediction providers are optional and intentionally out-of-process. The
+# data-plane does not install or report prediction providers by default.
 
 
 # ---------------------------------------------------------------------------
@@ -552,7 +546,6 @@ class HealthResponse(BaseModel):
     kv_store: bool
     vector_store: bool
     graph_store: bool
-    prediction_provider: bool
 
 
 # Prometheus metrics for API operations
@@ -956,21 +949,21 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 # Health and readiness endpoints
 @app.get("/healthz", response_model=HealthResponse)
 def healthz():
-    """Liveness probe – checks basic health of all stores and prediction provider."""
+    """Liveness probe – checks basic health of storage/vector/graph components."""
+    checks = mem.health_check()
     return HealthResponse(
-        kv_store=mem.kv_store.health_check(),
-        vector_store=mem.vector_store.health_check(),
-        graph_store=mem.graph_store.health_check(),
-        prediction_provider=mem.prediction_provider.health_check(),
+        kv_store=checks.get("kv_store", False),
+        vector_store=checks.get("vector_store", False),
+        graph_store=checks.get("graph_store", False),
     )
 
 
 @app.get("/readyz", response_model=HealthResponse)
 def readyz():
     """Readiness probe – same checks for now; can be extended with more strict criteria later."""
+    checks = mem.health_check()
     return HealthResponse(
-        kv_store=mem.kv_store.health_check(),
-        vector_store=mem.vector_store.health_check(),
-        graph_store=mem.graph_store.health_check(),
-        prediction_provider=mem.prediction_provider.health_check(),
+        kv_store=checks.get("kv_store", False),
+        vector_store=checks.get("vector_store", False),
+        graph_store=checks.get("graph_store", False),
     )
