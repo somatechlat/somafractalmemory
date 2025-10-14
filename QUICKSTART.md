@@ -1,39 +1,62 @@
 # SomaFractalMemory - Quick Start
 
-## 🚀 Automatic Server Startup
+## 🚀 Automatic Docker Deployment (Recommended)
 
-### One-Command Auto Start:
+### One-Command Evented Enterprise Stack:
+```bash
+./scripts/assign_ports_and_start.sh
+# OR
+make setup-dev
+```
+
+This script will:
+- ✅ **Automatically detect and resolve port conflicts**
+- ✅ Assign free ports to all infrastructure services
+- ✅ Start complete evented enterprise stack (API + Consumer + PostgreSQL + Redis + Qdrant + Kafka)
+- ✅ Display final port assignments
+- ✅ Ensure **zero conflicts** with existing services
+
+### Server Access:
+- **Memory API**: http://localhost:9595 (fixed)
+- **Health**: http://localhost:9595/healthz
+- **Stats**: http://localhost:9595/stats
+- **API Docs**: http://localhost:9595/docs
+- **Infrastructure ports**: Auto-assigned (displayed at startup)
+
+### Manual Docker Commands:
+```bash
+# Check running containers
+docker ps | grep somafractalmemory
+
+# View current port assignments
+cat .env
+
+# Stop all services
+docker compose --profile core down
+
+# Quick test
+curl http://localhost:9595/healthz
+```
+
+## 🎯 **Just run `./scripts/assign_ports_and_start.sh` and get a complete zero-conflict deployment!**
+
+## 🔧 Kubernetes Deployment (Alternative)
+
+### Auto Server Startup:
 ```bash
 ./scripts/auto-server.sh
 ```
 
-This script will:
-- ✅ Wait for all Kubernetes pods to be ready
-- ✅ Automatically detect the API pod
-- ✅ Set up port forwarding on port 9595
-- ✅ Test server connectivity
-- ✅ Show you all available endpoints
-- ✅ Keep running automatically until you stop it
+This will set up Kubernetes port forwarding for development.
 
-### Server Access:
-- **URL**: http://localhost:9595
-- **Health**: http://localhost:9595/healthz
-- **Stats**: http://localhost:9595/stats
-- **API Docs**: http://localhost:9595/docs
-
-### Manual Commands (if needed):
+### Manual K8s Commands:
 ```bash
 # Check pods
 kubectl get pods -l app.kubernetes.io/instance=soma-memory
 
 # Manual port forward
 kubectl port-forward <pod-name> 9595:9595
-
-# Quick test
-curl http://localhost:9595/healthz
 ```
-
-## ⚡ **Just run `./scripts/auto-server.sh` and everything works automatically!**
 
 ## Async gRPC server (developer quick-run)
 

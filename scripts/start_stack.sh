@@ -25,23 +25,17 @@ if [[ "$MODE" != "evented_enterprise" ]]; then
   exit 2
 fi
 
-COMPOSE_FILE="docker-compose.dev.yml"
-# Fallback: if the dev compose file does not exist (current repo layout), use primary docker-compose.yml
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-  COMPOSE_FILE="docker-compose.yml"
-fi
+# Use the main docker-compose.yml with dev profile for development
+COMPOSE_FILE="docker-compose.yml"
+PROFILE="--profile dev"
 
 echo "Selected mode: $MODE"
 
 if [[ "$PULL" == "true" ]]; then
   echo "Pulling images defined in $COMPOSE_FILE..."
-  docker compose -f "$COMPOSE_FILE" pull
+  docker compose -f "$COMPOSE_FILE" $PROFILE pull
 fi
 
 echo "Bringing up full evented stack: Kafka broker + Postgres + Qdrant"
-if docker compose -f "$COMPOSE_FILE" config --services | grep -q '^kafka$'; then
-  docker compose -f "$COMPOSE_FILE" up -d kafka postgres qdrant
-else
-  docker compose -f "$COMPOSE_FILE" up -d redpanda apicurio postgres qdrant || true
-fi
+docker compose -f "$COMPOSE_FILE" $PROFILE up -d kafka postgres qdrant
 echo "Full stack is starting. Wait a moment for services to become healthy."

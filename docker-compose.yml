@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   # -----------------------------------------------------------------
   # FastAPI server – runs the canonical evented_enterprise memory mode.
@@ -12,12 +11,15 @@ services:
       args:
         ENABLE_REAL_EMBEDDINGS: "1"
     container_name: somafractalmemory_api
-    profiles: [core]
+    profiles: [core, dev]
     labels:
       - "com.soma.project=somafractalmemory"
       - "com.soma.service=api"
     ports:
       - "9595:9595"  # host 9595 → container 9595 (default)
+    volumes:
+      - .:/app  # Development mode: mount source code
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket access for dev
     environment:
       MEMORY_MODE: evented_enterprise
       SOMA_RATE_LIMIT_MAX: "5000"
@@ -58,7 +60,10 @@ services:
     labels:
       - "com.soma.project=somafractalmemory"
       - "com.soma.service=consumer"
-    profiles: [core, consumer]
+    profiles: [core, consumer, dev]
+    volumes:
+      - .:/app  # Development mode: mount source code
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket access for dev
     command: ["sh", "-c", "until nc -z kafka 9092; do echo 'Waiting for Kafka...'; sleep 2; done; exec python scripts/run_consumers.py"]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -160,7 +165,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,OUTSIDE://0.0.0.0:19092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,OUTSIDE://localhost:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,OUTSIDE://localhost:${KAFKA_OUTSIDE_PORT:-19092}
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,OUTSIDE:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -178,7 +183,7 @@ services:
       # 16-byte UUID (not a plain string). Generated once for this local setup.
       CLUSTER_ID: 'fIUFCStWQOSeDDC57Fc7wA=='
     ports:
-      - "9092:9092"
+      - "${KAFKA_HOST_PORT:-9092}:9092"
       - "${KAFKA_OUTSIDE_PORT:-19092}:19092"
     volumes:
       - sfm_kafka_data:/var/lib/kafka/data
@@ -259,6 +264,159 @@ services:
     networks:
       - sfm_local_net
 
+  # -----------------------------------------------------------------
+  # TEST PROFILE SERVICES
+  # Use `docker compose --profile test up -d` to bring up test environment
+  # TEST API Server on port 9999
+  test_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: somafractalmemory_test_api
+    profiles: [test]
+    ports:
+      - "9999:9595"
+    volumes:
+      - .:/app  # Development mode: mount source code
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket access for dev
+    environment:
+      MEMORY_MODE: evented_enterprise
+      SOMA_RATE_LIMIT_MAX: "5000"
+      SOMA_API_TOKEN: dev-token
+      UVICORN_WORKERS: "2"
+      UVICORN_TIMEOUT_GRACEFUL: "60"
+      POSTGRES_URL: postgresql://postgres:postgres@postgres_test:5432/somamemory_test
+      REDIS_URL: redis://redis_test:6379/1  # Different Redis DB
+      QDRANT_URL: http://qdrant_test:6333
+      KAFKA_BOOTSTRAP_SERVERS: kafka_test:9092
+      EVENTING_ENABLED: "true"
+      SOMA_MEMORY_NAMESPACE: test_ns
+    depends_on:
+      - redis_test
+      - qdrant_test
+      - postgres_test
+      - kafka_test
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9595/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - sfm_local_net
+
+  # Consumer for TEST environment
+  test_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: somafractalmemory_test_consumer
+    profiles: [test]
+    command: ["python", "scripts/run_consumers.py"]
+    volumes:
+      - .:/app  # Development mode: mount source code
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket access for dev
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka_test:9092
+      KAFKA_MEMORY_EVENTS_TOPIC: memory.events.test
+      KAFKA_CONSUMER_GROUP: test-consumer-group
+      POSTGRES_URL: postgresql://postgres:postgres@postgres_test:5432/somamemory_test
+      REDIS_URL: redis://redis_test:6379/1
+      QDRANT_URL: http://qdrant_test:6333
+      SOMA_MEMORY_NAMESPACE: test_ns
+    depends_on:
+      - redis_test
+      - qdrant_test
+      - postgres_test
+      - kafka_test
+    restart: unless-stopped
+    networks:
+      - sfm_local_net
+
+  # TEST Infrastructure services (isolated from main services)
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: somafractalmemory_postgres_test
+    profiles: [test]
+    environment:
+      POSTGRES_DB: somamemory_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    command: postgres -c 'shared_preload_libraries=pg_stat_statements'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - sfm_local_net
+
+  redis_test:
+    image: redis:7.2.4-alpine
+    container_name: somafractalmemory_redis_test
+    profiles: [test]
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - sfm_local_net
+
+  qdrant_test:
+    image: qdrant/qdrant:v1.9.2
+    container_name: somafractalmemory_qdrant_test
+    profiles: [test]
+    volumes:
+      - qdrant_test_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - sfm_local_net
+
+  kafka_test:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: somafractalmemory_kafka_test
+    profiles: [test]
+    environment:
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka_test:9093'
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,OUTSIDE://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka_test:9092,OUTSIDE://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_MESSAGE_MAX_BYTES: 10485760
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 10485760
+      KAFKA_JVM_PERFORMANCE_OPTS: '-Xms256m -Xmx512m'
+      CLUSTER_ID: 'test-kraft-cluster'
+    ports:
+      - "19092:19092"
+    volumes:
+      - kafka_test_data:/var/lib/kafka/data
+    restart: unless-stopped
+    networks:
+      - sfm_local_net
+
 networks:
   soma_shared:
     external: true
@@ -277,3 +435,8 @@ volumes:
   sfm_grafana_data:
   sfm_vault_data:
   sfm_etcd_data:
+  # Test environment volumes
+  qdrant_test_storage:
+  postgres_test_data:
+  redis_test_data:
+  kafka_test_data:

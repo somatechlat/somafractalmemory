@@ -9,7 +9,7 @@ SomaFractalMemory ships with a single-node Confluent Kafka broker (previously Re
 |-----------|--------|---------|
 | Kafka broker | `docker-compose.yml` (`kafka`) | Kafka-compatible broker storing `memory.events`. |
 | Consumer | `docker-compose.yml` (`somafractalmemory_kube`, profile `consumer`) | Runs `python scripts/run_consumers.py`, subscribing to `memory.events`. |
-| Registry (optional) | `docker-compose.dev.yml` (`apicurio`) | Schema registry started via `start_stack.sh --with-broker`. |
+| Registry (optional) | `docker-compose.yml` (profile `dev`) | Schema registry started via `start_stack.sh --with-broker` or via the `dev` profile. |
 
 ---
 

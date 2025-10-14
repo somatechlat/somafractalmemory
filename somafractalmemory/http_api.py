@@ -724,7 +724,10 @@ def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
     "/stats",
     response_model=StatsResponse,
     tags=["system"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/stats"))],
+    # Stats is read-only operational info and is intentionally public so
+    # infrastructure/monitoring systems can scrape it without needing the
+    # bearer token. We keep rate limiting enabled to avoid abuse.
+    dependencies=[Depends(rate_limit_dep("/stats"))],
 )
 def stats() -> StatsResponse:
     try:

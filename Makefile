@@ -71,9 +71,9 @@ settings: ## Print detected settings (ports, images, helm values)
 	echo "  health:           http://127.0.0.1:$(DEV_NODEPORT)/healthz"
 
 # Aggregated canonical setups
-setup-dev: prereqs-docker ## Canonical local setup: build (optional), up, wait for health, print endpoints
-	@echo "→ Starting Docker Compose stack (API on http://127.0.0.1:$(API_PORT))"; \
-	$(MAKE) -s compose-up; \
+setup-dev: prereqs-docker ## Canonical local setup: auto-assign ports, build, up, wait for health
+	@echo "→ Auto-assigning ports and starting evented enterprise stack"; \
+	./scripts/assign_ports_and_start.sh; \
 	$(MAKE) -s compose-health; \
 	$(MAKE) -s settings
 

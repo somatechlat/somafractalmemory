@@ -74,34 +74,39 @@ changes applied during the troubleshooting and remediation of the vector-store
    bind-mounted into the container. For persistence, add an equivalent route to
    the host's Caddyfile (see `Persistence & cleanup` below).
 
-2. Created a safe Docker Compose override `docker-compose.quadrant.yml` that
-   re-points the API and consumer `QDRANT_*` environment variables to
-   `http://quadrant:8080/qdrant`. This override is checked into the repo so
-   the change is reproducible and documented.
+2. Alternate routing via the canonical compose (recommended)
 
-   File: `docker-compose.quadrant.yml` (placed at repo root) — use with:
+Rather than maintain multiple overlay files, the repository uses a single
+`docker-compose.yml` that supports profiles and environment overrides. To
+point the API and consumers at an alternate Qdrant route (for example a
+quadrant/Caddy proxy), prefer supplying `QDRANT_URL` when you start the
+services or create a small single-file override that is clearly documented.
 
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.quadrant.yml -f \
-     docker-compose.e2e-no-eventing.yml up -d --no-deps --build api
-   docker compose -f docker-compose.yml -f docker-compose.quadrant.yml -f \
-     docker-compose.e2e-no-eventing.yml --profile consumer up -d --no-deps --build somafractalmemory_kube
-   ```
+Examples:
 
-   This keeps `qdrant` standalone running as fallback until the new routing is
-   fully validated.
+```bash
+# Start shared infra
+docker compose --profile shared up -d
 
-3. (REVERTED) A temporary override `docker-compose.e2e-no-eventing.yml` had
-  been created to disable event publishing during initial end-to-end tests
-  to avoid Kafka-related timeouts; this bypass has been removed at the
-  operator's request to ensure we never mock or bypass production services.
-  All subsequent testing uses real Kafka and shared infra.
+# Start API + consumer and override Qdrant at runtime
+QDRANT_URL="http://quadrant:8080/qdrant" docker compose up -d api somafractalmemory_kube
+```
+
+If you need a reproducible override for your team, commit a small override
+file (one purpose only) and document it in the repo. Avoid multiple, long-
+living overlays that diverge from the canonical compose file.
+
+3. Eventing
+
+The recommended practice is to run tests and E2E flows against real eventing
+backends. Use `EVENTING_ENABLED=false` or isolated overrides only for
+developer experiments; prefer enabling the real broker for integration tests.
 
 ## Verification performed
 
 - Queried the running Caddy config (admin API) to ensure the `/qdrant` route
   is present.
-- Recreated the API container using the `docker-compose.quadrant.yml` override
+Recreated the API container using a short-lived override (now migrated to the canonical profile-based approach)
   and verified the API `QDRANT_URL` resolves to the `quadrant` proxy.
 - Performed in-network health and metrics checks against the API and direct
   Qdrant checks via the `quadrant` route to ensure the vector store is
@@ -140,15 +145,15 @@ changes applied during the troubleshooting and remediation of the vector-store
   `/apps/http/servers/srv0/routes/<index>` where `<index>` is the appended
   route index) or restart quadrant with the original host `Caddyfile`.
 - To return API & consumer to direct `qdrant:6333` behavior, stop the
-  containers created with the `docker-compose.quadrant.yml` override and
+  containers created with a temporary override and
   recreate them with the original compose command (omit the override).
 
-## Files added during remediation
+## Files & overrides
 
-- `docker-compose.quadrant.yml` — lightweight override to point API & consumer
-  at the `quadrant` proxy
-- `docker-compose.e2e-no-eventing.yml` — temporary override to disable eventing
-  for safe E2E testing (already present in repo)
+No long-lived override files are maintained in this repository. The recommended
+approach is to use the canonical `docker-compose.yml` with Compose profiles or
+small, single-purpose overrides documented in this repo when necessary. This
+keeps the main compose file as the single source of truth and prevents drift.
 
 ## Notes & operational cautions
 

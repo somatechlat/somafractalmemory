@@ -4,24 +4,32 @@ This script connects to the Redpanda/Kafka broker (using aiokafka) and
 consumes messages from the ``memory.events`` topic. For each event it:
 
 1. Calls ``kv_writer.process_message`` to upsert the canonical JSON record
-   into PostgreSQL.
+    into PostgreSQL.
 2. Calls ``vector_indexer.index_event`` to generate a deterministic vector
-   and upsert it into Qdrant.
+    and upsert it into Qdrant.
 
 Prometheus metrics are exposed on ``localhost:8001/metrics`` so that the
 consumer health can be monitored.
 """
 
-import asyncio
-import json
+# Ensure the repository root is on sys.path so `from common...` imports work
+# when the script is executed inside a container or directly from source.
 import os
-import ssl
 import sys
 from typing import Any
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# Standard library
+import asyncio
+import json
+import ssl
+
+# Third-party
 from aiokafka import AIOKafkaConsumer
 from prometheus_client import Counter, Histogram, start_http_server
 
+# Local
 from common.config.settings import load_settings
 from common.utils.logger import configure_logging
 

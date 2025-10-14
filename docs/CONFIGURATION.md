@@ -9,6 +9,8 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 
 > **Secret management:** Never commit production credentials to `.env` files. Inject `SOMA_API_TOKEN`, Langfuse keys, Fernet encryption keys, and database passwords via your secret manager (AWS Secrets Manager, Google Secret Manager, HashiCorp Vault, etc.) or CI/CD-provisioned Kubernetes/Docker secrets. The samples in this repository are placeholders only.
 
+> **Automatic Port Assignment:** The system includes automatic port conflict detection and resolution. When using `./scripts/assign_ports_and_start.sh` or `make setup-dev`, all infrastructure ports (except the fixed Memory API port 9595) are automatically assigned to avoid conflicts with existing services. Port assignments are written to `.env` and displayed during startup.
+
 ---
 
 ## Core Environment Variables
@@ -25,6 +27,11 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `SOMA_RATE_LIMIT_MAX` | Redis-backed per-endpoint request budget (minimum 1; set `0` to disable). | `60` |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window for the limiter (seconds). | `60` |
 | `UVICORN_PORT` | API process port (kept at `9595` in charts/Compose). | `9595` |
+| `POSTGRES_HOST_PORT` | Host port for PostgreSQL database (auto-assigned if conflicts detected). | `5434` |
+| `REDIS_HOST_PORT` | Host port for Redis cache (auto-assigned if conflicts detected). | `6380` |
+| `QDRANT_HOST_PORT` | Host port for Qdrant vector store (auto-assigned if conflicts detected). | `6333` |
+| `KAFKA_HOST_PORT` | Host port for Kafka broker (auto-assigned if conflicts detected). | `9092` |
+| `KAFKA_OUTSIDE_PORT` | External Kafka port for host connections (auto-assigned if conflicts detected). | `19092` |
 | `UVICORN_WORKERS` | Worker count for the FastAPI container images. | `4` |
 | `UVICORN_TIMEOUT_GRACEFUL` | Graceful shutdown timeout for the API. | `60` |
 | `UVICORN_TIMEOUT_KEEP_ALIVE` | Keep-alive timeout override. | `120` (Compose default) |

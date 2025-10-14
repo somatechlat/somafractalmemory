@@ -21,19 +21,29 @@ This document is the operational source of truth for developers and operators. I
 ---
 
 ## 2. Build and Run the Stack
-1. **Canonical entrypoint (Compose)** after code changes:
+1. **Canonical entrypoint (Compose)** with automatic port assignment:
    ```bash
    make setup-dev
+   # OR directly:
+   ./scripts/assign_ports_and_start.sh
    ```
-2. **Start the consumer profile** (required for event reconciliation):
+   This will:
+   - Automatically detect and resolve port conflicts
+   - Assign free ports to infrastructure services
+   - Start the complete evented enterprise stack
+   - Display final port assignments
+
+2. **Manual deployment** (if you need custom control):
    ```bash
-   make compose-consumer-up
+   docker compose --profile core up -d
    ```
+
 3. **Access endpoints**:
-   * API: <http://localhost:9595>
+   * Memory API: <http://localhost:9595> (fixed)
+   * Infrastructure ports: Auto-assigned (displayed at startup)
    * Prometheus metrics: `/metrics`
    * Swagger UI: `/docs`
-4. (Tip) Print resolved ports and NodePort: `make settings`.
+4. (Tip) Check current port assignments: `cat .env`
 
 5. **Stop services** while preserving data:
    ```bash
@@ -45,6 +55,32 @@ This document is the operational source of truth for developers and operators. I
    ```
 
 Named volumes created by the compose file: `redis_data`, `qdrant_storage`, `postgres_data`, `kafka_data`.
+
+### Troubleshooting: consumer ModuleNotFoundError
+
+Symptom: the consumer container repeatedly restarts with a traceback like:
+
+   ModuleNotFoundError: No module named 'common'
+
+Cause: when the consumer is executed as an entrypoint inside the image, the repository root may not be on Python's `sys.path` prior to local imports. This manifests only when running the consumer from source inside the container (bind-mounted code) or when the image's Python path is not configured.
+
+Resolution (applied in this release):
+1. Ensure the project root is appended to `sys.path` at the top of `scripts/run_consumers.py` before any local imports. The repository now contains a small fix which does this automatically.
+2. Rebuild and restart the consumer image:
+
+```bash
+docker compose build somafractalmemory_kube
+docker compose up -d somafractalmemory_kube
+```
+
+3. Verify consumer health and metrics (run inside the consumer container):
+
+```bash
+docker compose exec somafractalmemory_kube curl -sS http://localhost:8001/metrics | head -n 40
+docker compose --profile consumer logs --tail 200 somafractalmemory_kube
+```
+
+If the consumer is still failing, inspect the logs for the first exception; network-related errors (Kafka not reachable) will show earlier in the logs and should be addressed by checking `KAFKA_BOOTSTRAP_SERVERS` and the broker container status.
 
 
 ## 3. Local Kubernetes Stack (Kind + Helm)
@@ -149,11 +185,15 @@ Key environment variables (see `docs/CONFIGURATION.md` for the full list):
 - `MEMORY_MODE` – fixed to `evented_enterprise`; CLI/API will override any other value.
 - `SOMA_MEMORY_NAMESPACE` – logical namespace for the API instance.
 - `POSTGRES_URL` – DSN for canonical storage.
-- `QDRANT_HOST` / `QDRANT_PORT` (or `qdrant.path` in config) – vector store.
+- `POSTGRES_HOST_PORT` – host port for PostgreSQL (auto-assigned if conflicts detected).
+- `REDIS_HOST_PORT` – host port for Redis cache (auto-assigned if conflicts detected).
+- `QDRANT_HOST_PORT` – host port for Qdrant vector store (auto-assigned if conflicts detected).
+- `KAFKA_HOST_PORT` – host port for Kafka broker (auto-assigned if conflicts detected).
+- `KAFKA_OUTSIDE_PORT` – external Kafka port (auto-assigned if conflicts detected).
 - `KAFKA_BOOTSTRAP_SERVERS` – broker location for event publishing.
 - `EVENTING_ENABLED` – set to `false` to disable Kafka emission when a broker is absent.
 - `SOMA_API_TOKEN` – required bearer token enforced by every API surface (set via env or secret mount).
-- `SOMA_RATE_LIMIT_MAX` / `SOMA_RATE_LIMIT_WINDOW_SECONDS` – rate limiter budget and window for API endpoints (defaults 60 requests per 60 s).
+- `SOMA_RATE_LIMIT_MAX` / `SOMA_RATE_LIMIT_WINDOW_SECONDS` – rate limiter budget and window for API endpoints (defaults 60 requests per 60 s).
 
 Production helm deployments should start from `helm/values-production.yaml`, which disables inline secrets, enables the ExternalSecret template, and adds the Reloader annotations so credentials sourced from Vault trigger rollouts automatically.
 
@@ -302,21 +342,24 @@ Use this section to locate stateful data across Docker Compose, Helm, and the ra
 - The API and worker containers are stateless; durability lives in the services above.
 - Docker manages the volumes; back up with `docker run --rm -v <name>:/data busybox tar -C /data -cf backup.tar .`.
 
-**Development overlay (`docker-compose.dev.yml`)**
+Development & Test overlays
 
-- Adds bind mounts (`.:/app`, Docker socket) for hot reload and Testcontainers.
-- Persistent stores continue to rely on the named volumes listed above.
+Historically the repo used multiple compose override files (`docker-compose.dev.yml`, `docker-compose.test.yml`) to provide development bind mounts and isolated test infra. Those overlays have been consolidated into the single canonical `docker-compose.yml` using Compose profiles (`dev`, `test`, `core`, `shared`, `consumer`, `monitoring`, `ops`).
 
-**Test stack (`docker-compose.test.yml`)**
+Use the `dev` or `test` profiles when you need bind mounts, an isolated test stack, or a different set of services. For example:
 
-| Service | Volume | Mount |
-| --- | --- | --- |
-| `postgres` | `postgres_test_data` | `/var/lib/postgresql/data` |
-| `redis` | `redis_test_data` | `/data` |
-| `qdrant` | `qdrant_test_storage` | `/qdrant/storage` |
-| `kafka` | `redpanda_test_data` | `/bitnami/kafka` |
+```bash
+# Start the full development stack (auto-assigned infra ports):
+make setup-dev
 
-Dedicated volumes keep CI/test data isolated. Reset them with `docker compose -f docker-compose.test.yml down -v`.
+# Start only the test profile (isolated test infra):
+docker compose --profile test up -d
+
+# Start only the development profile (hot-reload mounts):
+docker compose --profile dev up -d
+```
+
+Named volumes still isolate persistent data for the stack (`postgres_data`, `redis_data`, `qdrant_storage`, `kafka_data`). Use `docker compose down -v` to wipe them when you need a clean slate.
 
 ### 9.2 Raw Kubernetes manifests (`k8s/`)
 

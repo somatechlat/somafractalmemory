@@ -65,6 +65,7 @@ flowchart LR
 * **Real clients** – PostgreSQL, Redis, Qdrant, and Kafka are first-class dependencies. Test configurations swap in `fakeredis` and the in-memory vector store without altering code paths.
 * **JSON-first persistence** – All payloads are serialised as JSON; legacy pickle-based storage has been removed.
 * **Event schema enforcement** – Every produced message is validated against `schemas/memory.event.json`.
+* **Automatic port conflict resolution** – Infrastructure ports are automatically assigned when conflicts are detected, ensuring zero-conflict deployments across environments.
 * **TLS/SASL hooks** – Environment variables (`POSTGRES_SSL_*`, `QDRANT_TLS`, `KAFKA_SECURITY_PROTOCOL`, etc.) are plumbed through to the respective clients.
 * **Graceful degradation** – Vector failures fall back to WAL entries for later reconciliation; OpenTelemetry and Langfuse integrations quietly disable themselves when dependencies are absent.
 * **Deterministic math path** – Vector embeddings are normalized; recall scoring is strictly `max(0, cosine) * importance_norm`, where `importance_norm ∈ [0,1]` is produced by an adaptive decision tree (min-max → winsor → logistic) based on the observed importance distribution (512-sample rolling reservoir). This keeps retrieval branch-free and bounded.
@@ -111,12 +112,14 @@ flowchart LR
 
 ## Runtime surfaces and canonical entrypoints
 
-This architecture runs in multiple canonical modes for contributors and CI. We use Docker Compose profiles so you can start only what you need:
+This architecture runs in multiple canonical modes for contributors and CI. We use Docker Compose profiles with automatic port assignment to avoid conflicts:
 
-- Local stack (Docker Compose — profile driven):
+- Local stack (Docker Compose — profile driven with automatic port assignment):
    - Core (recommended developer local‑prod): starts the minimal, real E2E pipeline required for integration testing and development: API, Consumer, Kafka (KRaft), Postgres, Redis and Qdrant.
-      - Start: `docker compose --profile core up -d`
+      - Start (automatic port assignment): `./scripts/assign_ports_and_start.sh` or `make setup-dev`
+      - Start (manual): `docker compose --profile core up -d`
       - Stop: `docker compose --profile core down`
+      - **Port Assignment**: Memory API fixed on 9595, all infrastructure ports auto-assigned to avoid conflicts
    - Shared infra (external/shared infra for multi‑project development): starts only the infra components (Kafka/Postgres/Redis/Qdrant) on a shared network so multiple apps can attach to the same infra.
       - Start: `docker compose --profile shared up -d`
    - Consumer only (when you want to run workers without the API locally):
@@ -129,6 +132,37 @@ This architecture runs in multiple canonical modes for contributors and CI. We u
    - Kafka runs in KRaft mode (no Zookeeper). The canonical Compose uses a KRaft configuration (controller + broker roles) so the full eventing pipeline uses real brokers without Zookeeper.
    - Use the `shared` profile when you want a single infra footprint reused by multiple application instances (recommended for heavier local dev machines or CI nodes).
    - Host port exposure for Kafka (OUTSIDE listener) is optional and only required if you need to talk to the broker from the host; tests that run inside containers should use the internal `kafka:9092` address.
+
+   ### Docker modes (explicit)
+
+   To make deployment modes unambiguous, we explicitly call out two Docker-first modes developers and operators should use.
+
+   - LOCAL DEV FULL
+      - Purpose: self-contained local development environment that brings up the API, consumers, and all infra (Kafka, Postgres, Redis, Qdrant) on the developer's machine.
+      - Behavior: Memory API is fixed to host port 9595. All infrastructure host ports (Postgres, Redis, Qdrant, Kafka) are automatically assigned if the defaults are occupied. The chosen host ports are written to `.env` by the startup helper so other local tooling can pick them up.
+      - Typical command(s):
+         - `make setup-dev`  # canonical one-liner (auto-assign ports, build images, start stack, wait for health)
+         - `./scripts/assign_ports_and_start.sh`  # lower-level helper that writes `.env` and starts the compose stack
+         - or `docker compose --profile core up -d` (manual; use only when you want to control which services start)
+      - Quick checks:
+         - `cat .env` to view assigned host ports
+         - `make settings` or `make compose-print-ports` to print endpoints
+         - API URL (always): `http://127.0.0.1:9595`
+
+   - LOCAL SHARED PROD
+      - Purpose: run only the shared infrastructure on the host (Kafka/Postgres/Redis/Qdrant) so multiple projects or multiple app instances can reuse the same infra footprint. This is useful on powerful developer machines or CI nodes where infra should persist independently from any single app instance.
+      - Behavior: infra services are started on a shared Docker network (the repo uses `soma_docker_shared_infra_soma-network` by default). Applications can be started separately and connect to those services by service name. Memory API still expects to be reachable at port 9595 (start the API container in app-only mode or via Helm/Kind as appropriate).
+      - Typical command(s):
+         - `docker compose --profile shared up -d`  # starts shared infra
+         - Start the API separately (app-only) once infra is up: `docker compose --profile core up -d api` or use Helm/Kind for app-only deployments
+      - Quick checks:
+         - `docker network ls` to confirm the shared network exists
+         - `docker compose --profile shared ps` to see infra containers
+         - Use `KAFKA_BOOTSTRAP_SERVERS`, `POSTGRES_URL`, `QDRANT_URL` exported from `.env` or provided to the app container so it connects to the shared infra
+
+   Notes:
+   - In both modes the Memory API port is treated as the canonical, stable entrypoint and must remain 9595 to preserve CI and tooling assumptions.
+   - For transient troubleshooting or tests, use `docker compose down -v` to wipe named volumes; for normal stop/start keep volumes to preserve data.
 
 - Kubernetes dev slice (Kind + Helm):
    - Dev service port 9797 exposed via NodePort 30797 on host (primary API at 9595 remains unchanged)

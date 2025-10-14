@@ -10,7 +10,7 @@ from common.utils.logger import get_logger
 
 logger = get_logger("somafractalmemory").bind(component="vector_indexer")
 
-# Configuration (environment variables, with defaults matching docker-compose.dev.yml)
+# Configuration (environment variables, with defaults matching `docker-compose.yml` profiles such as `dev`)
 _QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 # Default collection name; we also index into namespace-specific collections when present
 _QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "memory_vectors")

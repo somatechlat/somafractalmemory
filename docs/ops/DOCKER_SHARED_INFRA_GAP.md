@@ -11,27 +11,26 @@ Goals
 - Minimal maintenance overhead; reuse existing scripts where possible.
 
 Scope considered
-- Compose definitions: `docker-compose.yml`, `docker-compose.test.yml`, `docker-compose.dev.yml`.
+- Compose definitions: canonical `docker-compose.yml` (profiles: `dev`, `test`, `core`, `shared`, `consumer`, `monitoring`, `ops`).
 - Scripts: `scripts/start_stack.sh`, `scripts/run_consumers.py`, `scripts/run_server.sh`, `scripts/start_all.sh`.
 - Documentation: docs pointing to Docker vs. Kubernetes workflows.
 
 Current state (observed)
 - Compose files:
   - `docker-compose.yml` defines Redis, Qdrant, Postgres, Kafka (Confluent KRaft), API, and a consumer profile; host ports: Redis 6381, Qdrant 6333, Postgres 5433, Kafka 19092, API 9595.
-  - `docker-compose.test.yml` defines a similar stack for testing with different DB names/namespaces and ports (API on 9999), plus Bitnami Kafka.
-  - `docker-compose.dev.yml` only contains volume mounts for dev containers (appears to be an override layer; services reference the project tree).
+   - The `test` and `dev` profiles in `docker-compose.yml` provide the same functionality (isolated test infra and bind mounts) without needing separate files.
 - Scripted entrypoint:
   - `scripts/start_stack.sh` orchestrates minimal vs full stack and supports a legacy `--with-broker` flag; prefers Kafka if present.
 - Tests and code paths assume “no mocks” and real backends. Live infra toggles (USE_LIVE_INFRA/USE_REAL_INFRA) are respected in tests.
 
 Gaps and risks
 1) Duplicate Kafka flavors across compose files
-   - `docker-compose.yml` uses Confluent cp-kafka; `docker-compose.test.yml` uses Bitnami Kafka. Behavior and env var schemas differ.
+   - `docker-compose.yml` uses Confluent cp-kafka for the canonical broker configuration. If you have older overlays using another Kafka image, migrate them to the `test` profile or update the canonical compose so all test/integration runs use the same broker image and env schema.
    - Risk: inconsistent local behavior; harder on-boarding.
 
 2) Fragmented compose usage
-   - Presence of `docker-compose.dev.yml` with only volumes suggests a partial override that can confuse `start_stack.sh` detection.
-   - Risk: unclear which compose file to use; drift between docs and scripts.
+   - Using many separate overlay files can confuse tooling. The canonical `docker-compose.yml` exposes `dev` and `test` profiles to provide bind mounts and isolated test infra without separate files.
+   - Risk: unclear which compose file to use; drift between docs and scripts if ad-hoc overlays remain.
 
 3) Unpinned images for Qdrant/Redis/Postgres in dev compose
    - `latest` used for Qdrant; Redis and Postgres versions differ between files.
@@ -64,7 +63,7 @@ Sprint plan
 
 Sprint A — Compose hygiene and unification (1–2 days)
 - Decide on a single Kafka flavor for compose (recommended: Confluent cp-kafka to match current `docker-compose.yml`).
-- Update `docker-compose.test.yml` to use the same flavor and environment schema as `docker-compose.yml`.
+ - Update any ad-hoc overrides to use the canonical `docker-compose.yml` profiles and ensure the broker configuration matches the canonical Confluent cp-kafka settings.
 - Pin images: `qdrant/qdrant:<known-good>`, `redis:7.2.x`, `postgres:15-alpine`, `confluentinc/cp-kafka:7.6.1`.
 - Normalize healthchecks so each service checks itself (no cross-service `curl api` from consumer containers).
 - Document ports and service names in README/QUICKSTART.
@@ -89,7 +88,7 @@ Optional Sprint E — Local CI smoke (0.5 day)
 - Add a GitHub Action to run `docker compose up -d postgres qdrant kafka` and a minimal health smoke (API `/healthz`) to catch image drift.
 
 Concrete edits proposed (non-breaking)
-- Unify Kafka flavor in `docker-compose.test.yml` to Confluent cp-kafka with `KAFKA_*` env schema used in `docker-compose.yml`.
+ - Unify Kafka flavor by using the `test` profile in `docker-compose.yml` or by migrating overlay semantics into documented profile usage.
 - Pin Qdrant: `qdrant/qdrant:v1.9.2` (or the version used in CI if present).
 - Add `scripts/reset-sharedinfra-compose.sh` to remove containers and volumes:
   - Volumes: `postgres_data`, `redis_data`, `kafka_data`, `qdrant_storage` (and test equivalents).

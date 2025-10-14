@@ -1,9 +1,11 @@
 # SomaFractalMemory Complete Kubernetes Deployment
 
 ## ✅ **DEPLOYMENT STATUS: PERFECT**
-**Date**: October 1, 2025
-**Branch**: v2.1
+**Date**: October 13, 2025
+**Branch**: soma_integration
 **Mode**: EVENTED_ENTERPRISE (Full Stack)
+**Primary Deployment**: Docker Compose with Automatic Port Assignment
+**Alternative**: Kubernetes via Helm
 
 ## 🚀 **Complete Enterprise Stack Deployed**
 
@@ -75,7 +77,50 @@
 - **Kafka**: Confluent single-broker KRaft runtime for event streaming
 - **Background Workers**: Async event processing consumers
 
-## 🛠️ **Build & Deploy From Source (Oct 1, 2025)**
+## � **Docker Compose Deployment (Recommended for Development)**
+
+### **One-Command Zero-Conflict Deployment**
+```bash
+# Automatic port assignment with conflict resolution
+./scripts/assign_ports_and_start.sh
+
+# OR use make target
+make setup-dev
+```
+
+**Features:**
+- ✅ **Automatic port conflict detection and resolution**
+- ✅ **Complete evented enterprise stack** (API + Consumer + All Infrastructure)
+- ✅ **Persistent volumes** for data retention across restarts
+- ✅ **Zero-configuration deployment** with real services (no mocks)
+- ✅ **Memory API fixed on port 9595** (never conflicts)
+- ✅ **All infrastructure ports auto-assigned** (PostgreSQL, Redis, Qdrant, Kafka)
+
+**Access Points:**
+- Memory API: http://localhost:9595 (fixed)
+- Infrastructure: Auto-assigned ports (displayed at startup)
+- Port assignments saved to: `.env`
+
+**Management Commands:**
+```bash
+# View running services
+docker ps | grep somafractalmemory
+
+# Check port assignments
+cat .env
+
+# Stop services (keep data)
+docker compose --profile core down
+
+# Remove all data (DESTRUCTIVE)
+docker compose --profile core down -v
+```
+
+---
+
+## ☸️ **Kubernetes Deployment (Production/Advanced)**
+
+## �🛠️ **Build & Deploy From Source (Oct 1, 2025)**
 
 1. **Build the API image from the current repository state**
    ```bash

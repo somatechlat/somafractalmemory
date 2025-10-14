@@ -5,56 +5,40 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEFAULT_COMPOSE_FILES=(
-  "docker-compose.yml"
-  "docker-compose.test.yml"
-  "docker-compose.dev.yml"
-)
+# Use single consolidated docker-compose.yml with all profiles
+COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
 
-COMPOSE_FILES=()
-for f in "${DEFAULT_COMPOSE_FILES[@]}"; do
-  if [[ -f "${REPO_ROOT}/${f}" ]]; then
-    COMPOSE_FILES+=("${REPO_ROOT}/${f}")
-  fi
-done
-
-if [[ ${#COMPOSE_FILES[@]} -eq 0 ]]; then
-  echo "No compose files found. Nothing to reset." >&2
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+  echo "Compose file ${COMPOSE_FILE} not found. Nothing to reset." >&2
   exit 0
 fi
 
-echo "Stopping compose stacks..."
-for compose_file in "${COMPOSE_FILES[@]}"; do
-  services="$(docker compose -f "${compose_file}" config --services 2>/dev/null || true)"
-  if [[ -z "${services}" ]]; then
-    echo "  skipping ${compose_file} (no services resolved)"
-    continue
-  fi
-  echo "  docker compose -f ${compose_file} down"
-  docker compose -f "${compose_file}" down || true
-done
+echo "Stopping all compose stacks (all profiles)..."
+echo "  docker compose -f ${COMPOSE_FILE} --profile core --profile dev --profile test --profile monitoring --profile ops --profile proxy down"
+docker compose -f "${COMPOSE_FILE}" --profile core --profile dev --profile test --profile monitoring --profile ops --profile proxy down || true
 
-# Named volumes to remove (both primary and test stacks).
+# Named volumes to remove (from consolidated docker-compose.yml)
 VOLUMES=(
-  # Primary stack volumes (canonical compose now uses somafractalmemory_ prefixes)
-  somafractalmemory_postgres_data
-  somafractalmemory_redis_data
-  somafractalmemory_kafka_data
-  somafractalmemory_qdrant_data
-  somafractalmemory_prometheus_data
-  somafractalmemory_grafana_data
-  somafractalmemory_vault_data
-  somafractalmemory_etcd_data
-  somafractalmemory_quadrant_data
-  # Test/legacy volumes
+  # Primary stack volumes (sfm_ prefix from docker-compose.yml)
+  sfm_postgres_data
+  sfm_redis_data
+  sfm_kafka_data
+  sfm_qdrant_data
+  sfm_prometheus_data
+  sfm_grafana_data
+  sfm_vault_data
+  sfm_etcd_data
+  sfm_quadrant_data
+  # Test environment volumes
   postgres_test_data
   redis_test_data
   kafka_test_data
   qdrant_test_storage
-  postgres_data
-  redis_data
-  kafka_data
-  qdrant_storage
+  # Legacy volumes (cleanup)
+  somafractalmemory_postgres_data
+  somafractalmemory_redis_data
+  somafractalmemory_kafka_data
+  somafractalmemory_qdrant_data
 )
 
 echo "Removing Docker volumes (if present)..."
@@ -69,6 +53,8 @@ cat <<'EOF'
 Docker shared infra reset complete.
 
 Next steps:
-  - docker compose up -d redis postgres qdrant kafka   # local baseline
-  - or scripts/start_stack.sh evented_enterprise
+  - docker compose --profile core up -d               # Core stack (API + infrastructure)
+  - docker compose --profile dev up -d                # Development with volume mounts
+  - docker compose --profile test up -d               # Test environment (port 9999)
+  - ./scripts/assign_ports_and_start.sh               # Auto-assign ports and start
 EOF

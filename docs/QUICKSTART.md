@@ -41,6 +41,10 @@ make compose-consumer-up
 ```
 The compose file launches Redis, Postgres, Qdrant, Kafka (Confluent single-broker in KRaft mode), the FastAPI service on `http://localhost:9595`, and an auxiliary API on `http://localhost:8888`. Configuration lives directly in `docker-compose.yml`; no `.env` copy is required.
 
+Note: this repository exposes two clear Docker modes:
+- LOCAL DEV FULL — use `make setup-dev` or `./scripts/assign_ports_and_start.sh` to bring up the full local stack. Memory API remains fixed on port 9595; infra ports are auto-assigned when conflicts occur and written to `.env`.
+- LOCAL SHARED PROD — use `docker compose --profile shared up -d` to start infra-only services that can be shared across app instances. Start the API separately in app-only mode to connect to the shared infra.
+
 Health check and teardown:
 ```bash
 make compose-health

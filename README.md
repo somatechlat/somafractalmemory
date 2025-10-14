@@ -52,6 +52,11 @@ These are the key environment variables consumed by the API, CLI, and consumer p
 | `SOMA_RATE_LIMIT_MAX` | Redis-backed request budget per endpoint (set `0` to disable throttling). | `60` |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window (seconds) for the rate limiter buckets. | `60` |
 | `UVICORN_PORT` | Exposed port for the API process (kept at `9595` in charts and Compose). | `9595` |
+| `KAFKA_HOST_PORT` | Host port for Kafka broker (auto-assigned if conflicting). | `9092` |
+| `KAFKA_OUTSIDE_PORT` | External Kafka port for host connections (auto-assigned if conflicting). | `19092` |
+| `POSTGRES_HOST_PORT` | Host port for PostgreSQL (auto-assigned if conflicting). | `5434` |
+| `REDIS_HOST_PORT` | Host port for Redis (auto-assigned if conflicting). | `6380` |
+| `QDRANT_HOST_PORT` | Host port for Qdrant vector store (auto-assigned if conflicting). | `6333` |
 | `UVICORN_WORKERS` / `UVICORN_TIMEOUT_GRACEFUL` / `UVICORN_TIMEOUT_KEEP_ALIVE` | Process tuning knobs honoured by `scripts/docker-entrypoint.sh`. | `4` / `60` / `30` |
 | `POSTGRES_POOL_SIZE` | Reserved for future async session pooling (exported in Helm values but currently unused). | *(n/a)* |
 | `SKIP_SCHEMA_VALIDATION` / `VECTOR_INDEX_ASYNC` | Present in Helm defaults for forward compatibility; not consumed by the FastAPI example yet. | *(n/a)* |
@@ -100,21 +105,29 @@ The uv path is preferred for reliability and speed.
 
 ### 2️⃣ Docker Compose (full stack)
 ```bash
-# Canonical entrypoint (build, start, wait for health, print endpoints)
+# Canonical entrypoint with automatic port assignment (build, start, wait for health, print endpoints)
 make setup-dev
 ```
-The API listens on **http://localhost:9595**. Start the background consumer with `make compose-consumer-up` when you need the Kafka reconciliation workers.
+The Memory API is fixed on **http://localhost:9595**. All infrastructure ports (PostgreSQL, Redis, Qdrant, Kafka) are **automatically assigned** to avoid conflicts. The system will:
+- Detect port conflicts automatically
+- Assign free ports to all infrastructure services
+- Update service configurations to use assigned ports
+- Display final port assignments after startup
+
 For the developer Kind slice, the chart exposes port **9797** in-cluster and NodePort **30797** on the host.
 
 ---
 
 ## 🚀 Running & Dynamic Configuration
-* **Bring up shared infrastructure** – Reuse the company-wide stack by running `docker compose up -d api` (see `docs/ops/shared_infra_compose.md`).
-* **Self-hosted services** – When you need local Postgres/Qdrant/Kafka containers, start them via:
+* **Automatic deployment** – Use the enhanced port assignment script for zero-conflict deployment:
   ```bash
-  ./scripts/start_stack.sh evented_enterprise
-  docker compose up -d api
-  docker compose --profile consumer up -d somafractalmemory_kube
+  ./scripts/assign_ports_and_start.sh
+  # OR
+  make setup-dev
+  ```
+* **Manual deployment** – When you need local Postgres/Qdrant/Kafka containers, start them via:
+  ```bash
+  docker compose --profile core up -d
   ```
 * **Environment changes** – Adjust the environment block in `docker-compose.yml` (or an override file), then restart the affected services. For example: `docker compose up -d api` and `docker compose --profile consumer up -d somafractalmemory_kube`.
 * **Stopping** – Preserve data with named volumes:
