@@ -22,6 +22,12 @@ RUN apt-get update \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     ln -s /root/.local/bin/uv /usr/local/bin/uv
 
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+
+
 # Copy minimal metadata to resolve dependencies before bringing the whole repo
 COPY pyproject.toml uv.lock* requirements*.txt api-requirements*.txt /app/
 
@@ -32,20 +38,23 @@ RUN if [ "${ENABLE_REAL_EMBEDDINGS}" = "1" ]; then \
     fi && \
     if [ -f uv.lock ]; then \
         echo "Using uv.lock (frozen)"; \
-        uv sync --frozen ${EXTRAS}; \
+        . /opt/venv/bin/activate && uv sync --python /opt/venv/bin/python ${EXTRAS}; \
     else \
         echo "No uv.lock found; resolving"; \
-        uv lock && uv sync ${EXTRAS}; \
+        . /opt/venv/bin/activate && uv lock && uv sync --python /opt/venv/bin/python ${EXTRAS}; \
+    fi && \
+    if [ -f api-requirements.txt ]; then \
+        . /opt/venv/bin/activate && /root/.local/bin/uv pip install -r api-requirements.txt; \
     fi
 
 # Copy application source and runtime assets
 COPY somafractalmemory/ ./somafractalmemory/
 COPY common/ ./common/
-COPY workers/ ./workers/
-COPY eventing/ ./eventing/
+# COPY workers/ ./workers/
+COPY somafractalmemory/eventing/ ./somafractalmemory/eventing/
 COPY scripts/ ./scripts/
-COPY langfuse/ ./langfuse/
-COPY examples/ ./examples/
+# COPY langfuse/ ./langfuse/
+# COPY examples/ ./examples/
 COPY docs/ ./docs/
 COPY mkdocs.yml README.md CHANGELOG.md LICENSE ./
 

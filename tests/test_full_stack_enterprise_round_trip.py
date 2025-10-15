@@ -43,6 +43,7 @@ def test_full_stack_round_trip_real_infra():
 
     namespace = "full_stack_it"
     mem = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, namespace, config=config)
+    mem._reconcile_once()  # Clear stale WAL entries from previous runs
 
     N = 5
     coords: list[tuple[float, float, float]] = []

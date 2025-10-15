@@ -1,9 +1,11 @@
 # Standard library imports
+import os
 from collections.abc import Iterator, Mapping
 from enum import Enum
 from typing import Any
 
 from common.config.settings import load_settings
+from common.utils.logger import get_logger
 
 # Local application imports (alphabetical)
 from somafractalmemory.core import SomaFractalMemoryEnterprise
@@ -117,13 +119,71 @@ def create_memory_system(
     """
     Factory function to create a SomaFractalMemoryEnterprise instance.
     """
-    settings = load_settings()
+    logger = get_logger(__name__)
+    logger.info("Creating memory system...")
 
+    overrides: dict[str, Any] = {}
+    redis_kwargs: dict[str, Any] = {}
+    qdrant_kwargs: dict[str, Any] = {}
+
+    if config:
+        postgres_cfg = config.get("postgres")
+        if postgres_cfg and postgres_cfg.get("url"):
+            overrides["postgres_url"] = postgres_cfg["url"]
+
+        redis_cfg = config.get("redis") or {}
+        if redis_cfg.get("host"):
+            redis_kwargs["host"] = redis_cfg["host"]
+        if redis_cfg.get("port") is not None:
+            redis_kwargs["port"] = int(redis_cfg["port"])
+
+        qdrant_cfg = config.get("qdrant") or {}
+        if qdrant_cfg.get("url"):
+            qdrant_kwargs["url"] = qdrant_cfg["url"]
+        elif qdrant_cfg.get("host"):
+            qdrant_kwargs["host"] = qdrant_cfg["host"]
+            if qdrant_cfg.get("port") is not None:
+                qdrant_kwargs["port"] = int(qdrant_cfg["port"])
+
+    # Honor bare environment overrides even when config is absent
+    env_pg_url = os.getenv("POSTGRES_URL")
+    if env_pg_url:
+        overrides.setdefault("postgres_url", env_pg_url)
+    env_qdrant_url = os.getenv("QDRANT_URL")
+    if env_qdrant_url:
+        qdrant_kwargs["url"] = env_qdrant_url
+    elif os.getenv("QDRANT_HOST"):
+        qdrant_kwargs["host"] = os.getenv("QDRANT_HOST")
+        if os.getenv("QDRANT_PORT"):
+            qdrant_kwargs["port"] = int(os.getenv("QDRANT_PORT"))
+    env_redis_host = os.getenv("REDIS_HOST")
+    if env_redis_host:
+        redis_kwargs.setdefault("host", env_redis_host)
+    env_redis_port = os.getenv("REDIS_PORT")
+    if env_redis_port:
+        redis_kwargs.setdefault("port", int(env_redis_port))
+
+    settings = load_settings(overrides=overrides if overrides else None)
+
+    # Log the settings being used
+    logger.info(f"Postgres URL: {settings.postgres_url}")
+    logger.info(f"Redis host: {settings.infra.redis}")
+    logger.info(f"Qdrant config: {qdrant_kwargs}")
+
+    redis_kwargs.setdefault("host", settings.infra.redis)
     postgres_store = PostgresKeyValueStore(url=settings.postgres_url)
-    redis_store = RedisKeyValueStore(host=settings.infra.redis)
-
+    redis_store = RedisKeyValueStore(**redis_kwargs)
     kv_store = PostgresRedisHybridStore(pg_store=postgres_store, redis_store=redis_store)
-    vector_store = QdrantVectorStore(collection_name=namespace, host=settings.qdrant_host)
+
+    # Clear any default host if URL is set
+    if "url" in qdrant_kwargs and "host" in qdrant_kwargs:
+        del qdrant_kwargs["host"]
+        if "port" in qdrant_kwargs:
+            del qdrant_kwargs["port"]
+    elif not qdrant_kwargs:
+        qdrant_kwargs["host"] = settings.qdrant_host
+
+    vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_kwargs)
     graph_store = NetworkXGraphStore()
 
     return SomaFractalMemoryEnterprise(

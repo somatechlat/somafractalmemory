@@ -16,10 +16,16 @@ from common.config.settings import load_settings
 import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Histogram
 import structlog
-from transformers import AutoModel, AutoTokenizer
+
 import urllib.request
 import urllib.error
 import urllib.parse
+
+try:
+    from psycopg2.sql import SQL, Identifier  # used in memory_stats when Postgres available
+except Exception:  # pragma: no cover - optional import depending on environment
+    SQL = None  # type: ignore
+    Identifier = None  # type: ignore
 
 from .interfaces.graph import IGraphStore
 from .interfaces.storage import IKeyValueStore, IVectorStore
@@ -139,7 +145,6 @@ class SomaFractalMemoryEnterprise:
         Synchronize the graph store from all current memories.
         (Stub: actual implementation can be added for full graph consistency.)
         """
-        pass
 
     def __init__(
         self,
@@ -256,7 +261,21 @@ class SomaFractalMemoryEnterprise:
             registry=self.registry,
         )
 
-        # Langfuse configuration is provided via the shared SMFSettings.langfuse
+        # eventing.
+        self.eventing_enabled = os.getenv("SOMA_EVENTING_ENABLED", "1").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if self.eventing_enabled:
+            try:
+                from .eventing.producer import build_memory_event, produce_event
+
+                self._build_event = build_memory_event
+                self._produce_event = produce_event
+            except ImportError:
+                logger.warning("Kafka eventing enabled but producer components not found.")
+                self.eventing_enabled = False
         self.langfuse = None
 
         self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
@@ -1244,6 +1263,13 @@ class SomaFractalMemoryEnterprise:
         with self.store_latency.labels(self.namespace).time():
             self.store_count.labels(self.namespace).inc()
             result = self.store(coord_t, value)
+            if self.eventing_enabled:
+                try:
+                    event = self._build_event(self.namespace, value)
+                    self._produce_event(event)
+                    result["event"] = event
+                except Exception as e:
+                    logger.warning(f"Failed to produce Kafka event: {e}")
         if self.fast_core_enabled:
             try:
                 # Reuse embedding work: embed serialized payload (same as store())
@@ -1261,7 +1287,7 @@ class SomaFractalMemoryEnterprise:
             self._enforce_memory_limit()
         except Exception as e:
             logger.debug(f"Memory limit enforcement failed: {e}")
-        pass
+        return result
 
     # ---------------- Fast Core Helpers -----------------
     def _fast_append(
@@ -1590,7 +1616,7 @@ class SomaFractalMemoryEnterprise:
             try:
                 norm = float(np.linalg.norm(emb)) or 1.0
                 emb = emb / norm
-            except Exception:
+            except Exception as e:
                 logger.warning("Failed to normalize embedding", error=str(e))
                 pass
             return emb
@@ -1600,7 +1626,7 @@ class SomaFractalMemoryEnterprise:
             try:
                 norm = float(np.linalg.norm(fb)) or 1.0
                 fb = fb / norm
-            except Exception:
+            except Exception as e:
                 logger.warning("Failed to normalize fallback embedding", error=str(e))
             return fb
 

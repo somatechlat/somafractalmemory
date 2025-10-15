@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-hash-embeddings = ["transformers", "Pillow", "tenacity", "torch", "torchvision", "torchaudio"]
+hash-embeddings = ["Pillow", "tenacity", "torch", "torchvision", "torchaudio"]
 api = [
   "fastapi",
   "uvicorn",

@@ -23,7 +23,7 @@ try:  # ``yaml`` is optional; config files fall back to JSON when absent.
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     yaml = None
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,21 +83,17 @@ class SMFSettings(SomaBaseSettings):
     # Canonical ports for the service interfaces
     api_port: int = Field(default=9595, description="FastAPI HTTP port")
     grpc_port: int = Field(default=50053, description="gRPC service port")
+    postgres_url: str = Field(
+        default="postgresql://soma:soma@postgres:5432/somafractalmemory",
+        description="DSN used by the Postgres-backed key-value store",
+    )
+    qdrant_host: str = Field(
+        default="qdrant",
+        description="Hostname for the Qdrant vector database",
+    )
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     kafka: KafkaSettings = Field(default_factory=KafkaSettings)
-
-    @field_validator("postgres_url")
-    def postgres_url_must_be_valid(cls, v):
-        if not v.startswith("postgresql://"):
-            raise ValueError("Invalid postgres_url scheme")
-        return v
-
-    @field_validator("qdrant_host")
-    def qdrant_host_must_be_valid(cls, v):
-        if "://" in v:
-            raise ValueError("qdrant_host should not include a scheme")
-        return v
 
     class Config:
         arbitrary_types_allowed = True

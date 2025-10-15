@@ -181,13 +181,14 @@ def test_full_infra_e2e():
         from confluent_kafka import Consumer  # type: ignore
     except Exception as exc:
         pytest.skip(f"Kafka client missing: {exc}")
-    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
     group_id = f"e2e-consumer-{int(time.time())}"
     consumer_conf = {
         "bootstrap.servers": bootstrap,
         "group.id": group_id,
         "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
+        "broker.address.family": "v4",
     }
     consumer = Consumer(consumer_conf)
     topic = "memory.events"

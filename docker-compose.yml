@@ -7,7 +7,7 @@ services:
       POSTGRES_DB: somafractalmemory
     container_name: somafractalmemory_postgres
     ports:
-      - "${POSTGRES_HOST_PORT:-5433}:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: always
@@ -18,7 +18,7 @@ services:
     image: redis:7
     container_name: somafractalmemory_redis
     ports:
-      - "${REDIS_HOST_PORT:-6381}:6379"
+      - "6381:6379"
     volumes:
       - redisdata:/data
     restart: always
@@ -29,9 +29,34 @@ services:
     image: qdrant/qdrant:latest
     container_name: somafractalmemory_qdrant
     ports:
-      - "${QDRANT_HOST_PORT:-6333}:6333"
+      - "6333:6333"
     volumes:
       - qdrantdata:/qdrant/storage
+    restart: always
+    profiles:
+      - core
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: somafractalmemory_kafka
+    ports:
+      - "${KAFKA_INTERNAL_PORT:-9092}:9092"
+      - "19092:19092"
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_HOST://:19092,CONTROLLER://:9093
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:${KAFKA_HOST_PORT:-19092}
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafkadata:/bitnami/kafka
     restart: always
     profiles:
       - core
@@ -48,10 +73,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
       SOMA_API_TOKEN: ${SOMA_API_TOKEN:-devtoken}
+      SOMA_INFRA__REDIS: redis
+      SOMA_KAFKA__BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       - postgres
       - redis
       - qdrant
+      - kafka
     volumes:
       - ./:/app:delegated
     healthcheck:
@@ -69,4 +97,6 @@ volumes:
   redisdata:
     driver: local
   qdrantdata:
+    driver: local
+  kafkadata:
     driver: local
