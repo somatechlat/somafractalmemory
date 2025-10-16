@@ -3,6 +3,9 @@
 
 replicaCount: 1
 
+service:
+  port: 9393  # Kubernetes API port
+
 postgres:
   replicaCount: 1
   persistence:
@@ -28,7 +31,7 @@ kafka:
   config:
     heapOpts: "-Xms512m -Xmx1024m"
     advertised:
-      listeners: PLAINTEXT://localhost:40004
+      listeners: PLAINTEXT://localhost:40024
     listener:
       security:
         protocol:

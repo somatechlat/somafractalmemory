@@ -51,6 +51,8 @@ response = requests.post(
 ### Filtered Query
 
 ```python
+import requests
+
 response = requests.post(
     'http://localhost:9595/api/v1/memory/search',
     json={
@@ -157,7 +159,7 @@ query_settings:
 
 ```bash
 # Check query performance
-curl http://localhost:9595/healthz/query
+curl http://localhost:9595/health/query
 
 # Monitor metrics
 curl http://localhost:9595/metrics | grep query_

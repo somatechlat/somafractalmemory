@@ -67,7 +67,11 @@ flowchart TB
 
 2. Verify the system is ready:
    ```bash
+   # For Docker Compose (port 9595 is the public entry point)
    curl http://localhost:9595/health
+
+   # For Kubernetes (port 9393)
+   # curl http://localhost:9393/health
    ```
 
 ## Step 2: Storing Your First Memory
@@ -90,6 +94,7 @@ classDiagram
 
 ### Example Request
 ```bash
+# For Docker Compose (use public port 9595)
 curl -X POST http://localhost:9595/store \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -115,6 +120,7 @@ graph LR
 
 ### Example Link Creation
 ```bash
+# For Docker Compose (use public port 9595)
 curl -X POST http://localhost:9595/link \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -146,6 +152,7 @@ sequenceDiagram
 
 ### Example Recall
 ```bash
+# For Docker Compose (use public port 9595)
 curl -X POST http://localhost:9595/recall \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -173,6 +180,7 @@ graph TD
 
 ### Finding Neighbors
 ```bash
+# For Docker Compose (use public port 9595)
 curl "http://localhost:9595/neighbors?coord=1.0,2.0,3.0" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```

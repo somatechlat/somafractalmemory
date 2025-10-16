@@ -28,7 +28,7 @@ review_frequency: "monthly"
 
 ### API Service
 ```bash
-# Check API health
+# Check API health (port 9595 - public entry point)
 curl http://localhost:9595/health
 
 # Detailed health check

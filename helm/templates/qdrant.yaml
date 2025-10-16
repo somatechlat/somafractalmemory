@@ -18,7 +18,7 @@ spec:
       - name: qdrant
         image: "{{ .Values.qdrant.image.repository }}:{{ .Values.qdrant.image.tag }}"
         ports:
-        - containerPort: 6333
+        - containerPort: 40023
         {{- if .Values.qdrant.persistence.enabled }}
         volumeMounts:
         - name: qdrant-storage
@@ -42,7 +42,7 @@ metadata:
   name: {{ .Release.Name }}-qdrant
 spec:
   ports:
-  - port: 6333
+  - port: 40023
   selector:
     app: qdrant
 {{- end }}

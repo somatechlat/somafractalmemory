@@ -46,7 +46,7 @@ curl "http://localhost:9595/neighbors?coord=1.0,2.0,3.0" \
 
 ### Finding Paths
 ```bash
-curl "http://localhost:9595/shortest_path?frm=1.0,2.0,3.0&to=7.0,8.0,9.0" \
+curl "http://localhost:9595/shortest_path?frm=1.0,2.0,3.0&to=7.0,8.0,9.0" \\
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 

@@ -14,33 +14,23 @@ spec:
       labels:
         app: somafractalmemory
     spec:
-      initContainers:
-        - name: wait-for-postgres
-          image: busybox:1.28
-          command: ['sh', '-c', 'until nc -z {{ .Release.Name }}-postgres 5432; do echo waiting for postgres; sleep 2; done;']
-        - name: wait-for-redis
-          image: busybox:1.28
-          command: ['sh', '-c', 'until nc -z {{ .Release.Name }}-redis 6379; do echo waiting for redis; sleep 2; done;']
-        - name: wait-for-qdrant
-          image: busybox:1.28
-          command: ['sh', '-c', 'until nc -z {{ .Release.Name }}-qdrant 6333; do echo waiting for qdrant; sleep 2; done;']
       containers:
         - name: somafractalmemory
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: 9393
               protocol: TCP
           env:
             - name: POSTGRES_URL
-              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:5432/somafractalmemory"
+              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:40021/somafractalmemory"
             - name: REDIS_URL
-              value: "redis://{{ .Release.Name }}-redis:6379/0"
+              value: "redis://{{ .Release.Name }}-redis:40022/0"
             - name: QDRANT_URL
-              value: "http://{{ .Release.Name }}-qdrant:6333"
+              value: "http://{{ .Release.Name }}-qdrant:40023"
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: "{{ .Release.Name }}-kafka:9092"
+              value: "{{ .Release.Name }}-kafka:40024"
             - name: SOMA_API_TOKEN
               valueFrom:
                 secretKeyRef:

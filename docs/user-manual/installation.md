@@ -26,7 +26,7 @@ docker compose up -d
 docker compose ps
 
 # Test the health endpoint
-curl http://localhost:9595/healthz
+curl http://localhost:9595/health
 ```
 
 ## Configuration

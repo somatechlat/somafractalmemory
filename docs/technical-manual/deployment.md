@@ -1,47 +1,196 @@
+---
+title: "Deployment Guide"
+purpose: "Comprehensive instructions for deploying SomaFractalMemory in production"
+audience: "DevOps engineers, SREs, system administrators"
+last_updated: "2025-10-16"
+review_frequency: "quarterly"
+---
+
 # Deployment Guide
-
-## Overview
-
-This guide covers deploying Soma Fractal Memory in production environments.
 
 ## Prerequisites
 
-- Kubernetes cluster
-- Helm 3.x
-- kubectl configured
+- Kubernetes 1.20+ (or Docker Compose 2.0+)
+- Helm 3.0+
+- kubectl configured with cluster access
 
-## Deployment Options
+## Port Strategy
 
-### 1. Kubernetes with Helm (Recommended)
+### SomaFractalMemory API
 
-```bash
-# Add Helm repository
-helm repo add soma https://charts.somatech.lat
-helm repo update
+| Environment | Public Port | Purpose | Notes |
+|-------------|------------|---------|-------|
+| **Docker Compose** | 9595 | Public API Entry Point | Direct access, standard port |
+| **Kubernetes** | 9393 | Service Access (non-conflicting) | Internal Kubernetes port |
 
-# Install with default values
-helm install memory soma/somafractalmemory
+### Supporting Services (All Environments)
 
-# Install with custom values
-helm install memory soma/somafractalmemory -f values-prod.yaml
-```
+| Service | Port | Purpose |
+|---------|------|---------|
+| **PostgreSQL** | 40021 | Persistent memory storage |
+| **Redis** | 40022 | Hot cache layer |
+| **Qdrant Vector Store** | 40023 | Vector similarity search |
+| **Kafka** | 40024 | Event bus (optional) |
 
-### 2. Docker Compose (Small Scale)
-
-```bash
-# Production mode
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-## Configuration
+## Docker Compose Deployment
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|----------|
-| `SOMA_API_TOKEN` | API authentication token | Required |
-| `POSTGRES_PASSWORD` | Database password | Required |
-| `REDIS_PASSWORD` | Redis password | Required |
+```bash
+export API_PORT=9595               # PUBLIC API ENTRY POINT (default)
+export POSTGRES_HOST_PORT=40021
+export REDIS_HOST_PORT=40022
+export QDRANT_HOST_PORT=40023
+export KAFKA_INTERNAL_PORT=40024
+```
+
+### Startup
+
+```bash
+docker compose up -d
+```
+
+### Verification
+
+```bash
+# Test API (9595 is the PUBLIC ENTRY POINT)
+curl http://localhost:9595/health
+
+# Database (40021)
+psql -h localhost -p 40021 -U soma -d somafractalmemory
+
+# Cache (40022)
+redis-cli -p 40022 ping
+
+# Vector Store (40023)
+curl http://localhost:40023/health
+
+# Kafka (40024)
+kafka-topics --bootstrap-server localhost:40024 --list
+```
+
+## Kubernetes Deployment
+
+### Port Configuration
+
+All Kubernetes services use the 40020+ range with API on **port 9393**:
+
+```bash
+helm install somafractalmemory ./helm \
+  -f ./helm/values-prod.yaml \
+  -n memory
+```
+
+### Environment Variables (Kubernetes)
+
+```yaml
+POSTGRES_URL: "postgresql://soma:PASSWORD@somafractalmemory-postgres:40021/somafractalmemory"
+REDIS_URL: "redis://somafractalmemory-redis:40022/0"
+QDRANT_URL: "http://somafractalmemory-qdrant:40023"
+KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-kafka:40024"
+```
+
+### Verification
+
+```bash
+# Port-forward to test API (9393)
+kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
+curl http://localhost:9393/health
+
+# Check service endpoints
+kubectl get svc -n memory
+```
+
+## Configuration Reference
+
+### Helm Values (values-local-dev.yaml)
+
+```yaml
+service:
+  port: 9393  # Kubernetes API port (9393 for Kubernetes)
+
+postgres:
+  persistence:
+    enabled: false
+
+redis:
+  persistence:
+    enabled: false
+
+qdrant:
+  persistence:
+    enabled: false
+
+kafka:
+  replicaCount: 1
+```
+
+### Docker Compose (docker-compose.yml)
+
+```yaml
+api:
+  ports:
+    - "9595:9595"  # Public API entry point
+  command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "9595"]
+```
+
+## Post-Deployment Checks
+
+### Docker Compose
+
+```bash
+# API Health (port 9595 - public entry point)
+curl http://localhost:9595/health
+
+# Database (40021)
+psql -h localhost -p 40021 -U soma -d somafractalmemory
+
+# Cache (40022)
+redis-cli -p 40022 ping
+```
+
+### Kubernetes
+
+```bash
+# API Health (via port 9393)
+kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
+curl http://localhost:9393/health
+
+# Service status
+kubectl get svc -n memory
+```
+
+## Troubleshooting
+
+### Port Conflicts
+
+- **Docker**: If port 40020 is in use, set `API_PORT=XXXX` environment variable
+- **Kubernetes**: Port 9393 is reserved for Kubernetes. Adjust with `helm install --set service.port=XXXX`
+
+### Connection Strings
+
+Update your client configuration based on deployment:
+
+**Docker**:
+```
+API: http://localhost:9595
+Database: postgresql://localhost:40021
+Cache: redis://localhost:40022
+```
+
+**Kubernetes**:
+```
+API: http://somafractalmemory:9393 (from within cluster)
+Database: postgresql://somafractalmemory-postgres:40021
+Cache: redis://somafractalmemory-redis:40022
+```
+
+## Further Reading
+- [Monitoring Guide](monitoring.md)
+- [Troubleshooting Guide](troubleshooting.md)
+- [Architecture Guide](architecture.md)
+
+
 
 ### Resource Requirements
 

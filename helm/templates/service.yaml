@@ -8,7 +8,7 @@ spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: 9595 # The container port is fixed at 9595
+      targetPort: 9393 # Kubernetes uses port 9393
       protocol: TCP
       name: http
   selector:
