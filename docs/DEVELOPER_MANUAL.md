@@ -199,8 +199,37 @@ make compose-up
 make compose-down
 ```
 
-### 5.2. Kubernetes Deployment with Helm
-For deploying to Kubernetes, the project includes a Helm chart in the `helm/` directory. The chart supports two deployment profiles:
+### 5.2. Local Deployment with Kubernetes (kind)
+For testing the Kubernetes deployment locally, you can use `kind`.
+
+**1. Create a cluster:**
+```bash
+kind create cluster --name somafractalmemory-dev
+```
+
+**2. Build and load the Docker image:**
+```bash
+docker build -t somafractalmemory:latest .
+kind load docker-image somafractalmemory:latest --name somafractalmemory-dev
+```
+
+**3. Deploy the application with Helm:**
+```bash
+helm install somafractalmemory ./helm -f ./helm/values-local-dev.yaml
+```
+
+**4. Forward the service port:**
+```bash
+kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393
+```
+
+**5. Run the tests:**
+```bash
+SOMA_TEST_API_BASE_URL=http://localhost:9393 python -m pytest test_simple_memory.py -v
+```
+
+### 5.3. Kubernetes Deployment with Helm
+For deploying to a remote Kubernetes cluster, the project includes a Helm chart in the `helm/` directory. The chart supports two deployment profiles:
 
 - **`local-dev`**: A lightweight configuration for local Kubernetes clusters.
 - **`prod-ha`**: A high-availability configuration for production environments.
@@ -252,6 +281,10 @@ graph TD
     Ingress[Ingress Controller] --> Service_API
     Client --> Ingress
 ```
+
+> **Note on Port Mappings:** The Docker Compose setup exposes the API on port `9595`, while the Kubernetes service defaults to port `9393` to prevent conflicts during local development. Ensure you are targeting the correct port for your environment.
+>
+> **Kubernetes Port Range:** The Kubernetes services are configured to use ports in the `40051-40054` range to avoid conflicts with the Docker Compose setup (`40001-40004`).
 
 ## 6. Advanced Topics
 

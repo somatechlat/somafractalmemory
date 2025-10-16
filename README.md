@@ -30,16 +30,21 @@ The Makefile provides shortcuts:
 - Tail API logs: `make compose-logs`
 - Stop: `make compose-down`
 
-The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`.
+The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`. The Kubernetes deployment uses port `9393` by default.
 
 ## Documentation
 
-- Developer Manual: `docs/DEVELOPER_MANUAL.md`
-- API Reference: `docs/api.md`
-- Roadmap: `docs/ROADMAP.md`
+**📚 [Complete Documentation Hub](docs/index.md)** - Four-manual structure following enterprise standards
+
+| Manual | Purpose | Start Here |
+|--------|---------|------------|
+| 👤 **[User Manual](docs/user-manual/index.md)** | How to use SomaFractalMemory | [Quick Start](docs/user-manual/quick-start-tutorial.md) |
+| ⚙️ **[Technical Manual](docs/technical-manual/index.md)** | Deploy & operate the system | [Deployment](docs/technical-manual/deployment.md) |
+| 💻 **[Development Manual](docs/development-manual/index.md)** | Build & contribute code | [Local Setup](docs/development-manual/local-setup.md) |
+| 🚀 **[Onboarding Manual](docs/onboarding-manual/index.md)** | New team member guide | [Project Context](docs/onboarding-manual/project-context.md) |
 
 ## Contributing
 
-Contributions are welcome. See `docs/DEVELOPER_MANUAL.md` for development workflows.
+See [Contribution Process](docs/development-manual/contribution-process.md) for development workflows and [Coding Standards](docs/development-manual/coding-standards.md).
 
 © 2025 SomaTechLat – All rights reserved.

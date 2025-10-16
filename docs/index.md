@@ -1,48 +1,35 @@
 ---
-title: "Soma Fractal Memory Documentation"
-purpose: "Main documentation hub for SomaFractalMemory"
+title: "SomaFractalMemory Documentation"
+purpose: "Main documentation hub following 4-manual structure"
 audience:
-  - "All Users"
-  - "Developers"
-  - "System Administrators"
+  - "All Stakeholders"
 version: "1.0.0"
-last_updated: "2025-10-15"
+last_updated: "2025-10-16"
 review_frequency: "quarterly"
 ---
 
-# Soma Fractal Memory Documentation
+# SomaFractalMemory Documentation
 
-Welcome to the official documentation for Soma Fractal Memory. This comprehensive guide covers everything you need to know about using, developing with, and maintaining the system.
+**Enterprise AI Memory System for Distributed Applications**
 
-## Quick Links
+## The Four Core Manuals
 
-### User Guide
-- [Features](user-manual/features/index.md)
-  - [Memory Storage](user-manual/features/memory-storage.md)
-  - [Memory Recall](user-manual/features/memory-recall.md)
-  - [Memory Linking](user-manual/features/memory-linking.md)
+| Manual | Audience | Purpose |
+|---|---|---|
+| **[User Manual](user-manual/index.md)** | End-Users, Product Managers | How to *use* the system |
+| **[Technical Manual](technical-manual/index.md)** | SREs, DevOps, System Administrators | How to *deploy and operate* |
+| **[Development Manual](development-manual/index.md)** | Software Engineers, Contributors | How to *build and contribute* |
+| **[Onboarding Manual](onboarding-manual/index.md)** | New Team Members, Agent Coders | How to *quickly become productive* |
 
-### Technical Resources
-- [Architecture](technical-manual/architecture/index.md)
-  - [Vector Store](technical-manual/architecture/vector-store.md)
-  - [Graph Store](technical-manual/architecture/graph-store.md)
-  - [Cache Layer](technical-manual/architecture/cache.md)
+## Quick Start
 
-### Developer Resources
-- [API Reference](development-manual/api-reference.md)
-- [Core Concepts](development-manual/concepts/index.md)
-  - [Memory Vectors](development-manual/concepts/memory-vectors.md)
-  - [Graph Theory](development-manual/concepts/graph-theory.md)
+1. **Users**: [Installation Guide](user-manual/installation.md) → [Quick Start Tutorial](user-manual/quick-start-tutorial.md)
+2. **Operators**: [Deployment Guide](technical-manual/deployment.md) → [Monitoring Setup](technical-manual/monitoring.md)
+3. **Developers**: [Local Setup](development-manual/local-setup.md) → [API Reference](development-manual/api-reference.md)
+4. **New Team**: [Project Context](onboarding-manual/project-context.md) → [Environment Setup](onboarding-manual/environment-setup.md)
 
-## System Requirements
-- Docker 20.10+
-- Kubernetes 1.24+
-- PostgreSQL 15+
-- Redis 7+
-- Qdrant (latest)
-- Kafka (latest)
-
-## Additional Resources
-- [Developer Manual](DEVELOPER_MANUAL.md)
-- [Roadmap](ROADMAP.md)
-- [GitHub Repository](https://github.com/yourusername/somafractalmemory)
+## System Overview
+- **Enterprise AI Memory System** with vector search, graph relationships, and distributed architecture
+- **Multi-backend storage**: PostgreSQL + Redis + Qdrant + Kafka
+- **Interfaces**: FastAPI HTTP, gRPC, CLI, Python library
+- **Use cases**: AI agents, knowledge management, semantic search

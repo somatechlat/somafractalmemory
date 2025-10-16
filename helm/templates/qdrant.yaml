@@ -23,6 +23,7 @@ spec:
         volumeMounts:
         - name: qdrant-storage
           mountPath: /qdrant/storage
+        {{- end }}
   {{- if .Values.qdrant.persistence.enabled }}
   volumeClaimTemplates:
   - metadata:

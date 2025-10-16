@@ -2,7 +2,7 @@
 
 ## Overview
 
-Query Optimization in Soma Fractal Memory enables efficient vector searches, relationship traversals, and complex memory operations through sophisticated indexing and caching strategies.
+Query Optimization in Soma Fractal Memory enables efficient vector searches, relationship traversals, and distributed memory operations through sophisticated indexing and caching strategies.
 
 ## Key Capabilities
 

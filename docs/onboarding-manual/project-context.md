@@ -6,7 +6,7 @@ Soma Fractal Memory is a sophisticated memory management system designed to stor
 
 ## Mission
 
-To provide a reliable, scalable, and efficient memory management system that can handle complex data relationships while maintaining high performance and data integrity.
+To provide a reliable, scalable, and efficient memory management system that can handle distributed data relationships while maintaining high performance and data integrity.
 
 ## Goals
 

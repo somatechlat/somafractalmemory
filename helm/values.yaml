@@ -6,13 +6,13 @@ replicaCount: 1
 
 image:
   repository: somafractalmemory
-  pullPolicy: IfNotPresent
+  pullPolicy: Never
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "latest"
 
 service:
   type: ClusterIP
-  port: 9595
+  port: 9393
 
 postgres:
   enabled: true
@@ -54,7 +54,7 @@ kafka:
   enabled: true
   replicaCount: 1
   image:
-    repository: confluentinc/cp-kafka
+    repository: apache/kafka
     tag: latest
   service:
     port: 40004

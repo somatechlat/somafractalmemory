@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Semantic Graph feature enables creating and traversing relationships between memory vectors, allowing for complex semantic networks and knowledge graphs.
+The Semantic Graph feature enables creating and traversing relationships between memory vectors, allowing for distributed semantic networks and knowledge graphs.
 
 ## Key Capabilities
 

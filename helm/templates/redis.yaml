@@ -23,6 +23,7 @@ spec:
         volumeMounts:
         - name: redis-data
           mountPath: /data
+        {{- end }}
   {{- if .Values.redis.persistence.enabled }}
   volumeClaimTemplates:
   - metadata:

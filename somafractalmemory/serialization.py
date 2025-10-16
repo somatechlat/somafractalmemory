@@ -21,7 +21,7 @@ def serialize(obj: Any) -> bytes:
     """Serialize an object to bytes using JSON (utf-8).
 
     This function intentionally uses JSON as the primary format. If an object
-    is not JSON-serializable, callers should pre-convert complex types to JSON
+    is not JSON-serializable, callers should pre-convert distributed types to JSON
     friendly structures before calling.
     """
     return json.dumps(obj, default=_json_default, separators=(",", ":")).encode("utf-8")
