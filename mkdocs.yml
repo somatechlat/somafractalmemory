@@ -56,10 +56,20 @@ nav:
     - Codebase Walkthrough: onboarding-manual/codebase-walkthrough.md
     - Environment Setup: onboarding-manual/environment-setup.md
     - First Contribution: onboarding-manual/first-contribution.md
+    - Team Collaboration: onboarding-manual/team-collaboration.md
     - Domain Knowledge: onboarding-manual/domain-knowledge.md
+    - Resources:
+      - Useful Links: onboarding-manual/resources/useful-links.md
+      - Troubleshooting: onboarding-manual/resources/troubleshooting.md
+      - Glossary: onboarding-manual/resources/glossary.md
+    - Checklists:
+      - Setup Checklist: onboarding-manual/checklists/setup-checklist.md
+      - Pre-Commit Checklist: onboarding-manual/checklists/pre-commit-checklist.md
+      - PR Checklist: onboarding-manual/checklists/pr-checklist.md
   - Reference:
     - Glossary: glossary.md
     - Style Guide: style-guide.md
+    - Port Strategy: PORT_STRATEGY.md
     - Changelog: changelog.md
     - Roadmap: ROADMAP.md
 
