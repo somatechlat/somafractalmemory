@@ -1,38 +1,146 @@
 site_name: SomaFractalMemory
+site_description: Enterprise AI Memory System
+site_author: SomaTechLat
+repo_url: https://github.com/somatechlat/somafractalmemory
+repo_name: somatechlat/somafractalmemory
+
 nav:
   - Home: index.md
   - User Manual:
+    - Overview: user-manual/index.md
+    - Installation: user-manual/installation.md
+    - Quick Start: user-manual/quick-start-tutorial.md
     - Features:
-      - Overview: user-manual/features/index.md
       - Memory Storage: user-manual/features/memory-storage.md
-      - Memory Recall: user-manual/features/memory-recall.md
-      - Memory Linking: user-manual/features/memory-linking.md
+      - Vector Search: user-manual/features/vector-search.md
+      - Graph Relations: user-manual/features/graph-relations.md
+      - Advanced Queries: user-manual/features/advanced-queries.md
+    - Integration:
+      - HTTP API: user-manual/integration/http-api.md
+      - gRPC Interface: user-manual/integration/grpc.md
+      - Python SDK: user-manual/integration/python-sdk.md
+    - FAQ: user-manual/faq.md
   - Technical Manual:
     - Overview: technical-manual/index.md
     - Architecture:
+      - System Overview: technical-manual/architecture.md
       - Vector Store: technical-manual/architecture/vector-store.md
       - Graph Store: technical-manual/architecture/graph-store.md
       - Cache Layer: technical-manual/architecture/cache.md
+    - Deployment: technical-manual/deployment.md
+    - Monitoring: technical-manual/monitoring.md
+    - Performance: technical-manual/performance.md
+    - Scaling: technical-manual/scaling.md
+    - Security:
+      - Overview: technical-manual/security/security-guide.md
+      - RBAC Matrix: technical-manual/security/rbac-matrix.md
+    - Runbooks:
+      - API Service: technical-manual/runbooks/api-service.md
+      - Memory Service: technical-manual/runbooks/memory-service.md
+      - Database Service: technical-manual/runbooks/database-service.md
+    - Troubleshooting: technical-manual/troubleshooting.md
   - Development Manual:
-    - API Reference: development-manual/api-reference.md
-    - Concepts:
+    - Overview: development-manual/index.md
+    - Getting Started:
+      - Local Setup: development-manual/local-setup.md
+      - Contributing: development-manual/contributing.md
+      - Coding Standards: development-manual/coding-standards.md
+    - Core Concepts:
       - Memory Vectors: development-manual/concepts/memory-vectors.md
       - Graph Theory: development-manual/concepts/graph-theory.md
-  - API: api.md
-  - Developer Manual: DEVELOPER_MANUAL.md
-  - Roadmap: ROADMAP.md
+    - API Reference: development-manual/api-reference.md
+    - Testing Guidelines: development-manual/testing-guidelines.md
+  - Onboarding Manual:
+    - Overview: onboarding-manual/index.md
+    - Project Context: onboarding-manual/project-context.md
+    - Codebase Walkthrough: onboarding-manual/codebase-walkthrough.md
+    - Environment Setup: onboarding-manual/environment-setup.md
+    - First Contribution: onboarding-manual/first-contribution.md
+    - Domain Knowledge: onboarding-manual/domain-knowledge.md
+  - Reference:
+    - Glossary: glossary.md
+    - Style Guide: style-guide.md
+    - Changelog: changelog.md
+    - Roadmap: ROADMAP.md
 
 theme:
   name: material
+  palette:
+    primary: indigo
+    accent: deep purple
+  font:
+    text: Roboto
+    code: Roboto Mono
   features:
     - navigation.tabs
+    - navigation.sections
+    - navigation.expand
     - navigation.top
+    - search.suggest
+    - search.highlight
+    - toc.integrate
+  icon:
+    repo: fontawesome/brands/github
 
 plugins:
   - search
+  - git-revision-date-localized:
+      type: date
+  - minify:
+      minify_html: true
+  - social:
+      cards_color:
+        fill: "#3f51b5"
+        text: "#ffffff"
 
 markdown_extensions:
   - admonition
-  - codehilite
+  - attr_list
+  - def_list
+  - footnotes
+  - meta
   - toc:
       permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.highlight:
+      use_pygments: true
+      linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/somatechlat/somafractalmemory
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/somatechlat/somafractalmemory
+  version:
+    provider: mike
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

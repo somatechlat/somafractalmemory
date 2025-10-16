@@ -1,0 +1,80 @@
+name: Documentation Checks
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sundays
+
+jobs:
+  docs-check:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # For changelog validation
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml markdownlint-cli2 remark-validate-links
+
+      - name: Run markdown lint
+        run: |
+          npm install -g markdownlint-cli2
+          markdownlint-cli2 "docs/**/*.md"
+
+      - name: Validate internal links
+        run: python scripts/audit-docs.py
+
+      - name: Validate changelog
+        run: python scripts/validate-changelog.py
+
+      - name: Check doc freshness
+        run: |
+          python scripts/audit-docs.py
+          if [ -f docs/doc-health-report.json ]; then
+            cat docs/doc-health-report.json
+          fi
+
+      - name: Generate documentation site
+        run: |
+          pip install mkdocs-material
+          mkdocs build
+
+      - name: Upload documentation health report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: doc-health-report
+          path: docs/doc-health-report.json
+
+  plantuml-diagrams:
+    name: Render PlantUML Diagrams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Generate PlantUML Diagrams
+        uses: cloudbees/plantuml-github-action@v1
+        with:
+          args: -v -tpng docs/**/*.puml
+
+      - name: Commit diagram changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "docs: update PlantUML diagrams"
+          file_pattern: "docs/**/*.png"

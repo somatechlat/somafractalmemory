@@ -1,0 +1,88 @@
+@startuml SomaFractalMemory Architecture
+
+' Styling
+skinparam componentStyle uml2
+skinparam backgroundColor white
+skinparam linetype ortho
+
+' Title
+title SomaFractalMemory System Architecture
+
+' Components
+package "Client Applications" {
+    [HTTP Client] as http_client
+    [gRPC Client] as grpc_client
+    [CLI Tool] as cli
+}
+
+package "SomaFractalMemory Service" {
+    package "API Layer" {
+        [FastAPI Service] as fastapi
+        [gRPC Service] as grpc
+        [CLI Interface] as cli_interface
+    }
+
+    package "Core Services" {
+        [Memory Manager] as memory_manager
+        [Vector Engine] as vector_engine
+        [Graph Manager] as graph_manager
+        [Cache Manager] as cache_manager
+    }
+
+    package "Storage Layer" {
+        database "PostgreSQL" {
+            [Memory Store] as pg_store
+            [Graph Store] as pg_graph
+        }
+
+        database "Redis" {
+            [Cache] as redis_cache
+        }
+
+        database "Qdrant" {
+            [Vector Store] as qdrant
+        }
+
+        queue "Kafka" {
+            [Event Bus] as kafka
+        }
+    }
+}
+
+' Connections
+http_client --> fastapi
+grpc_client --> grpc
+cli --> cli_interface
+
+fastapi --> memory_manager
+grpc --> memory_manager
+cli_interface --> memory_manager
+
+memory_manager --> vector_engine
+memory_manager --> graph_manager
+memory_manager --> cache_manager
+
+vector_engine --> qdrant
+graph_manager --> pg_graph
+cache_manager --> redis_cache
+
+memory_manager --> pg_store
+memory_manager ..> kafka : Optional Events
+
+' Notes
+note right of kafka
+  Optional component for
+  async processing
+end note
+
+note right of redis_cache
+  High-speed caching
+  for frequent reads
+end note
+
+note right of qdrant
+  Vector similarity
+  search engine
+end note
+
+@enduml

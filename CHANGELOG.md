@@ -27,3 +27,4 @@ All notable changes to this project will be documented in this file.
 - **Obsolete Makefile Targets**: Removed the non-functional `docs-build` and `docs-serve` commands from the `Makefile`.
 - **Deprecated Code**: Removed the `recall_with_scores` function from `core.py`, which was marked as deprecated.
 - **Unused Event Schema**: Deleted the `schemas/` directory, which was only used by the legacy Kafka eventing system.
+- **Orphaned Artifacts**: Removed empty directories (`.venv-test/include`, `docs/onboarding-manual/checklists`) left over from previous refactoring.

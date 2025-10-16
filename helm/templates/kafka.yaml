@@ -16,9 +16,12 @@ spec:
     spec:
       containers:
       - name: kafka
-        image: "{{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}"
+        image: "apache/kafka:latest"
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9092
+        resources:
+{{ toYaml .Values.kafka.resources | indent 10 }}
         env:
         - name: KAFKA_PROCESS_ROLES
           value: "broker,controller"
@@ -28,6 +31,8 @@ spec:
           value: "PLAINTEXT://{{ .Release.Name }}-kafka:9092"
         - name: KAFKA_CONTROLLER_LISTENER_NAMES
           value: "CONTROLLER"
+        - name: KAFKA_HEAP_OPTS
+          value: {{ .Values.kafka.config.heapOpts | quote }}
         {{- if .Values.kafka.persistence.enabled }}
         volumeMounts:
         - name: kafka-data

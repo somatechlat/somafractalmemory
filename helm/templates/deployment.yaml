@@ -14,6 +14,16 @@ spec:
       labels:
         app: somafractalmemory
     spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.28
+          command: ['sh', '-c', 'until nc -z {{ .Release.Name }}-postgres 5432; do echo waiting for postgres; sleep 2; done;']
+        - name: wait-for-redis
+          image: busybox:1.28
+          command: ['sh', '-c', 'until nc -z {{ .Release.Name }}-redis 6379; do echo waiting for redis; sleep 2; done;']
+        - name: wait-for-qdrant
+          image: busybox:1.28
+          command: ['sh', '-c', 'until nc -z {{ .Release.Name }}-qdrant 6333; do echo waiting for qdrant; sleep 2; done;']
       containers:
         - name: somafractalmemory
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
