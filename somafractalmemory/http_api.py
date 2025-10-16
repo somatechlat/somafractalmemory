@@ -134,18 +134,28 @@ def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
     """Resolve Postgres configuration with centralized settings fallback.
 
     Preference order:
-    1. Explicit ``POSTGRES_URL`` environment variable.
-    2. Centralized settings DNS (``settings.infra.postgres``) with standard DSN.
-    3. Empty mapping when neither is present.
+    1. ``SOMA_POSTGRES_URL`` environment variable
+    2. ``postgres_url`` from settings
+    3. ``POSTGRES_URL`` environment variable
+    4. Build URL from infra settings or use default
     """
+    # Try SOMA_POSTGRES_URL first (our preferred environment variable)
+    url = os.getenv("SOMA_POSTGRES_URL")
+    if url:
+        return {"url": url}
+
+    # Then try postgres_url from settings if available
+    if settings and hasattr(settings, "postgres_url"):
+        return {"url": settings.postgres_url}
+
+    # Then try legacy POSTGRES_URL
     url = os.getenv("POSTGRES_URL")
     if url:
         return {"url": url}
-    host = getattr(getattr(settings, "infra", None), "postgres", None)
-    if host:
-        # Default credentials/database match our Helm chart defaults
-        return {"url": f"postgresql://postgres:postgres@{host}:5432/somamemory"}
-    return {"url": os.getenv("POSTGRES_URL")}  # final fallback (None or value)
+
+    # Last resort: build from infra settings or use default
+    host = getattr(getattr(settings, "infra", None), "postgres", "postgres")
+    return {"url": f"postgresql://soma:soma@{host}:5432/somamemory"}
 
 
 def _redis_config(settings: Any | None = None) -> dict[str, Any]:

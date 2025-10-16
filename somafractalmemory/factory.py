@@ -146,7 +146,7 @@ def create_memory_system(
                 qdrant_kwargs["port"] = int(qdrant_cfg["port"])
 
     # Honor bare environment overrides even when config is absent
-    env_pg_url = os.getenv("POSTGRES_URL")
+    env_pg_url = os.getenv("SOMA_POSTGRES_URL")
     if env_pg_url:
         overrides.setdefault("postgres_url", env_pg_url)
     env_qdrant_url = os.getenv("QDRANT_URL")

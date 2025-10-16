@@ -1,3 +1,5 @@
 alembic
 psycopg2-binary
 uvicorn
+pyyaml
+python-dotenv

@@ -302,11 +302,12 @@ Unless stated otherwise, every option is optional and falls back to sensible def
 | `SOMA_API_TOKEN` | Required bearer token enforced by the FastAPI dependencies (provide via env or secret file). | *(secret; no default)* |
 | `SOMA_RATE_LIMIT_MAX` | Redis-backed per-endpoint request budget (minimum 1; set `0` to disable). | `60` |
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Sliding window for the limiter (seconds). | `60` |
-| `UVICORN_PORT` | API process port (kept at `9595` in charts/Compose). | `9595` |
-| `POSTGRES_HOST_PORT` | Host port for PostgreSQL database (auto-assigned if conflicts detected). | `5434` |
-| `REDIS_HOST_PORT` | Host port for Redis cache (auto-assigned if conflicts detected). | `6380` |
-| `QDRANT_HOST_PORT` | Host port for Qdrant vector store (auto-assigned if conflicts detected). | `6333` |
-| `KAFKA_HOST_PORT` | Host port for Kafka broker (auto-assigned if conflicts detected). | `9092` |
+| `UVICORN_PORT` | API process port | `9595` |
+| `POSTGRES_HOST_PORT` | Host port for PostgreSQL database | `40001` |
+| `REDIS_HOST_PORT` | Host port for Redis cache | `40002` |
+| `QDRANT_HOST_PORT` | Host port for Qdrant vector store | `40003` |
+| `KAFKA_HOST_PORT` | Host port for Kafka internal broker | `40004` |
+| `KAFKA_OUTSIDE_PORT` | Host port for Kafka external access | `40005` |
 | `KAFKA_OUTSIDE_PORT` | External Kafka port for host connections (auto-assigned if conflicts detected). | `19092` |
 | `UVICORN_WORKERS` | Worker count for the FastAPI container images. | `4` |
 | `UVICORN_TIMEOUT_GRACEFUL` | Graceful shutdown timeout for the API. | `60` |

@@ -21,7 +21,7 @@ postgres:
     repository: postgres
     tag: 15
   service:
-    port: 5432
+    port: 40001
   persistence:
     enabled: false
     size: 10Gi
@@ -33,7 +33,7 @@ redis:
     repository: redis
     tag: 7
   service:
-    port: 6379
+    port: 40002
   persistence:
     enabled: false
     size: 5Gi
@@ -45,7 +45,7 @@ qdrant:
     repository: qdrant/qdrant
     tag: latest
   service:
-    port: 6333
+    port: 40003
   persistence:
     enabled: false
     size: 10Gi
@@ -57,7 +57,7 @@ kafka:
     repository: confluentinc/cp-kafka
     tag: latest
   service:
-    port: 9092
+    port: 40004
   persistence:
     enabled: false
     size: 10Gi

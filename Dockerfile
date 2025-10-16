@@ -44,7 +44,7 @@ RUN if [ "${ENABLE_REAL_EMBEDDINGS}" = "1" ]; then \
         . /opt/venv/bin/activate && uv lock && uv sync --python /opt/venv/bin/python ${EXTRAS}; \
     fi && \
     if [ -f api-requirements.txt ]; then \
-        . /opt/venv/bin/activate && /root/.local/bin/uv pip install -r api-requirements.txt; \
+        . /opt/venv/bin/activate && /root/.local/bin/uv pip install -r api-requirements.txt && pip install pyyaml python-dotenv; \
     fi
 
 # Copy application source and runtime assets
@@ -69,8 +69,8 @@ USER appuser
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # Expose HTTP API and gRPC ports (sync gRPC 50053, async gRPC 50054)
-EXPOSE 9595 8001 50053 50054
+EXPOSE 20000 8001 50053 50054
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:9595/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:20000/healthz || exit 1
 
 CMD ["/app/scripts/docker-entrypoint.sh"]

@@ -41,17 +41,17 @@ class SomaBaseSettings(BaseSettings):
 class InfraEndpoints(BaseModel):
     """DNS endpoints for shared infrastructure services."""
 
-    redis: str = Field(default="redis.soma.svc.cluster.local")
-    kafka: str = Field(default="kafka.soma.svc.cluster.local")
-    vault: str = Field(default="vault.soma.svc.cluster.local")
-    opa: str = Field(default="opa.soma.svc.cluster.local")
-    auth: str = Field(default="auth.soma.svc.cluster.local")
-    etcd: str = Field(default="etcd.soma.svc.cluster.local")
-    prometheus: str = Field(default="prometheus.soma.svc.cluster.local")
-    jaeger: str = Field(default="jaeger.soma.svc.cluster.local")
+    redis: str = Field(default="redis")
+    kafka: str = Field(default="kafka")
+    vault: str = Field(default="vault")
+    opa: str = Field(default="opa")
+    auth: str = Field(default="auth")
+    etcd: str = Field(default="etcd")
+    prometheus: str = Field(default="prometheus")
+    jaeger: str = Field(default="jaeger")
     # Additional services used by SMF
-    qdrant: str = Field(default="qdrant.soma.svc.cluster.local")
-    postgres: str = Field(default="postgres.soma.svc.cluster.local")
+    qdrant: str = Field(default="qdrant")
+    postgres: str = Field(default="postgres")
 
 
 class LangfuseSettings(BaseModel):
@@ -84,7 +84,7 @@ class SMFSettings(SomaBaseSettings):
     api_port: int = Field(default=9595, description="FastAPI HTTP port")
     grpc_port: int = Field(default=50053, description="gRPC service port")
     postgres_url: str = Field(
-        default="postgresql://soma:soma@postgres:5432/somafractalmemory",
+        default="postgresql://soma:soma@postgres:5432/somamemory",
         description="DSN used by the Postgres-backed key-value store",
     )
     qdrant_host: str = Field(

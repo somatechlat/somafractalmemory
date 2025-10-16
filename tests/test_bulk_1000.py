@@ -13,9 +13,9 @@ import requests
 
 # Ensure the real services URLs are set (Docker‑Compose exposes ports on localhost)
 os.environ.setdefault("POSTGRES_URL", "postgresql://postgres:postgres@localhost:5433/somamemory")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("REDIS_URL", "redis://localhost:40002/0")
 os.environ.setdefault("QDRANT_HOST", "localhost")
-os.environ.setdefault("QDRANT_PORT", "6333")
+os.environ.setdefault("QDRANT_PORT", "40003")
 
 # Prefer SOMA_TEST_API_BASE_URL override; else try the canonical port 9595
 BASE_URL = os.getenv("SOMA_TEST_API_BASE_URL", "http://localhost:9595")

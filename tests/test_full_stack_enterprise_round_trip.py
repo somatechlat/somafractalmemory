@@ -28,11 +28,11 @@ def test_full_stack_round_trip_real_infra():
         pytest.skip("Requires USE_REAL_INFRA=1 and running docker-compose stack")
 
     # Assemble real infra config from environment (docker-compose assigns ports)
-    pg_url = os.getenv("POSTGRES_URL", "postgresql://soma:soma@postgres:5432/soma")
-    redis_host = os.getenv("REDIS_HOST", "redis")
-    redis_port = int(os.getenv("REDIS_PORT", "6379"))
-    qdrant_host = os.getenv("QDRANT_HOST", "qdrant")
-    qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
+    pg_url = os.getenv("POSTGRES_URL", "postgresql://soma:soma@postgres:40001/soma")
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", "40002"))
+    qdrant_host = os.getenv("QDRANT_HOST", "localhost")
+    qdrant_port = int(os.getenv("QDRANT_PORT", "40003"))
 
     config = {
         "postgres": {"url": pg_url},

@@ -15,12 +15,12 @@ import pytest
 # Skips gracefully if USE_REAL_INFRA!=1 or any backend unreachable.
 
 REQUIRED_ENVS = [
-    ("POSTGRES_URL", "postgresql://postgres:postgres@localhost:5433/somamemory"),
+    ("POSTGRES_URL", "postgresql://soma:soma@localhost:40001/somamemory"),
     ("REDIS_HOST", "localhost"),
-    ("REDIS_PORT", "6379"),
+    ("REDIS_PORT", "40002"),
     ("QDRANT_HOST", "localhost"),
-    ("QDRANT_PORT", "6333"),
-    ("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092"),  # compose outside broker mapping
+    ("QDRANT_PORT", "40003"),
+    ("KAFKA_BOOTSTRAP_SERVERS", "localhost:40004"),  # compose outside broker mapping
 ]
 
 
@@ -51,10 +51,10 @@ def _can_reach():
             if not _tcp(host, int(port.split("/")[0])):
                 return False
         elif name == "REDIS_HOST":
-            if not _tcp(os.getenv("REDIS_HOST", default), int(os.getenv("REDIS_PORT", "6379"))):
+            if not _tcp(os.getenv("REDIS_HOST", default), int(os.getenv("REDIS_PORT", "40002"))):
                 return False
         elif name == "QDRANT_HOST":
-            if not _tcp(os.getenv("QDRANT_HOST", default), int(os.getenv("QDRANT_PORT", "6333"))):
+            if not _tcp(os.getenv("QDRANT_HOST", default), int(os.getenv("QDRANT_PORT", "40003"))):
                 return False
     return True
 
@@ -76,9 +76,9 @@ def test_full_infra_e2e():
 
     pg_url = os.getenv("POSTGRES_URL")
     redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port = int(os.getenv("REDIS_PORT", "6379"))
+    redis_port = int(os.getenv("REDIS_PORT", "40002"))
     qdrant_host = os.getenv("QDRANT_HOST", "localhost")
-    qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
+    qdrant_port = int(os.getenv("QDRANT_PORT", "40003"))
 
     config = {
         "postgres": {"url": pg_url},
@@ -181,7 +181,7 @@ def test_full_infra_e2e():
         from confluent_kafka import Consumer  # type: ignore
     except Exception as exc:
         pytest.skip(f"Kafka client missing: {exc}")
-    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
+    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:40004")
     group_id = f"e2e-consumer-{int(time.time())}"
     consumer_conf = {
         "bootstrap.servers": bootstrap,
