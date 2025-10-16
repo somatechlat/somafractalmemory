@@ -23,3 +23,7 @@ All notable changes to this project will be documented in this file.
 - **Redundant and Inefficient Tests**: Deleted 29+ test files that were slow, complex, or redundant.
 - **Duplicate Documentation**: Removed duplicate and conflicting style guides.
 - **Misleading Analysis Files**: Deleted temporary analysis and report files.
+- **Legacy Configuration**: Deleted the unused `test_config.yaml` file.
+- **Obsolete Makefile Targets**: Removed the non-functional `docs-build` and `docs-serve` commands from the `Makefile`.
+- **Deprecated Code**: Removed the `recall_with_scores` function from `core.py`, which was marked as deprecated.
+- **Unused Event Schema**: Deleted the `schemas/` directory, which was only used by the legacy Kafka eventing system.

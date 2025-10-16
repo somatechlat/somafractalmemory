@@ -23,14 +23,6 @@ compose-up: prereqs-docker ## Start the full stack in the background
 	docker compose --profile core --profile consumer up -d
 	@echo "→ API will be available at: http://127.0.0.1:$(API_PORT)"
 
-docs-build: ## Build MkDocs documentation
-	@command -v mkdocs >/dev/null 2>&1 || { echo "mkdocs not found, skipping"; exit 0; }
-	mkdocs build -q
-
-docs-serve: ## Serve MkDocs site locally
-	@command -v mkdocs >/dev/null 2>&1 || { echo "mkdocs not found, install via 'uv run pip install mkdocs mkdocs-material'"; exit 1; }
-	mkdocs serve -a 127.0.0.1:8008
-
 ci-verify: prereqs-docker ## CI-style verify with Compose: up, health check, and tear down
 	$(MAKE) -s compose-up
 	$(MAKE) -s compose-health

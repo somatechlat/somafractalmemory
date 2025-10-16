@@ -939,32 +939,6 @@ class SomaFractalMemoryEnterprise:
 
         return sorted(results, key=score, reverse=True)
 
-    def recall_with_scores(
-        self,
-        query: str,
-        top_k: int = 5,
-        memory_type: Optional[MemoryType] = None,
-    ) -> List[Dict[str, Any]]:
-        query_vector = self.embed_text(query)
-        # Fetch a bit more when filtering by type to avoid empty results due to post-filtering
-        search_k = top_k * 2 if memory_type is not None else top_k
-        results = self.vector_store.search(query_vector.flatten().tolist(), top_k=search_k)
-        out: List[Dict[str, Any]] = []
-        for r in results:
-            payload = getattr(r, "payload", None)
-            score = getattr(r, "score", None)
-            if memory_type is not None:
-                try:
-                    if not payload or payload.get("memory_type") != memory_type.value:
-                        continue
-                except Exception:
-                    # If payload is malformed, skip it when filtering
-                    continue
-            out.append({"payload": payload, "score": score})
-            if len(out) >= top_k:
-                break
-        return out
-
     # --- Keyword and Hybrid Search helpers ---
     def _iter_string_fields(self, obj: Any):
         """Yield all string fields from nested dict/list payloads.

@@ -1,4 +1,0 @@
-postgres_url: "postgresql://soma:soma@localhost:40001/somamemory"
-infra:
-  redis: "localhost"
-  qdrant: "localhost"
