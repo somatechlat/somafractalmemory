@@ -10,9 +10,10 @@ import os
 import threading
 import time
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
@@ -23,9 +24,20 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from common.utils.logger import configure_logging
-from somafractalmemory.core import MemoryType
+from common.utils.logger import configure_logging, get_logger
 from somafractalmemory.factory import MemoryMode, create_memory_system
+
+print("Loading somafractalmemory.http_api")
+
+logger = get_logger(__name__)
+logger.info("Loading somafractalmemory.http_api")
+
+
+class HealthResponse(BaseModel):
+    kv_store: bool
+    vector_store: bool
+    graph_store: bool
+
 
 try:  # pragma: no cover - optional dependency import path
     import redis
@@ -98,6 +110,54 @@ def _resolve_memory_mode() -> MemoryMode:
     return MemoryMode.EVENTED_ENTERPRISE
 
 
+mem = None
+_RATE_LIMITER = None
+_RATE_LIMIT_MAX = int(os.getenv("SOMA_RATE_LIMIT_MAX", "60"))
+_RATE_WINDOW = float(os.getenv("SOMA_RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+
+def _redact_dsn(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        p = urlparse(url)
+        # Drop username/password from netloc
+        netloc_parts = p.netloc.split("@")
+        redacted_netloc = netloc_parts[-1]
+        sanitized = p._replace(netloc=redacted_netloc)
+        return sanitized.geturl()
+    except Exception:
+        return "***"
+
+
+def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
+    """Resolve Postgres configuration with centralized settings fallback.
+
+    Preference order:
+    1. ``SOMA_POSTGRES_URL`` environment variable
+    2. ``postgres_url`` from settings
+    3. ``POSTGRES_URL`` environment variable
+    4. Build URL from infra settings or use default
+    """
+    # Try SOMA_POSTGRES_URL first (our preferred environment variable)
+    url = os.getenv("SOMA_POSTGRES_URL")
+    if url:
+        return {"url": url}
+
+    # Then try postgres_url from settings if available
+    if settings and hasattr(settings, "postgres_url"):
+        return {"url": settings.postgres_url}
+
+    # Then try legacy POSTGRES_URL
+    url = os.getenv("POSTGRES_URL")
+    if url:
+        return {"url": url}
+
+    # Last resort: build from infra settings or use default
+    host = getattr(getattr(settings, "infra", None), "postgres", "postgres")
+    return {"url": f"postgresql://soma:soma@{host}:5432/somamemory"}
+
+
 def _redis_config(settings: Any | None = None) -> dict[str, Any]:
     """Build a Redis connection dict.
 
@@ -149,76 +209,14 @@ def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
     if url:
         return {"url": url}
     # Prefer centralized settings DNS when available, else fall back to env or default.
-    host = getattr(getattr(settings, "infra", None), "qdrant", None) or os.getenv(
-        "QDRANT_HOST", "qdrant"
-    )
-    port = int(os.getenv("QDRANT_PORT", "6333"))
-    return {"host": host, "port": port}
-
-
-memory_mode = _resolve_memory_mode()
-
-# Load centralized settings (optional). Fallback to environment if not available.
-settings = None
-namespace_default = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
-try:
-    if load_settings:
-        settings = load_settings()
-        namespace_default = getattr(settings, "namespace", namespace_default)
-except Exception:
-    settings = None
-
-
-def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
-    """Resolve Postgres configuration with centralized settings fallback.
-
-    Preference order:
-    1. Explicit ``POSTGRES_URL`` environment variable.
-    2. Centralized settings DNS (``settings.infra.postgres``) with standard DSN.
-    3. Empty mapping when neither is present.
-    """
-    url = os.getenv("POSTGRES_URL")
-    if url:
-        return {"url": url}
-    host = getattr(getattr(settings, "infra", None), "postgres", None)
+    host = getattr(getattr(settings, "infra", None), "qdrant", None) or os.getenv("QDRANT_HOST")
     if host:
-        # Default credentials/database match our Helm chart defaults
-        return {"url": f"postgresql://postgres:postgres@{host}:5432/somamemory"}
-    return {"url": os.getenv("POSTGRES_URL")}  # final fallback (None or value)
+        port = int(os.getenv("QDRANT_PORT", "6333"))
+        return {"host": host, "port": port}
+    return {}
 
 
-config: dict[str, Any] = {
-    "postgres": _postgres_config(settings),
-    "vector": {"backend": "qdrant"},
-    "qdrant": _qdrant_config(settings),
-}
-
-redis_cfg = _redis_config(settings)
-if redis_cfg:
-    config["redis"] = redis_cfg
-
-eventing_env = os.getenv("EVENTING_ENABLED")
-if eventing_env is not None:
-    config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
-
-mem = create_memory_system(memory_mode, namespace_default, config=config)
-
-
-def _redact_dsn(url: str | None) -> str | None:
-    if not url:
-        return None
-    try:
-        p = urlparse(url)
-        # Drop username/password from netloc
-        hostport = p.hostname or ""
-        if p.port:
-            hostport = f"{hostport}:{p.port}"
-        return urlunparse((p.scheme, hostport, p.path, "", "", ""))
-    except Exception:
-        return url
-
-
-def _log_startup_config():
+def _log_startup_config(memory_mode, namespace_default, config, redis_cfg):
     q = config.get("qdrant", {})
     q_loc = q.get("url") or f"{q.get('host','')}:{q.get('port','')}"
     logger.info(
@@ -232,21 +230,6 @@ def _log_startup_config():
     )
 
 
-_log_startup_config()
-
-# Some tests expect a prediction_provider attribute for health endpoints; provide a no-op stub
-if not hasattr(mem, "prediction_provider"):
-
-    class _NoopPredictor:
-        def health_check(self):
-            return True
-
-    mem.prediction_provider = _NoopPredictor()  # type: ignore[attr-defined]
-
-
-# ---------------------------------------------------------------------------
-# Authentication & rate limiting dependencies
-# ---------------------------------------------------------------------------
 def _load_api_token() -> str | None:
     # Support reading token from file (e.g., mounted Kubernetes Secret)
     token_file = os.getenv("SOMA_API_TOKEN_FILE")
@@ -265,9 +248,6 @@ if not API_TOKEN:
     raise RuntimeError(
         "SOMA_API_TOKEN (or SOMA_API_TOKEN_FILE) must be set before importing somafractalmemory.http_api."
     )
-
-_RATE_LIMIT_MAX = int(os.getenv("SOMA_RATE_LIMIT_MAX", "60"))
-_RATE_WINDOW = float(os.getenv("SOMA_RATE_LIMIT_WINDOW_SECONDS", "60"))
 
 
 class _AlwaysAllowRateLimiter:
@@ -370,7 +350,43 @@ def _build_rate_limiter(cfg: dict[str, Any]) -> object:
         return fallback
 
 
-_RATE_LIMITER = _build_rate_limiter(redis_cfg)
+try:
+    memory_mode = _resolve_memory_mode()
+
+    # Load centralized settings (optional). Fallback to environment if not available.
+    settings = None
+    namespace_default = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+    try:
+        if load_settings:
+            settings = load_settings()
+            namespace_default = getattr(settings, "namespace", namespace_default)
+    except Exception:
+        settings = None
+
+    config: dict[str, Any] = {
+        "postgres": _postgres_config(settings),
+        "vector": {"backend": "qdrant"},
+        "qdrant": _qdrant_config(settings),
+    }
+
+    redis_cfg = _redis_config(settings)
+    if redis_cfg:
+        config["redis"] = redis_cfg
+
+    eventing_env = os.getenv("EVENTING_ENABLED")
+    if eventing_env is not None:
+        config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
+
+    mem = create_memory_system(memory_mode, namespace_default, config=config)
+    _log_startup_config(memory_mode, namespace_default, config, redis_cfg)
+    _RATE_LIMITER = _build_rate_limiter(redis_cfg)
+except Exception as e:
+    logger.error(f"FATAL: Error during initialization: {e}", exc_info=True)
+    raise
+    raise
+
+# Prediction providers are optional and intentionally out-of-process. The
+# data-plane does not install or report prediction providers by default.
 
 
 def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
@@ -401,15 +417,12 @@ def rate_limit_dep(path: str):
 class StoreRequest(BaseModel):
     coord: str
     payload: dict[str, Any]
-    type: str | None = "episodic"
 
 
 class RecallRequest(BaseModel):
     query: str
     top_k: int = 5
-    type: str | None = None
     filters: dict[str, Any] | None = None
-    hybrid: bool | None = None
 
 
 class ExportMemoriesRequest(BaseModel):
@@ -445,9 +458,7 @@ class StoreBulkRequest(BaseModel):
 class RecallBatchRequest(BaseModel):
     queries: list[str]
     top_k: int = 5
-    type: str | None = None
     filters: dict[str, Any] | None = None
-    hybrid: bool | None = None
 
 
 # --- Response models ---
@@ -479,8 +490,6 @@ class ResultsResponse(BaseModel):
 class RecallWithScoresBody(BaseModel):
     query: str
     top_k: int = 5
-    type: str | None = None
-    hybrid: bool | None = None
     exact: bool = True
     case_sensitive: bool = False
 
@@ -489,7 +498,6 @@ class RecallWithContextBody(BaseModel):
     query: str
     context: dict
     top_k: int = 5
-    type: str | None = None
 
 
 class HybridScoresResponse(BaseModel):
@@ -501,16 +509,6 @@ class KeywordSearchRequest(BaseModel):
     exact: bool = True
     case_sensitive: bool = False
     top_k: int = 50
-    type: str | None = None
-
-
-class HybridRecallRequest(BaseModel):
-    query: str
-    terms: list[str] | None = None
-    boost: float = 2.0
-    top_k: int = 5
-    exact: bool = True
-    case_sensitive: bool = False
     type: str | None = None
 
 
@@ -543,13 +541,9 @@ class StatsResponse(BaseModel):
     total_memories: int
     episodic: int
     semantic: int
-
-
-class HealthResponse(BaseModel):
-    kv_store: bool
-    vector_store: bool
-    graph_store: bool
-    prediction_provider: bool
+    vector_count: int | None = None
+    namespaces: dict[str, dict[str, int]] | None = None
+    vector_collections: dict[str, int] | None = None
 
 
 # Prometheus metrics for API operations
@@ -615,6 +609,21 @@ async def metrics_middleware(request: Request, call_next):
         API_RESPONSES.labels(endpoint=path, method=method, status=status_code).inc()
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    logger.info(
+        "Request processed",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        process_time=process_time,
+    )
+    return response
+
+
 @app.post(
     "/store",
     response_model=OkResponse,
@@ -622,8 +631,7 @@ async def metrics_middleware(request: Request, call_next):
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/store"))],
 )
 async def store(req: StoreRequest) -> OkResponse:
-    mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
-    mem.store_memory(parse_coord(req.coord), req.payload, memory_type=mtype)
+    mem.store_memory(parse_coord(req.coord), req.payload)
     return OkResponse(ok=True)
 
 
@@ -634,19 +642,10 @@ async def store(req: StoreRequest) -> OkResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall"))],
 )
 async def recall(req: RecallRequest) -> MatchesResponse:
-    mtype = None
-    if req.type:
-        mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
     if req.filters:
-        res = mem.find_hybrid_by_type(
-            req.query, top_k=req.top_k, memory_type=mtype, filters=req.filters
-        )
+        res = mem.find_hybrid_by_type(req.query, top_k=req.top_k, filters=req.filters)
     else:
-        if req.hybrid is True:
-            res = mem.hybrid_recall(req.query, top_k=req.top_k, memory_type=mtype)
-        else:
-            # Default recall now uses hybrid scoring in core (env-controllable)
-            res = mem.recall(req.query, top_k=req.top_k, memory_type=mtype)
+        res = mem.recall(req.query, top_k=req.top_k)
     return MatchesResponse(matches=res)
 
 
@@ -659,19 +658,13 @@ async def recall(req: RecallRequest) -> MatchesResponse:
 def recall_get(
     query: str,
     top_k: int = 5,
-    type: str | None = None,
-    hybrid: bool | None = None,
     filters: str | None = None,
 ) -> MatchesResponse:
     """Compatibility endpoint for clients that pass parameters via query string.
 
     Returns the same shape as POST /recall: {"matches": [...]}
     """
-    from somafractalmemory.core import MemoryType
 
-    mtype = None
-    if type:
-        mtype = MemoryType.SEMANTIC if type == "semantic" else MemoryType.EPISODIC
     parsed_filters: dict[str, Any] | None = None
     if filters:
         try:
@@ -683,12 +676,9 @@ def recall_get(
         except Exception:
             parsed_filters = None
     if parsed_filters:
-        res = mem.find_hybrid_by_type(query, top_k=top_k, memory_type=mtype, filters=parsed_filters)
+        res = mem.find_hybrid_by_type(query, top_k=top_k, filters=parsed_filters)
     else:
-        if hybrid is True:
-            res = mem.hybrid_recall(query, top_k=top_k, memory_type=mtype)
-        else:
-            res = mem.recall(query, top_k=top_k, memory_type=mtype)
+        res = mem.recall(query, top_k=top_k)
     return MatchesResponse(matches=res)
 
 
@@ -699,23 +689,15 @@ def recall_get(
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_batch"))],
 )
 def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
-    mtype = None
-    if req.type:
-        mtype = MemoryType.SEMANTIC if req.type == "semantic" else MemoryType.EPISODIC
     # Some memory system implementations don't provide a recall_batch helper.
     # Fall back to calling recall/find_hybrid_by_type per query to maintain
     # compatibility across implementations.
     batches: list[list[dict[str, Any]]] = []
     for q in req.queries:
         if req.filters:
-            batch = mem.find_hybrid_by_type(
-                q, top_k=req.top_k, memory_type=mtype, filters=req.filters
-            )
+            batch = mem.find_hybrid_by_type(q, top_k=req.top_k, filters=req.filters)
         else:
-            if req.hybrid is True:
-                batch = mem.hybrid_recall(q, top_k=req.top_k, memory_type=mtype)
-            else:
-                batch = mem.recall(q, top_k=req.top_k, memory_type=mtype)
+            batch = mem.recall(q, top_k=req.top_k)
         batches.append(batch)
     return BatchesResponse(batches=batches)
 
@@ -724,7 +706,10 @@ def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
     "/stats",
     response_model=StatsResponse,
     tags=["system"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/stats"))],
+    # Stats is read-only operational info and is intentionally public so
+    # infrastructure/monitoring systems can scrape it without needing the
+    # bearer token. We keep rate limiting enabled to avoid abuse.
+    dependencies=[Depends(rate_limit_dep("/stats"))],
 )
 def stats() -> StatsResponse:
     try:
@@ -788,12 +773,9 @@ def shortest_path(frm: str, to: str, link_type: str | None = None) -> PathRespon
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/store_bulk"))],
 )
 def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
-    from somafractalmemory.core import MemoryType
-
     items = []
     for it in req.items:
-        mtype = MemoryType.SEMANTIC if it.type == "semantic" else MemoryType.EPISODIC
-        items.append((parse_coord(it.coord), it.payload, mtype))
+        items.append((parse_coord(it.coord), it.payload))
     mem.store_memories_bulk(items)
     return StoreBulkResponse(stored=len(items))
 
@@ -805,23 +787,7 @@ def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_with_scores"))],
 )
 def recall_with_scores(req: RecallWithScoresBody) -> ScoresResponse:
-    from somafractalmemory.core import MemoryType
-
-    mtype = (
-        MemoryType.SEMANTIC
-        if req.type == "semantic"
-        else (MemoryType.EPISODIC if req.type == "episodic" else None)
-    )
-    if req.hybrid is True:
-        res = mem.hybrid_recall_with_scores(
-            req.query,
-            top_k=req.top_k,
-            memory_type=mtype,
-            exact=req.exact,
-            case_sensitive=req.case_sensitive,
-        )
-    else:
-        res = mem.recall_with_scores(req.query, top_k=req.top_k, memory_type=mtype)
+    res = mem.recall_with_scores(req.query, top_k=req.top_k)
     return ScoresResponse(results=res)
 
 
@@ -832,48 +798,13 @@ def recall_with_scores(req: RecallWithScoresBody) -> ScoresResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/keyword_search"))],
 )
 def keyword_search(req: KeywordSearchRequest) -> ResultsResponse:
-    from somafractalmemory.core import MemoryType
-
-    mtype = (
-        MemoryType.SEMANTIC
-        if req.type == "semantic"
-        else (MemoryType.EPISODIC if req.type == "episodic" else None)
-    )
     res = mem.keyword_search(
         req.term,
         exact=req.exact,
         case_sensitive=req.case_sensitive,
         top_k=req.top_k,
-        memory_type=mtype,
     )
     return ResultsResponse(results=res)
-
-
-@app.post(
-    "/hybrid_recall_with_scores",
-    response_model=HybridScoresResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/hybrid_recall_with_scores"))],
-)
-def hybrid_recall_with_scores(req: HybridRecallRequest) -> HybridScoresResponse:
-    from somafractalmemory.core import MemoryType
-
-    mtype = (
-        MemoryType.SEMANTIC
-        if req.type == "semantic"
-        else (MemoryType.EPISODIC if req.type == "episodic" else None)
-    )
-    results = mem.hybrid_recall_with_scores(
-        req.query,
-        terms=req.terms,
-        boost=req.boost,
-        top_k=req.top_k,
-        memory_type=mtype,
-        exact=req.exact,
-        case_sensitive=req.case_sensitive,
-    )
-    # results are dicts {payload, score}
-    return HybridScoresResponse(results=[ScoreItem(**r) for r in results])
 
 
 @app.post(
@@ -883,14 +814,7 @@ def hybrid_recall_with_scores(req: HybridRecallRequest) -> HybridScoresResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_with_context"))],
 )
 def recall_with_context(req: RecallWithContextBody) -> ResultsResponse:  # noqa: F811
-    from somafractalmemory.core import MemoryType
-
-    mtype = (
-        MemoryType.SEMANTIC
-        if req.type == "semantic"
-        else (MemoryType.EPISODIC if req.type == "episodic" else None)
-    )
-    res = mem.find_hybrid_with_context(req.query, req.context, top_k=req.top_k, memory_type=mtype)
+    res = mem.find_hybrid_with_context(req.query, req.context, top_k=req.top_k)
     return ResultsResponse(results=res)
 
 
@@ -900,17 +824,10 @@ def recall_with_context(req: RecallWithContextBody) -> ResultsResponse:  # noqa:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/range"))],
 )
-def range_search(min: str, max: str, type: str | None = None):
-    from somafractalmemory.core import MemoryType
-
-    mtype = (
-        MemoryType.SEMANTIC
-        if type == "semantic"
-        else (MemoryType.EPISODIC if type == "episodic" else None)
-    )
+def range_search(min: str, max: str):
     mi = parse_coord(min)
     ma = parse_coord(max)
-    res = mem.find_by_coordinate_range(mi, ma, memory_type=mtype)
+    res = mem.find_by_coordinate_range(mi, ma)
     return {"coords": [m.get("coordinate") for m in res if m.get("coordinate")]}
 
 
@@ -927,6 +844,11 @@ def metrics() -> Response:
 @app.get("/", include_in_schema=False)
 def root() -> dict:
     return {"message": "SomaFractalMemory API is running", "metrics": "/metrics"}
+
+
+@app.get("/ping")
+def ping():
+    return {"ping": "pong"}
 
 
 # ------------------------------------------------------------
@@ -947,24 +869,32 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"An unexpected error occurred: {exc}", exc_info=True)
+    return await fastapi_http_exception_handler(
+        request, HTTPException(status_code=500, detail="Internal Server Error")
+    )
+
+
 # Health and readiness endpoints
 @app.get("/healthz", response_model=HealthResponse)
 def healthz():
-    """Liveness probe – checks basic health of all stores and prediction provider."""
+    """Liveness probe – checks basic health of storage/vector/graph components."""
+    checks = mem.health_check()
     return HealthResponse(
-        kv_store=mem.kv_store.health_check(),
-        vector_store=mem.vector_store.health_check(),
-        graph_store=mem.graph_store.health_check(),
-        prediction_provider=mem.prediction_provider.health_check(),
+        kv_store=checks.get("kv_store", False),
+        vector_store=checks.get("vector_store", False),
+        graph_store=checks.get("graph_store", False),
     )
 
 
 @app.get("/readyz", response_model=HealthResponse)
 def readyz():
     """Readiness probe – same checks for now; can be extended with more strict criteria later."""
+    checks = mem.health_check()
     return HealthResponse(
-        kv_store=mem.kv_store.health_check(),
-        vector_store=mem.vector_store.health_check(),
-        graph_store=mem.graph_store.health_check(),
-        prediction_provider=mem.prediction_provider.health_check(),
+        kv_store=checks.get("kv_store", False),
+        vector_store=checks.get("vector_store", False),
+        graph_store=checks.get("graph_store", False),
     )

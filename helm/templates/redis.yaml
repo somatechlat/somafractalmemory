@@ -1,72 +1,48 @@
 {{- if .Values.redis.enabled }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: {{ include "somafractalmemory.fullname" . }}-redis
-  labels:
-    {{- include "somafractalmemory.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}-redis
 spec:
-  replicas: 1
+  serviceName: {{ .Release.Name }}-redis
+  replicas: {{ .Values.redis.replicaCount }}
   selector:
     matchLabels:
-      {{- include "somafractalmemory.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: redis
+      app: redis
   template:
     metadata:
       labels:
-        {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: redis
+        app: redis
     spec:
       containers:
-        - name: redis
-          image: {{ .Values.redis.image }}
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: {{ .Values.redis.port }}
-          command: ["redis-server", "--appendonly", "yes"]
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
-          resources:
-            {{- toYaml .Values.redis.resources | nindent 12 }}
-      volumes:
+      - name: redis
+        image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+        ports:
+        - containerPort: 6379
+        {{- if .Values.redis.persistence.enabled }}
+        volumeMounts:
         - name: redis-data
-{{- if .Values.redis.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "somafractalmemory.fullname" . }}-redis-data
-{{- else }}
-          emptyDir: {}
-{{- end }}
+          mountPath: /data
+        {{- end }}
+  {{- if .Values.redis.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: {{ .Values.redis.persistence.storageClass | quote }}
+      resources:
+        requests:
+          storage: {{ .Values.redis.persistence.size }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "somafractalmemory.fullname" . }}-redis
-  labels:
-    {{- include "somafractalmemory.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}-redis
 spec:
-  type: ClusterIP
   ports:
-    - port: {{ .Values.redis.port }}
-      targetPort: {{ .Values.redis.port }}
-      name: redis
+  - port: 6379
   selector:
-    {{- include "somafractalmemory.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: redis
-{{- end }}
-
-{{- if and .Values.redis.enabled .Values.redis.persistence.enabled }}
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ include "somafractalmemory.fullname" . }}-redis-data
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: {{ .Values.redis.persistence.size }}
-{{- if .Values.redis.persistence.storageClass }}
-  storageClassName: {{ .Values.redis.persistence.storageClass | quote }}
-{{- end }}
+    app: redis
 {{- end }}

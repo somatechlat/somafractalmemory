@@ -15,12 +15,17 @@ from cryptography.fernet import Fernet
 from common.config.settings import load_settings
 import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Histogram
-from sklearn.ensemble import IsolationForest
 import structlog
-from transformers import AutoModel, AutoTokenizer
 
-from langfuse import Langfuse
+import urllib.request
+import urllib.error
+import urllib.parse
 
+try:
+    from psycopg2.sql import SQL, Identifier  # used in memory_stats when Postgres available
+except Exception:  # pragma: no cover - optional import depending on environment
+    SQL = None  # type: ignore
+    Identifier = None  # type: ignore
 
 from .interfaces.graph import IGraphStore
 from .interfaces.storage import IKeyValueStore, IVectorStore
@@ -89,47 +94,6 @@ class SomaFractalMemoryEnterprise:
         """
         return self.graph_store.find_shortest_path(from_coord, to_coord, link_type)
 
-    def report_outcome(self, coordinate: Tuple[float, ...], outcome: Any) -> Dict[str, Any]:
-        """
-        Report the actual outcome for a memory and update any stored prediction feedback.
-
-        If a predicted outcome was recorded and differs from the reported outcome, a corrective
-        semantic memory is created.
-
-        Parameters
-        ----------
-        coordinate : Tuple[float, ...]
-            The coordinate of the memory.
-        outcome : Any
-            The actual outcome to report.
-
-        Returns
-        -------
-        Dict[str, Any]
-            The updated memory dictionary, with error status and feedback.
-        """
-        mem = self.retrieve(coordinate)
-        if mem is None:
-            return {"error": True, "message": "Memory not found"}
-        predicted = mem.get("predicted_outcome")
-        mem["reported_outcome"] = outcome
-        error = False
-        if predicted is not None:
-            error = predicted != outcome
-        mem["error"] = error
-        self.store_memory(
-            coordinate, mem, memory_type=MemoryType(mem.get("memory_type", "episodic"))
-        )
-        if error:
-            corrective_mem = {
-                "corrective_for": coordinate,
-                "original_payload": mem,
-                "correction": outcome,
-                "timestamp": time.time(),
-            }
-            self.store_memory(coordinate, corrective_mem, memory_type=MemoryType.SEMANTIC)
-        return mem
-
     def _reconcile_once(self):
         """
         Reconcile WAL (Write-Ahead Log) entries: mark as committed if upsert succeeds.
@@ -181,7 +145,6 @@ class SomaFractalMemoryEnterprise:
         Synchronize the graph store from all current memories.
         (Stub: actual implementation can be added for full graph consistency.)
         """
-        pass
 
     def __init__(
         self,
@@ -249,17 +212,17 @@ class SomaFractalMemoryEnterprise:
             # Quiet mode for CLI/tests: avoid printing to stdout
             try:
                 logger.debug("SOMA_FORCE_HASH_EMBEDDINGS enabled: using hash-based embeddings")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to log to stdout", error=str(e))
             self.tokenizer = None
             self.model = None
         else:
             try:
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    os.getenv("SOMA_MODEL_NAME", model_name)
+                    os.getenv("SOMA_MODEL_NAME", model_name), revision="main"
                 )
                 self.model = AutoModel.from_pretrained(
-                    os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True
+                    os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True, revision="main"
                 )
             except Exception as e:
                 logger.warning(
@@ -268,7 +231,8 @@ class SomaFractalMemoryEnterprise:
                 self.tokenizer = None
                 self.model = None
 
-        self.anomaly_detector = IsolationForest(contamination=0.1, random_state=42)
+        # anomaly_detector removed: cognitive functions are migrated out of the data plane
+        self.anomaly_detector = None
         self.cipher = Fernet(encryption_key or Fernet.generate_key()) if encryption_key else None
 
         self.registry = CollectorRegistry()
@@ -284,18 +248,35 @@ class SomaFractalMemoryEnterprise:
             ["namespace"],
             registry=self.registry,
         )
+        self.recall_count = Counter(
+            "soma_memory_recall_total",
+            "Total recall operations",
+            ["namespace"],
+            registry=self.registry,
+        )
+        self.recall_latency = Histogram(
+            "soma_memory_recall_latency_seconds",
+            "Recall operation latency",
+            ["namespace"],
+            registry=self.registry,
+        )
 
-        # Langfuse configuration is provided via the shared SMFSettings.langfuse
-        try:
-            lf_public = getattr(config.langfuse, "public_key", "pk-lf-123")
-            lf_secret = getattr(config.langfuse, "secret_key", "sk-lf-456")
-            lf_host = getattr(config.langfuse, "host", "http://localhost:3000")
-        except Exception:
-            # Defensive fallback if config structure is unexpected
-            lf_public = "pk-lf-123"
-            lf_secret = "sk-lf-456"
-            lf_host = "http://localhost:3000"
-        self.langfuse = Langfuse(public_key=lf_public, secret_key=lf_secret, host=lf_host)
+        # eventing.
+        self.eventing_enabled = os.getenv("SOMA_EVENTING_ENABLED", "1").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if self.eventing_enabled:
+            try:
+                from .eventing.producer import build_memory_event, produce_event
+
+                self._build_event = build_memory_event
+                self._produce_event = produce_event
+            except ImportError:
+                logger.warning("Kafka eventing enabled but producer components not found.")
+                self.eventing_enabled = False
+        self.langfuse = None
 
         self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
         self._sync_graph_from_memories()
@@ -405,9 +386,8 @@ class SomaFractalMemoryEnterprise:
                 }
                 try:
                     self.kv_store.set(wal_key, serialize(wal_payload))
-                except Exception:
-                    # Best-effort: do not raise from WAL write failures
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to write WAL entry", error=str(e))
             except Exception:
                 pass
             # WAL entry written (JSON-first). Reconciliation runs separately.
@@ -454,23 +434,13 @@ class SomaFractalMemoryEnterprise:
             except Exception:
                 return False
 
-        # Include prediction_provider if present to align with API HealthResponse model
-        result = {
+        # Return the basic store health checks. Prediction/policy providers are
+        # optional and intentionally not part of the data-plane health payload.
+        return {
             "kv_store": safe(self.kv_store.health_check),
             "vector_store": safe(self.vector_store.health_check),
             "graph_store": safe(self.graph_store.health_check),
         }
-        if hasattr(self, "prediction_provider") and hasattr(
-            self.prediction_provider, "health_check"
-        ):
-            try:
-                result["prediction_provider"] = safe(self.prediction_provider.health_check)
-            except Exception:
-                result["prediction_provider"] = False
-        else:
-            # Maintain key presence to satisfy schema even if provider missing
-            result["prediction_provider"] = False
-        return result
 
     def set_importance(self, coordinate: Tuple[float, ...], importance: int = 1):
         data_key, _ = _coord_to_key(self.namespace, coordinate)
@@ -635,16 +605,191 @@ class SomaFractalMemoryEnterprise:
         return sorted(mems, key=lambda m: m.get("importance", 0), reverse=True)[:n]
 
     def memory_stats(self) -> Dict[str, Any]:
-        all_mems = self.get_all_memories()
-        return {
-            "total_memories": len(all_mems),
-            "episodic": sum(
-                1 for m in all_mems if m.get("memory_type") == MemoryType.EPISODIC.value
-            ),
-            "semantic": sum(
-                1 for m in all_mems if m.get("memory_type") == MemoryType.SEMANTIC.value
-            ),
-        }
+        # Prefer authoritative counts from the canonical Postgres store when
+        # available (avoids double-counting across Redis cache + Postgres).
+        try:
+            kv_count = None
+            episodic = 0
+            semantic = 0
+
+            # Pattern for data keys
+            data_like = f"%:data"
+
+            # If we have a Postgres-backed store available, query it directly
+            pg_store = None
+            if (
+                hasattr(self.kv_store, "pg_store")
+                and getattr(self.kv_store, "pg_store") is not None
+            ):
+                pg_store = self.kv_store.pg_store
+
+            if pg_store is not None:
+                # Count total data keys in Postgres
+                def _count(cur):
+                    cur.execute(
+                        SQL("SELECT COUNT(*) FROM {} WHERE key LIKE %s;").format(
+                            Identifier(pg_store._TABLE_NAME)
+                        ),
+                        (data_like,),
+                    )
+                    return cur.fetchone()[0]
+
+                kv_count = int(pg_store._execute(_count) or 0)
+
+                # Fetch values and compute episodic/semantic breakdown directly from JSONB
+                def _fetch(cur):
+                    cur.execute(
+                        SQL("SELECT value FROM {} WHERE key LIKE %s;").format(
+                            Identifier(pg_store._TABLE_NAME)
+                        ),
+                        (data_like,),
+                    )
+                    return [r[0] for r in cur.fetchall()]
+
+                rows = pg_store._execute(_fetch)
+                for val in rows:
+                    if isinstance(val, dict):
+                        mt = val.get("memory_type")
+                        if mt == MemoryType.EPISODIC.value:
+                            episodic += 1
+                        elif mt == MemoryType.SEMANTIC.value:
+                            semantic += 1
+            else:
+                # Fall back to scanning the kv_store interface (unique keys)
+                keys = set(self.kv_store.scan_iter(data_like))
+                kv_count = len(keys)
+                for key in keys:
+                    raw = self.kv_store.get(key)
+                    if not raw:
+                        continue
+                    try:
+                        obj = deserialize(raw)
+                    except Exception:
+                        continue
+                    mt = obj.get("memory_type")
+                    if mt == MemoryType.EPISODIC.value:
+                        episodic += 1
+                    elif mt == MemoryType.SEMANTIC.value:
+                        semantic += 1
+
+            # Optionally include a vector count (Qdrant) for visibility
+            vector_count = 0
+            try:
+                if hasattr(self.vector_store, "scroll"):
+                    for _ in self.vector_store.scroll():
+                        vector_count += 1
+            except Exception:
+                vector_count = 0
+            # Build per-namespace breakdown via Postgres aggregation when available
+            namespaces: dict[str, dict[str, int]] = {}
+            try:
+                if pg_store is not None:
+
+                    def _nsagg(cur):
+                        cur.execute(
+                            SQL(
+                                "SELECT split_part(key,':',1) AS namespace, COUNT(*) AS total, SUM(CASE WHEN (value->>'memory_type')='episodic' THEN 1 ELSE 0 END) AS episodic, SUM(CASE WHEN (value->>'memory_type')='semantic' THEN 1 ELSE 0 END) AS semantic FROM {} WHERE key LIKE %s GROUP BY namespace;"
+                            ).format(Identifier(pg_store._TABLE_NAME)),
+                            (data_like,),
+                        )
+                        return cur.fetchall()
+
+                    rows = pg_store._execute(_nsagg)
+                    for ns, total, eps, sem in rows:
+                        namespaces[ns] = {
+                            "total": int(total or 0),
+                            "episodic": int(eps or 0),
+                            "semantic": int(sem or 0),
+                        }
+                else:
+                    # Fallback: build namespace map by scanning keys
+                    for key in self.kv_store.scan_iter(data_like):
+                        ns = key.split(":", 1)[0]
+                        namespaces.setdefault(ns, {"total": 0, "episodic": 0, "semantic": 0})
+                        namespaces[ns]["total"] += 1
+                        raw = self.kv_store.get(key)
+                        if not raw:
+                            continue
+                        try:
+                            obj = deserialize(raw)
+                        except Exception:
+                            continue
+                        mt = obj.get("memory_type")
+                        if mt == MemoryType.EPISODIC.value:
+                            namespaces[ns]["episodic"] += 1
+                        elif mt == MemoryType.SEMANTIC.value:
+                            namespaces[ns]["semantic"] += 1
+            except Exception:
+                namespaces = {}
+
+            # Obtain vector counts per collection by querying Qdrant HTTP API
+            vector_collections: dict[str, int] = {}
+            try:
+                qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+                base = qdrant_url.rstrip("/")
+                if not base.startswith(("http://", "https://")):
+                    raise ValueError("Invalid Qdrant URL scheme")
+                try:
+                    with urllib.request.urlopen(f"{base}/collections", timeout=3) as resp:
+                        body = resp.read().decode("utf-8")
+                        collections_info = json.loads(body)
+                except Exception:
+                    collections_info = {}
+
+                collections = (
+                    collections_info.get("result", {}).get("collections", [])
+                    if isinstance(collections_info, dict)
+                    else []
+                )
+                for c in collections:
+                    name = c.get("name") if isinstance(c, dict) else None
+                    if not name:
+                        continue
+                    try:
+                        quoted = urllib.parse.quote(name, safe="")
+                        if not base.startswith(("http://", "https://")):
+                            raise ValueError("Invalid Qdrant URL scheme")
+                        with urllib.request.urlopen(
+                            f"{base}/collections/{quoted}", timeout=3
+                        ) as r2:
+                            info = r2.read().decode("utf-8")
+                            info_json = json.loads(info)
+                    except Exception:
+                        info_json = {}
+                    pts = None
+                    if isinstance(info_json, dict):
+                        pts = (
+                            info_json.get("result", {}).get("points_count")
+                            or info_json.get("result", {}).get("vectors_count")
+                            or info_json.get("result", {}).get("points", {}).get("count")
+                        )
+                    try:
+                        vector_collections[name] = int(pts or 0)
+                    except Exception:
+                        vector_collections[name] = 0
+            except Exception:
+                vector_collections = {}
+
+            return {
+                "total_memories": int(kv_count or 0),
+                "episodic": int(episodic),
+                "semantic": int(semantic),
+                "vector_count": int(vector_count),
+                "namespaces": namespaces,
+                "vector_collections": vector_collections,
+            }
+        except Exception:
+            # On error, fall back to previous behaviour (best-effort in-memory scan)
+            all_mems = self.get_all_memories()
+            return {
+                "total_memories": len(all_mems),
+                "episodic": sum(
+                    1 for m in all_mems if m.get("memory_type") == MemoryType.EPISODIC.value
+                ),
+                "semantic": sum(
+                    1 for m in all_mems if m.get("memory_type") == MemoryType.SEMANTIC.value
+                ),
+            }
 
     # --------- Hooks & Agent helpers ---------
     def set_hook(self, event: str, func):
@@ -689,18 +834,22 @@ class SomaFractalMemoryEnterprise:
         memory_type: Optional[MemoryType] = None,
     ):
         self._call_hook("before_recall", query, context, top_k, memory_type)
-        if context:
-            results = self.find_hybrid_with_context(
-                query, context, top_k=top_k, memory_type=memory_type
-            )
-        else:
-            if getattr(self, "hybrid_recall_default", True):
-                # Use hybrid scoring by default for best overall recall quality
-                scored = self.hybrid_recall_with_scores(query, top_k=top_k, memory_type=memory_type)
-                results = [r.get("payload") for r in scored if r.get("payload")]
+        with self.recall_latency.labels(self.namespace).time():
+            self.recall_count.labels(self.namespace).inc()
+            if context:
+                results = self.find_hybrid_with_context(
+                    query, context, top_k=top_k, memory_type=memory_type
+                )
             else:
-                # Legacy vector-only path
-                results = self.find_hybrid_by_type(query, top_k=top_k, memory_type=memory_type)
+                if getattr(self, "hybrid_recall_default", True):
+                    # Use hybrid scoring by default for best overall recall quality
+                    scored = self.hybrid_recall_with_scores(
+                        query, top_k=top_k, memory_type=memory_type
+                    )
+                    results = [r.get("payload") for r in scored if r.get("payload")]
+                else:
+                    # Legacy vector-only path
+                    results = self.find_hybrid_by_type(query, top_k=top_k, memory_type=memory_type)
         self._call_hook("after_recall", query, context, top_k, memory_type, results)
         return results
 
@@ -905,9 +1054,8 @@ class SomaFractalMemoryEnterprise:
                             break
                 if filtered:
                     return filtered[:top_k]
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.warning("Failed to log to stdout", error=str(e))
         # Fallback in-memory scan
         out: List[Dict[str, Any]] = []
         for payload in self.iter_memories():
@@ -1112,7 +1260,16 @@ class SomaFractalMemoryEnterprise:
         value["importance_norm"], self._imp_method = self._adaptive_importance_norm(raw_f)
 
         # Persist via KV + vector store (legacy path) and optionally append to fast core slabs.
-        result = self.store(coord_t, value)
+        with self.store_latency.labels(self.namespace).time():
+            self.store_count.labels(self.namespace).inc()
+            result = self.store(coord_t, value)
+            if self.eventing_enabled:
+                try:
+                    event = self._build_event(self.namespace, value)
+                    self._produce_event(event)
+                    result["event"] = event
+                except Exception as e:
+                    logger.warning(f"Failed to produce Kafka event: {e}")
         if self.fast_core_enabled:
             try:
                 # Reuse embedding work: embed serialized payload (same as store())
@@ -1130,15 +1287,6 @@ class SomaFractalMemoryEnterprise:
             self._enforce_memory_limit()
         except Exception as e:
             logger.debug(f"Memory limit enforcement failed: {e}")
-        # Phase 2: publish a memory‑created event if eventing is enabled
-        if getattr(self, "eventing_enabled", True):
-            try:
-                from .eventing.producer import build_memory_event, produce_event
-
-                event = build_memory_event(self.namespace, value)
-                produce_event(event)
-            except Exception as ev_err:
-                logger.warning(f"Failed to publish memory event: {ev_err}")
         return result
 
     # ---------------- Fast Core Helpers -----------------
@@ -1468,7 +1616,8 @@ class SomaFractalMemoryEnterprise:
             try:
                 norm = float(np.linalg.norm(emb)) or 1.0
                 emb = emb / norm
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to normalize embedding", error=str(e))
                 pass
             return emb
         except Exception:
@@ -1477,8 +1626,8 @@ class SomaFractalMemoryEnterprise:
             try:
                 norm = float(np.linalg.norm(fb)) or 1.0
                 fb = fb / norm
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to normalize fallback embedding", error=str(e))
             return fb
 
     def _enforce_memory_limit(self):

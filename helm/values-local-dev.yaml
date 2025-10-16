@@ -1,0 +1,27 @@
+# values-local-dev.yaml
+# Overrides for local development.
+
+replicaCount: 1
+
+postgres:
+  replicaCount: 1
+  persistence:
+    enabled: false
+  secrets:
+    apiToken: "devtoken"
+    postgresPassword: "soma"
+
+redis:
+  replicaCount: 1
+  persistence:
+    enabled: false
+
+qdrant:
+  replicaCount: 1
+  persistence:
+    enabled: false
+
+kafka:
+  replicaCount: 1
+  persistence:
+    enabled: false

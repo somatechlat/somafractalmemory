@@ -1,97 +1,38 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "somafractalmemory.fullname" . }}
+  name: {{ .Release.Name }}-somafractalmemory
   labels:
-    {{- include "somafractalmemory.labels" . | nindent 4 }}
+    app: somafractalmemory
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "somafractalmemory.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: api
+      app: somafractalmemory
   template:
     metadata:
-      {{- with (include "somafractalmemory.podAnnotations" .) }}
-      annotations:
-        {{- . | nindent 8 }}
-      {{- end }}
       labels:
-        {{- include "somafractalmemory.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: api
+        app: somafractalmemory
     spec:
-      {{- if .Values.podSecurityContext.enabled }}
-      securityContext:
-        {{- toYaml (omit .Values.podSecurityContext "enabled") | nindent 8 }}
-      {{- end }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        - name: somafractalmemory
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if .Values.containerSecurityContext.enabled }}
-          securityContext:
-            {{- toYaml (omit .Values.containerSecurityContext "enabled") | nindent 12 }}
-          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
           env:
-            {{- range $key, $value := .Values.env }}
-            - name: {{ $key }}
-              value: "{{ $value }}"
-            {{- end }}
-            {{- if .Values.secret.enabled }}
-            {{- range $key, $value := .Values.secret.data }}
-            - name: {{ $key }}
+            - name: POSTGRES_URL
+              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:5432/somafractalmemory"
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis:6379/0"
+            - name: QDRANT_URL
+              value: "http://{{ .Release.Name }}-qdrant:6333"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "{{ .Release.Name }}-kafka:9092"
+            - name: SOMA_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "somafractalmemory.secretName" $ }}
-                  key: {{ $key }}
-            {{- end }}
-            {{- end }}
-          ports:
-            - containerPort: {{ .Values.service.port }}
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          livenessProbe:
-            httpGet:
-              path: {{ .Values.probe.path }}
-              port: {{ .Values.probe.port }}
-            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.probe.periodSeconds }}
-            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
-          readinessProbe:
-            httpGet:
-              path: {{ .Values.probe.path }}
-              port: {{ .Values.probe.port }}
-            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.probe.periodSeconds }}
-            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
-          volumeMounts:
-            - name: tmp-volume
-              mountPath: /tmp
-            {{- with .Values.tls.mounts }}
-            {{- range . }}
-            - name: {{ .name }}
-              mountPath: {{ .mountPath }}
-              {{- if hasKey . "subPath" }}
-              subPath: {{ .subPath }}
-              {{- end }}
-              readOnly: {{ default true .readOnly }}
-            {{- end }}
-            {{- end }}
-      volumes:
-        - name: tmp-volume
-          emptyDir:
-            medium: Memory
-        {{- with .Values.tls.mounts }}
-        {{- range . }}
-        - name: {{ .name }}
-          secret:
-            secretName: {{ .secretName }}
-            {{- with .items }}
-            items:
-              {{- range . }}
-              - key: {{ .key }}
-                path: {{ .path }}
-              {{- end }}
-            {{- end }}
-        {{- end }}
-        {{- end }}
+                  name: {{ .Release.Name }}-somafractalmemory-secrets
+                  key: SOMA_API_TOKEN

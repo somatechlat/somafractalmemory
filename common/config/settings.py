@@ -41,17 +41,17 @@ class SomaBaseSettings(BaseSettings):
 class InfraEndpoints(BaseModel):
     """DNS endpoints for shared infrastructure services."""
 
-    redis: str = Field(default="redis.soma.svc.cluster.local")
-    kafka: str = Field(default="kafka.soma.svc.cluster.local")
-    vault: str = Field(default="vault.soma.svc.cluster.local")
-    opa: str = Field(default="opa.soma.svc.cluster.local")
-    auth: str = Field(default="auth.soma.svc.cluster.local")
-    etcd: str = Field(default="etcd.soma.svc.cluster.local")
-    prometheus: str = Field(default="prometheus.soma.svc.cluster.local")
-    jaeger: str = Field(default="jaeger.soma.svc.cluster.local")
+    redis: str = Field(default="redis")
+    kafka: str = Field(default="kafka")
+    vault: str = Field(default="vault")
+    opa: str = Field(default="opa")
+    auth: str = Field(default="auth")
+    etcd: str = Field(default="etcd")
+    prometheus: str = Field(default="prometheus")
+    jaeger: str = Field(default="jaeger")
     # Additional services used by SMF
-    qdrant: str = Field(default="qdrant.soma.svc.cluster.local")
-    postgres: str = Field(default="postgres.soma.svc.cluster.local")
+    qdrant: str = Field(default="qdrant")
+    postgres: str = Field(default="postgres")
 
 
 class LangfuseSettings(BaseModel):
@@ -65,6 +65,15 @@ class LangfuseSettings(BaseModel):
     host: str = Field(default="", alias="langfuse_host")
 
 
+class KafkaSettings(BaseSettings):
+    bootstrap_servers: str = "localhost:9092"
+    security_protocol: str = "PLAINTEXT"
+    ssl_ca_location: str | None = None
+    sasl_mechanism: str = "PLAIN"
+    sasl_username: str | None = None
+    sasl_password: str | None = None
+
+
 class SMFSettings(SomaBaseSettings):
     """Settings specific to the SomaFractalMemory service."""
 
@@ -74,8 +83,17 @@ class SMFSettings(SomaBaseSettings):
     # Canonical ports for the service interfaces
     api_port: int = Field(default=9595, description="FastAPI HTTP port")
     grpc_port: int = Field(default=50053, description="gRPC service port")
+    postgres_url: str = Field(
+        default="postgresql://soma:soma@postgres:5432/somamemory",
+        description="DSN used by the Postgres-backed key-value store",
+    )
+    qdrant_host: str = Field(
+        default="qdrant",
+        description="Hostname for the Qdrant vector database",
+    )
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    kafka: KafkaSettings = Field(default_factory=KafkaSettings)
 
     class Config:
         arbitrary_types_allowed = True
@@ -142,6 +160,7 @@ def load_settings(
 __all__ = [
     "InfraEndpoints",
     "LangfuseSettings",
+    "KafkaSettings",
     "SMFSettings",
     "SomaBaseSettings",
     "load_settings",

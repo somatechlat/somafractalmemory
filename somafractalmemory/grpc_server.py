@@ -196,7 +196,7 @@ class MemoryServicer(memory_pb2_grpc.MemoryServiceServicer):
             conn = psycopg2.connect(
                 dbname="somamemory",
                 user="postgres",
-                password="postgres",
+                password=self.settings.postgres_password,
                 host=pg_host,
                 port=5433,
                 connect_timeout=2,

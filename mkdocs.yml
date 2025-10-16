@@ -1,40 +1,35 @@
 site_name: SomaFractalMemory
-site_url: https://example.com
 nav:
   - Home: index.md
-  - Quickstart: QUICKSTART.md
-  - Usage Guide: USAGE_GUIDE.md
-  - Guides:
-      - Canonical Ops: CANONICAL_DOCUMENTATION.md
-      - Developer Guide: DEVELOPER_GUIDE.md
-  - Architecture: ARCHITECTURE.md
-  - Configuration: CONFIGURATION.md
+  - User Manual:
+    - Features:
+      - Overview: user-manual/features/index.md
+      - Memory Storage: user-manual/features/memory-storage.md
+      - Memory Recall: user-manual/features/memory-recall.md
+      - Memory Linking: user-manual/features/memory-linking.md
+  - Technical Manual:
+    - Overview: technical-manual/index.md
+    - Architecture:
+      - Vector Store: technical-manual/architecture/vector-store.md
+      - Graph Store: technical-manual/architecture/graph-store.md
+      - Cache Layer: technical-manual/architecture/cache.md
+  - Development Manual:
+    - API Reference: development-manual/api-reference.md
+    - Concepts:
+      - Memory Vectors: development-manual/concepts/memory-vectors.md
+      - Graph Theory: development-manual/concepts/graph-theory.md
   - API: api.md
-  - Production: PRODUCTION_READINESS.md
-  - Ops:
-      - Kafka (Open Source): ops/KAFKA_OPEN_SOURCE.md
-      - Kubernetes Deploy: ops/KUBERNETES.md
-      - Observability: ops/OBSERVABILITY.md
-      - Port Forwarding Improvements: PORT_FORWARDING_IMPROVEMENTS.md
-      - Helm Values (Local): ../helm/values-local.yaml
-      - Helm Values (Kind): ../helm/values-kind.yaml
-      - Helm Values (Test): ../helm/values-test.yaml
+  - Developer Manual: DEVELOPER_MANUAL.md
+  - Roadmap: ROADMAP.md
 
 theme:
   name: material
-  palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
   features:
     - navigation.tabs
     - navigation.top
 
 plugins:
   - search
-  # mkdocstrings (and its autorefs dependency) caused configuration errors with the current environment.
-  # Documentation can be built without it, or you can install compatible versions later.
-  # If you need API reference from code, re-enable mkdocstrings after fixing the plugin version.
 
 markdown_extensions:
   - admonition

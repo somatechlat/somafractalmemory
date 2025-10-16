@@ -67,5 +67,8 @@ node_modules/
 README_MINIMAL.md
 docs/README.md
 
+# Environment variables
+.env
+
 # local virtualenv used for tests
 .venv-test/

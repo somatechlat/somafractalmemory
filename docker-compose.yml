@@ -1,279 +1,116 @@
-version: "3.9"
 services:
-  # -----------------------------------------------------------------
-  # FastAPI server – runs the canonical evented_enterprise memory mode.
-  # Uses the Dockerfile in the repository to build the image.
-  # All configuration is passed via environment variables; defaults match the
-  # shared-infrastructure alignment already used in the code base.
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soma}
+      POSTGRES_DB: somamemory
+      POSTGRES_HOST_AUTH_METHOD: md5
+    container_name: somafractalmemory_postgres
+    ports:
+      - "${POSTGRES_HOST_PORT:-40001}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U soma"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - core
+
+  redis:
+    image: redis:7
+    container_name: somafractalmemory_redis
+    ports:
+      - "${REDIS_HOST_PORT:-40002}:6379"
+    volumes:
+      - redisdata:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - core
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: somafractalmemory_qdrant
+    ports:
+      - "${QDRANT_HOST_PORT:-40003}:6333"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - core
+
+  kafka:
+    image: apache/kafka:latest
+    container_name: somafractalmemory_kafka
+    ports:
+      - "${KAFKA_INTERNAL_PORT:-40004}:9092"
+    environment:
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_NODE_ID: '1'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:40004'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      CLUSTER_ID: '5L6g3nShT-eMCtK--X86sw'
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server kafka:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - core
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        ENABLE_REAL_EMBEDDINGS: "1"
     container_name: somafractalmemory_api
-    profiles: [core]
-    labels:
-      - "com.soma.project=somafractalmemory"
-      - "com.soma.service=api"
     ports:
-      - "9595:9595"  # host 9595 → container 9595 (default)
+      - "${API_PORT:-9595}:9595"
+    command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "9595"]
     environment:
-      MEMORY_MODE: evented_enterprise
-      SOMA_RATE_LIMIT_MAX: "5000"
-      SOMA_FAST_START: "0"
-      SOMA_API_TOKEN: dev-token
-      UVICORN_TIMEOUT_KEEP_ALIVE: "120"
-      UVICORN_WORKERS: "1"
-      UVICORN_TIMEOUT_GRACEFUL: "60"
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      POSTGRES_URL: postgresql://soma:soma@postgres:5432/somaagent01
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      QDRANT_URL: "http://qdrant:6333"
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      EVENTING_ENABLED: "true"
-      USE_REAL_INFRA: "1"
-    restart: unless-stopped
+      SOMA_API_TOKEN: ${SOMA_API_TOKEN:-devtoken}
+      CONFIG_FILE: /app/config.yaml
+      SOMA_FORCE_HASH_EMBEDDINGS: "1"
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - kafka
+    volumes:
+      - ./:/app:delegated
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9595/healthz || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:9595/healthz"]
       interval: 30s
       timeout: 5s
-      start_period: 10s
-      retries: 3
-    networks:
-      - soma_shared
-      - sfm_local_net
-
-  # -----------------------------------------------------------------
-  # Consumer – update bootstrap server to point to kafka service
-  somafractalmemory_kube:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        ENABLE_REAL_EMBEDDINGS: "0"
-    container_name: somafractalmemory_consumer
-    labels:
-      - "com.soma.project=somafractalmemory"
-      - "com.soma.service=consumer"
-    profiles: [core, consumer]
-    command: ["sh", "-c", "until nc -z kafka 9092; do echo 'Waiting for Kafka...'; sleep 2; done; exec python scripts/run_consumers.py"]
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_MEMORY_EVENTS_TOPIC: memory.events
-      KAFKA_CONSUMER_GROUP: soma-consumer-group
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      POSTGRES_URL: postgresql://soma:soma@postgres:5432/somaagent01
-      # Consumer should match the API's Qdrant settings when running
-      # against the shared infra vector store.
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      QDRANT_URL: "http://qdrant:6333"
-      USE_REAL_INFRA: "1"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python - <<'PY'\nimport socket; s=socket.socket(); s.settimeout(1);\nprint('ok') if s.connect_ex(('kafka', 9092))==0 else (_ for _ in ()).throw(SystemExit(1))\nPY"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-    networks:
-      - soma_shared
-      - sfm_local_net
-
-  # -----------------------------------------------------------------
-  # Local production infra (Profiles: core, shared)
-  # Use `docker compose --profile core up -d` to bring up the local developer
-  # full pipeline (API, Consumer, Kafka, Postgres, Redis, Qdrant).
-  # Use `docker compose --profile shared up -d` to bring up shared infra only
-  # (Kafka/Postgres/Redis/Qdrant) on the external shared network.
-  # Optional services (monitoring, ops, proxy) are behind dedicated profiles:
-  #  - `monitoring` (Prometheus, Grafana)
-  #  - `ops` (Vault, Etcd, OPA)
-  #  - `proxy` (Quadrant/Caddy)
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: somafractalmemory_postgres
-    profiles: [core, shared]
-    environment:
-      POSTGRES_USER: soma
-      POSTGRES_PASSWORD: soma
-      POSTGRES_DB: somaagent01
-    volumes:
-      - sfm_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_HOST_PORT:-5434}:5432"
-    healthcheck:
-      test: ["CMD-SHELL","pg_isready -U soma || exit 1"]
-      interval: 10s
-      timeout: 5s
       retries: 5
-    networks:
-      - sfm_local_net
-
-  redis:
-    image: redis:7.2.4-alpine
-    container_name: somafractalmemory_redis
-    profiles: [core, shared]
-    command: ["redis-server","--save","60","1","--appendonly","yes"]
-    volumes:
-      - sfm_redis_data:/data
-    ports:
-      - "${REDIS_HOST_PORT:-6380}:6379"
-    healthcheck:
-      test: ["CMD-SHELL","redis-cli ping || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - sfm_local_net
-
-  qdrant:
-    image: qdrant/qdrant:v1.9.2
-    container_name: somafractalmemory_qdrant
-    profiles: [core, shared]
-    volumes:
-      - sfm_qdrant_data:/qdrant/storage
-    ports:
-      - "${QDRANT_HOST_PORT:-6333}:6333"
-    environment:
-      QDRANT__SERVICE__GRPC_PORT: 6334
-    healthcheck:
-      test: ["CMD-SHELL","curl -fsS http://localhost:6333/collections || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - sfm_local_net
-
-  kafka:
-    image: confluentinc/cp-kafka:7.6.1
-    container_name: somafractalmemory_kafka
-    profiles: [core, shared]
-    environment:
-      # KRaft (no Zookeeper) configuration
-      KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_NODE_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,OUTSIDE://0.0.0.0:19092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,OUTSIDE://localhost:19092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: 3
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_MESSAGE_MAX_BYTES: 10485760
-      KAFKA_REPLICA_FETCH_MAX_BYTES: 10485760
-      KAFKA_JVM_PERFORMANCE_OPTS: '-Xms256m -Xmx512m'
-      # Deterministic cluster id for local KRaft. This must be a base64-encoded
-      # 16-byte UUID (not a plain string). Generated once for this local setup.
-      CLUSTER_ID: 'fIUFCStWQOSeDDC57Fc7wA=='
-    ports:
-      - "9092:9092"
-      - "${KAFKA_OUTSIDE_PORT:-19092}:19092"
-    volumes:
-      - sfm_kafka_data:/var/lib/kafka/data
-    networks:
-      - sfm_local_net
-
-  quadrant:
-    image: caddy:2.8.4-alpine
-    container_name: somafractalmemory_quadrant
-    profiles: [proxy]
-    ports:
-      - "8088:8080"   # HTTP
-      - "2033:2019"   # Caddy admin
-    volumes:
-      - ./infra/quadrant/Caddyfile:/etc/caddy/Caddyfile:ro
-      - sfm_quadrant_data:/data
-    networks:
-      - sfm_local_net
-
-  prometheus:
-    image: prom/prometheus:v2.47.2
-    container_name: somafractalmemory_prometheus
-    profiles: [monitoring]
-    volumes:
-      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - sfm_prometheus_data:/prometheus
-    ports:
-      - "9095:9090"
-    networks:
-      - sfm_local_net
-
-  grafana:
-    image: grafana/grafana:10.2.3
-    container_name: somafractalmemory_grafana
-    profiles: [monitoring]
-    ports:
-      - "3131:3000"
-    volumes:
-      - sfm_grafana_data:/var/lib/grafana
-    networks:
-      - sfm_local_net
-
-  vault:
-    image: hashicorp/vault:1.15.4
-    container_name: somafractalmemory_vault
-    profiles: [ops]
-    environment:
-      VAULT_DEV_ROOT_TOKEN_ID: root
-    command: server -dev -dev-root-token-id=root
-    ports:
-      - "8203:8200"
-    volumes:
-      - sfm_vault_data:/vault/file
-    networks:
-      - sfm_local_net
-
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.12
-    container_name: somafractalmemory_etcd
-    profiles: [ops]
-    command: ["etcd","--data-dir","/etcd-data","--advertise-client-urls","http://0.0.0.0:2379","--listen-client-urls","http://0.0.0.0:2379"]
-    ports:
-      - "2381:2379"
-    volumes:
-      - sfm_etcd_data:/etcd-data
-    networks:
-      - sfm_local_net
-
-  opa:
-    image: openpolicyagent/opa:0.57.0
-    container_name: somafractalmemory_opa
-    profiles: [ops]
-    command: ["run","--server","--set=decision_logs.console=true","/policy"]
-    ports:
-      - "8185:8181"
-    volumes:
-      - ./infra/opa/policies:/policy:ro
-    networks:
-      - sfm_local_net
-
-networks:
-  soma_shared:
-    external: true
-    name: soma_docker_shared_infra_soma-network
-
-  sfm_local_net:
-    driver: bridge
+    restart: always
+    profiles:
+      - core
 
 volumes:
-  sfm_postgres_data:
-  sfm_redis_data:
-  sfm_qdrant_data:
-  sfm_kafka_data:
-  sfm_quadrant_data:
-  sfm_prometheus_data:
-  sfm_grafana_data:
-  sfm_vault_data:
-  sfm_etcd_data:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  qdrantdata:
+    driver: local
+  kafkadata:
+    driver: local

@@ -32,25 +32,25 @@ dependencies = [
   "opentelemetry-sdk",
   "networkx",
   "psycopg2-binary",
-  "grpcio",
-  "grpcio-tools",
-  "etcd3",
   "redis[asyncio]",
   "opentelemetry-instrumentation-psycopg2",
   "opentelemetry-instrumentation-redis",
 ]
 
 [project.optional-dependencies]
-events = ["confluent-kafka", "aiokafka"]
-hash-embeddings = ["transformers", "Pillow", "tenacity"]
+hash-embeddings = ["Pillow", "tenacity", "torch", "torchvision", "torchaudio"]
 api = [
   "fastapi",
   "uvicorn",
   "opentelemetry-sdk",
   "opentelemetry-instrumentation-fastapi",
   "jsonschema",
+  "httpx",
 ]
-observability = ["langfuse"]
+events = [
+    "aiokafka",
+    "confluent-kafka",
+]
 dev = [
   "pytest",
   "fakeredis>=2.0.0",
@@ -59,6 +59,7 @@ dev = [
   "bandit",
   "build",
   "alembic>=1.14.0",
+  "requests",
 ]
 ops = [
   "alembic>=1.14.0",
@@ -75,8 +76,8 @@ soma = "somafractalmemory.cli:main"
 # The project hosts source under both the top-level package directory and `src/` (legacy/tests reference paths).
 # We include only the canonical runtime package to prevent accidental inclusion of test modules.
 [tool.setuptools.packages.find]
-include = ["somafractalmemory"]
-exclude = ["tests", "benchmarks", "examples", "docs", "site"]
+include = ["somafractalmemory", "common"]
+exclude = ["tests", "docs", "site"]
 
 [tool.setuptools.package-data]
 somafractalmemory = ["py.typed", "**/*.json", "**/*.yaml"]
@@ -100,9 +101,6 @@ strict_optional = false
 warn_redundant_casts = true
 warn_unreachable = true
 warn_unused_ignores = true
-# Relax strictness: allow untyped definitions and assignments
-disallow_untyped_defs = false
-ignore_errors = true
 
 [tool.pytest.ini_options]
 addopts = "-q -ra --maxfail=1"

@@ -24,13 +24,15 @@ The module exposes two public helpers:
 """
 
 import json
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from confluent_kafka import Producer
 from jsonschema import ValidationError, validate
+
+from common.config.settings import load_settings
 
 
 # ---------------------------------------------------------------------------
@@ -81,28 +83,17 @@ def _kafka_producer():
     repository.  If the ``confluent_kafka`` package is missing we raise a clear
     ``ImportError`` so the caller can install the dependency.
     """
-    try:
-        from confluent_kafka import Producer  # type: ignore
-    except Exception as exc:
-        raise ImportError(
-            "confluent_kafka is required for event publishing. Install with "
-            "'pip install confluent-kafka'"
-        ) from exc
-
-    conf: dict[str, Any] = {
-        "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-        "security.protocol": os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
+    settings = load_settings()
+    conf = {
+        "bootstrap.servers": settings.kafka.bootstrap_servers,
+        "security.protocol": settings.kafka.security_protocol,
     }
 
-    if conf["security.protocol"] in {"SSL", "SASL_SSL"}:
-        ca_loc = os.getenv("KAFKA_SSL_CA_LOCATION")
-        if ca_loc:
-            conf["ssl.ca.location"] = ca_loc
-
-    if conf["security.protocol"].startswith("SASL"):
-        conf["sasl.mechanisms"] = os.getenv("KAFKA_SASL_MECHANISM", "PLAIN")
-        conf["sasl.username"] = os.getenv("KAFKA_SASL_USERNAME", "")
-        conf["sasl.password"] = os.getenv("KAFKA_SASL_PASSWORD", "")
+    if settings.kafka.security_protocol == "SASL_SSL":
+        conf["ssl.ca.location"] = settings.kafka.ssl_ca_location
+        conf["sasl.mechanisms"] = settings.kafka.sasl_mechanism
+        conf["sasl.username"] = settings.kafka.sasl_username
+        conf["sasl.password"] = settings.kafka.sasl_password
 
     return Producer(conf)
 

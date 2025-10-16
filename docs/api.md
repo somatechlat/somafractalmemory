@@ -1,64 +1,69 @@
-# Public API Reference
+# API Reference
 
-This reference covers the primary classes, enums, and functions exposed by the `somafractalmemory` package, plus the CLI and FastAPI surfaces that ship with the repository. All content is generated manually from the current code to ensure it stays in sync.
-
----
-
-## Factory Entry Point
-```python
-from somafractalmemory.factory import create_memory_system, MemoryMode
-from somafractalmemory.core import MemoryType
-
-mem = create_memory_system(
-    MemoryMode.EVENTED_ENTERPRISE,
-    "demo",
-    config={
-        "redis": {"testing": True},
-        "qdrant": {"path": "./qdrant.db"},
-    },
-)
-```
-
-### `MemoryMode`
-Enum defined in `somafractalmemory/factory.py`:
-- `EVENTED_ENTERPRISE`
-
-### `MemoryType`
-Enum defined in `somafractalmemory/core.py`:
-- `EPISODIC`
-- `SEMANTIC`
-
-### `create_memory_system(mode, namespace, config=None)`
-Returns a configured `SomaFractalMemoryEnterprise` instance. Key behaviour:
-- Selects Redis/Postgres/Qdrant implementations based on configuration while always running in `evented_enterprise` mode.
-- Attaches a `NetworkXGraphStore`.
-- Sets `memory.eventing_enabled` depending on configuration (`eventing.enabled` flag, defaults to `True`).
-
----
+This document provides a detailed reference for the `SomaFractalMemoryEnterprise` class, which is the central component of the Soma Fractal Memory system.
 
 ## `SomaFractalMemoryEnterprise`
-Located in `somafractalmemory/core.py`. Notable methods:
+
+The `SomaFractalMemoryEnterprise` class provides a unified interface for all memory operations, including storing, recalling, and linking memories.
+
+### Initialization
+
+```python
+def __init__(
+    self,
+    namespace: str,
+    kv_store: IKeyValueStore,
+    vector_store: IVectorStore,
+    graph_store: IGraphStore,
+    model_name: str = "microsoft/codebert-base",
+    vector_dim: int = 768,
+    encryption_key: Optional[bytes] = None,
+    config_file: str = "config.yaml",
+    max_memory_size: int = 100000,
+    pruning_interval_seconds: int = 600,
+    decay_thresholds_seconds: Optional[List[int]] = None,
+    decayable_keys_by_level: Optional[List[List[str]]] = None,
+    decay_enabled: bool = True,
+    reconcile_enabled: bool = True,
+) -> None:
+```
+
+**Parameters:**
+
+*   `namespace` (str): The namespace for all memory operations.
+*   `kv_store` (IKeyValueStore): The key-value store backend.
+*   `vector_store` (IVectorStore): The vector store backend for embeddings and similarity search.
+*   `graph_store` (IGraphStore): The graph store backend for semantic links.
+*   `model_name` (str): The name of the transformer model to use for embeddings.
+*   `vector_dim` (int): The dimension of the vectors.
+*   `encryption_key` (Optional[bytes]): The encryption key for encrypting memory payloads.
+*   `config_file` (str): The path to the configuration file.
+*   `max_memory_size` (int): The maximum number of memories to store.
+*   `pruning_interval_seconds` (int): The interval in seconds for pruning old memories.
+*   `decay_thresholds_seconds` (Optional[List[int]]): The decay thresholds in seconds.
+*   `decayable_keys_by_level` (Optional[List[List[str]]]): The keys to decay at each level.
+*   `decay_enabled` (bool): Whether to enable memory decay.
+*   `reconcile_enabled` (bool): Whether to enable reconciliation of the write-ahead log.
+
+### Methods
 
 | Method | Description |
 |--------|-------------|
 | `store_memory(coord, payload, memory_type=MemoryType.EPISODIC)` | High-level store that writes to the KV store, upserts into Qdrant, updates metadata, and optionally emits a Kafka event. |
 | `remember(payload, coordinate=None, memory_type=MemoryType.EPISODIC)` | Convenience wrapper that auto-generates coordinates. |
 | `recall(query, top_k=5, memory_type=None)` | Hybrid recall against the vector store, falling back to KV when necessary. |
-| `recall_batch(queries, top_k=5, memory_type=None, filters=None)` | Multi-query recall helper. |
 | `recall_with_scores(query, top_k=5, memory_type=None)` | Adds similarity scores to recall results. |
 | `find_hybrid_with_context(query, context, top_k=5, memory_type=None)` | Recall augmented with caller-provided context filters. |
 | `find_by_coordinate_range(min_coord, max_coord, memory_type=None)` | Range query over stored coordinates. |
 | `link_memories(from_coord, to_coord, link_type="related", weight=1.0)` | Create/update an edge in the graph store. |
-| `find_shortest_path(from_coord, to_coord, link_type=None)` | Graph traversal via `NetworkXGraphStore`. |
-| `get_neighbors(coord, link_type=None, limit=None)` | Provided through the graph store (`GraphStore.get_neighbors`). |
+| `find_shortest_path(from_coord, to_coord, link_type=None)` | Graph traversal. |
+| `get_linked_memories(coord, link_type=None, depth=1)` | Retrieves memories linked to a given memory. |
 | `delete(coordinate)` / `delete_many(coordinates)` | Remove memories from KV, vector store, and graph. |
 | `export_memories(path)` / `import_memories(path, replace=False)` | JSONL export/import helpers. |
 | `memory_stats()` | Aggregate statistics and backend health checks. |
 | `health_check()` | Boolean health map for KV, vector, and graph stores. |
 | `run_decay_once()` / `_decay_memories()` | Apply configured decay rules (invoked on a background thread). |
 | `with_lock(name, func, *args, **kwargs)` | Execute a callable under the KV-backed lock abstraction. |
-
-The class also exposes lower-level helpers (`store`, `iter_memories`, `embed_text`, WAL reconciliation) that are exercised by the tests and workers.
 
 ---
 
@@ -78,8 +83,6 @@ The `soma` entry point supports the following sub-commands:
 | `store-bulk` | Load a JSON file containing `coord/payload/type` items and store them batch-wise. |
 | `range` | Query coordinates within a bounding box. |
 
-All commands accept `--mode`, `--namespace`, and optional `--config-json`. The `--mode` flag is retained for compatibility but only `evented_enterprise` is accepted.
-
 ---
 
 ## FastAPI Surface (`somafractalmemory/http_api.py`)
@@ -89,7 +92,6 @@ The example application wires `MEMORY_MODE=evented_enterprise` with Redis/Postgr
 - `POST /store` – body: `{coord: str, payload: dict, type: "episodic"|"semantic"}`
 - `POST /remember` – body: `{payload: dict, coord?: str, type?: str}`
 - `POST /recall` – body: `{query: str, top_k?: int, type?: str, filters?: dict}`
-- `POST /recall_batch`
 - `POST /store_bulk`
 - `POST /recall_with_scores`
 - `POST /recall_with_context`
@@ -121,7 +123,3 @@ Each endpoint requires the configured bearer token (`SOMA_API_TOKEN`) via FastAP
 ## Health & Metrics
 - API metrics: `/metrics` (Prometheus text). Counters include `soma_memory_store_total`, `soma_memory_store_latency_seconds`, and a custom 404 counter.
 - Consumer metrics: exported from `scripts/run_consumers.py` on `CONSUMER_METRICS_PORT` (default `8001`).
-
----
-
-*For configuration details consult `docs/CONFIGURATION.md`. For operational runbooks see `docs/CANONICAL_DOCUMENTATION.md`.*

@@ -1,13 +1,35 @@
-# Soma Fractal Memory Documentation
+---
+title: "SomaFractalMemory Documentation"
+purpose: "Main documentation hub following 4-manual structure"
+audience:
+  - "All Stakeholders"
+version: "1.0.0"
+last_updated: "2025-10-16"
+review_frequency: "quarterly"
+---
 
-Welcome to the documentation portal for **SomaFractalMemory (SFM)**. This site mirrors the repository state and links directly to the configuration, architecture, and API references you will use in day-to-day development.
+# SomaFractalMemory Documentation
 
-- **Need the full project overview?** See the `README.md` in the repository root for the canonical introduction, architecture diagram, and installation instructions.
-- **Ready to dive in?** Start with the [Quickstart](QUICKSTART.md) to spin up the stack and store your first memories.
-- **Looking for deeper context?** Use the navigation bar to jump to architecture notes, configuration references, operational runbooks, and the API surface.
+**Enterprise AI Memory System for Distributed Applications**
 
-All pages are generated from the checked-in Markdown files—no manual steps are required beyond keeping the docs up to date when code changes. If you spot discrepancies, update both the documentation and the relevant code/tests in the same change.
+## The Four Core Manuals
 
-> WARNING
->
-> This project does NOT allow mocking, mimicking, or changing production values for tests. All agents must operate against real configurations and real services. Any test that requires altering live settings is prohibited. Use dedicated test environments and real data fixtures instead.
+| Manual | Audience | Purpose |
+|---|---|---|
+| **[User Manual](user-manual/index.md)** | End-Users, Product Managers | How to *use* the system |
+| **[Technical Manual](technical-manual/index.md)** | SREs, DevOps, System Administrators | How to *deploy and operate* |
+| **[Development Manual](development-manual/index.md)** | Software Engineers, Contributors | How to *build and contribute* |
+| **[Onboarding Manual](onboarding-manual/index.md)** | New Team Members, Agent Coders | How to *quickly become productive* |
+
+## Quick Start
+
+1. **Users**: [Installation Guide](user-manual/installation.md) → [Quick Start Tutorial](user-manual/quick-start-tutorial.md)
+2. **Operators**: [Deployment Guide](technical-manual/deployment.md) → [Monitoring Setup](technical-manual/monitoring.md)
+3. **Developers**: [Local Setup](development-manual/local-setup.md) → [API Reference](development-manual/api-reference.md)
+4. **New Team**: [Project Context](onboarding-manual/project-context.md) → [Environment Setup](onboarding-manual/environment-setup.md)
+
+## System Overview
+- **Enterprise AI Memory System** with vector search, graph relationships, and distributed architecture
+- **Multi-backend storage**: PostgreSQL + Redis + Qdrant + Kafka
+- **Interfaces**: FastAPI HTTP, gRPC, CLI, Python library
+- **Use cases**: AI agents, knowledge management, semantic search
