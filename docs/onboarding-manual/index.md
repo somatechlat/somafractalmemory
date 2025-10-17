@@ -1,6 +1,9 @@
----
+# Onboarding Manual---
+
 title: "SomaFractalMemory Onboarding Manual"
-purpose: "Help new team members, agents, and contractors quickly become productive on the project"
+
+Welcome to SomaFractalMemory. This manual equips new contributors—internal engineers and contract agents—with all the context and checklists necessary to become productive quickly while respecting the simplified `/memories` API.purpose: "Help new team members, agents, and contractors quickly become productive on the project"
+
 audience:
   - "Primary: New Team Members"
   - "Primary: Agent Coders"

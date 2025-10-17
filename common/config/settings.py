@@ -95,8 +95,7 @@ class SMFSettings(SomaBaseSettings):
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     kafka: KafkaSettings = Field(default_factory=KafkaSettings)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = SettingsConfigDict(arbitrary_types_allowed=True)
 
 
 def _load_file_data(config_file: Path | None) -> dict[str, Any]:

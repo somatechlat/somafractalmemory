@@ -1,8 +1,13 @@
----
+# Development Manual---
+
 title: "SomaFractalMemory Development Manual"
-purpose: "Guide for software engineers on how to build, modify, and contribute to the codebase"
+
+This manual is for contributors extending SomaFractalMemory. It defines environment setup, coding conventions, test strategy, and the supported `/memories` API contract.purpose: "Guide for software engineers on how to build, modify, and contribute to the codebase"
+
 audience:
-  - "Primary: Software Engineers"
+
+All legacy API variants were removed in October 2025. Only merge code and documentation that respects the `/memories` CRUD/search surface and the new CLI commands (`store`, `search`, `get`, `delete`).  - "Primary: Software Engineers"
+
   - "Primary: Contributors"
   - "Secondary: Technical Leads"
 version: "1.0.0"

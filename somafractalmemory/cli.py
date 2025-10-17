@@ -89,36 +89,42 @@ async def _run_command_async(args) -> None:
         mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
         await asyncio.to_thread(mem.store_memory, coord, payload, memory_type=mtype)
         print("OK")
+    elif args.cmd == "search":
+        filters = None
+        if args.filters:
+            parsed = json.loads(args.filters)
+            if parsed is not None and not isinstance(parsed, dict):
+                raise SystemExit("--filters must be a JSON object")
+            filters = parsed
+        memory_type = None
+        if getattr(args, "mem_type", None):
+            memory_type = (
+                MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
+            )
+        res = await asyncio.to_thread(
+            mem.find_hybrid_by_type, args.query, args.top_k, memory_type, filters
+        )
+        print(json.dumps(res))
     elif args.cmd == "recall":
-        mtype = None
-        if args.mem_type:
-            mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
-        res = await asyncio.to_thread(mem.recall, args.query, top_k=args.top_k, memory_type=mtype)
-        # Ensure pure JSON array with payloads only
-        try:
-            out = [r if isinstance(r, dict) else r for r in res]
-        except Exception:
-            out = []
-        print(json.dumps(out))
-    elif args.cmd == "link":
-        fc = parse_coord(args.from_coord)
-        tc = parse_coord(args.to_coord)
-        await asyncio.to_thread(
-            mem.link_memories, fc, tc, link_type=args.link_type, weight=args.weight
+        memory_type = None
+        if getattr(args, "mem_type", None):
+            memory_type = (
+                MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
+            )
+        res = await asyncio.to_thread(
+            mem.recall, args.query, top_k=args.top_k, memory_type=memory_type
         )
-        print("OK")
-    elif args.cmd == "path":
-        fc = parse_coord(args.from_coord)
-        tc = parse_coord(args.to_coord)
-        path = await asyncio.to_thread(mem.find_shortest_path, fc, tc, link_type=args.link_type)
-        print(json.dumps([list(c) for c in path]))
-    elif args.cmd == "neighbors":
-        c = parse_coord(args.coord)
-        pairs = await asyncio.to_thread(
-            mem.graph_store.get_neighbors, c, link_type=args.link_type, limit=args.limit
-        )
-        coords = [list(co) for co, _ in pairs]
-        print(json.dumps(coords))
+        print(json.dumps(res))
+    elif args.cmd == "get":
+        coord = parse_coord(args.coord)
+        record = await asyncio.to_thread(mem.retrieve, coord)
+        if record is None:
+            raise SystemExit("Memory not found")
+        print(json.dumps(record))
+    elif args.cmd == "delete":
+        coord = parse_coord(args.coord)
+        deleted = await asyncio.to_thread(mem.delete, coord)
+        print(json.dumps({"deleted": bool(deleted)}))
     elif args.cmd == "stats":
         print(json.dumps(await asyncio.to_thread(mem.memory_stats), indent=2))
     elif args.cmd == "export-memories":
@@ -131,29 +137,6 @@ async def _run_command_async(args) -> None:
         coords = [parse_coord(s) for s in args.coords.split(";") if s.strip()]
         n = await asyncio.to_thread(mem.delete_many, coords)
         print(json.dumps({"deleted": n}))
-    elif args.cmd == "store-bulk":
-        with open(args.file, encoding="utf-8") as fh:
-            raw = json.load(fh)
-
-        # Expect list of {coord: "x,y,z", payload: {...}, type: "episodic|semantic"}
-        def _to_tuple(item):
-            c = parse_coord(item.get("coord", ""))
-            p = item.get("payload", {})
-            t = MemoryType.SEMANTIC if item.get("type") == "semantic" else MemoryType.EPISODIC
-            return (c, p, t)
-
-        tuples = [_to_tuple(it) for it in raw]
-        await asyncio.to_thread(mem.store_memories_bulk, tuples)
-        print(json.dumps({"stored": len(tuples)}))
-    elif args.cmd == "range":
-        minc = parse_coord(args.min_coord)
-        maxc = parse_coord(args.max_coord)
-        mtype = None
-        if args.mem_type:
-            mtype = MemoryType.SEMANTIC if args.mem_type == "semantic" else MemoryType.EPISODIC
-        res = await asyncio.to_thread(mem.find_by_coordinate_range, minc, maxc, memory_type=mtype)
-        coords = [m.get("coordinate") for m in res if isinstance(m, dict) and m.get("coordinate")]
-        print(json.dumps(coords))
 
 
 def main() -> None:
@@ -179,34 +162,29 @@ def main() -> None:
         "--type", dest="mem_type", default="episodic", choices=["episodic", "semantic"]
     )
 
-    p_recall = sub.add_parser("recall", help="Recall memories")
+    p_search = sub.add_parser("search", help="Hybrid search across stored memories")
+    p_search.add_argument("--query", required=True)
+    p_search.add_argument("--top-k", dest="top_k", type=int, default=5)
+    p_search.add_argument(
+        "--filters",
+        dest="filters",
+        default=None,
+        help="Optional JSON object to constrain search results",
+    )
+    p_search.add_argument("--type", dest="mem_type", default=None, choices=["episodic", "semantic"])
+
+    p_recall = sub.add_parser("recall", help="Recall memories using the legacy recall signal")
     p_recall.add_argument("--query", required=True)
     p_recall.add_argument("--top-k", dest="top_k", type=int, default=5)
     p_recall.add_argument("--type", dest="mem_type", default=None, choices=["episodic", "semantic"])
 
-    p_link = sub.add_parser("link", help="Link two memories")
-    p_link.add_argument("--from", dest="from_coord", required=True)
-    p_link.add_argument("--to", dest="to_coord", required=True)
-    p_link.add_argument("--type", dest="link_type", default="related")
-    p_link.add_argument("--weight", dest="weight", type=float, default=1.0)
+    p_get = sub.add_parser("get", help="Fetch a memory by coordinate")
+    p_get.add_argument("--coord", required=True, help="Comma-separated floats, e.g., 1,2,3")
 
-    p_path = sub.add_parser("path", help="Find shortest path between coordinates")
-    p_path.add_argument("--from", dest="from_coord", required=True)
-    p_path.add_argument("--to", dest="to_coord", required=True)
-    p_path.add_argument("--type", dest="link_type", default=None)
-
-    p_neighbors = sub.add_parser("neighbors", help="List neighbors of a coordinate")
-    p_neighbors.add_argument("--coord", required=True)
-    p_neighbors.add_argument("--type", dest="link_type", default=None)
-    p_neighbors.add_argument("--limit", dest="limit", type=int, default=None)
+    p_delete = sub.add_parser("delete", help="Delete a memory by coordinate")
+    p_delete.add_argument("--coord", required=True, help="Comma-separated floats, e.g., 1,2,3")
 
     sub.add_parser("stats", help="Show memory stats")
-
-    p_export = sub.add_parser("export-graph", help="Export semantic graph to GraphML")
-    p_export.add_argument("--path", required=True)
-
-    p_import_graph = sub.add_parser("import-graph", help="Import semantic graph from GraphML")
-    p_import_graph.add_argument("--path", required=True)
 
     p_exp_mem = sub.add_parser("export-memories", help="Export memories to JSONL")
     p_exp_mem.add_argument("--path", required=True)
@@ -219,20 +197,6 @@ def main() -> None:
     p_del_many.add_argument(
         "--coords", required=True, help='Semicolon-separated coords, e.g., "1,2,3;4,5,6"'
     )
-
-    p_store_bulk = sub.add_parser("store-bulk", help="Store memories from JSON file")
-    p_store_bulk.add_argument(
-        "--file", required=True, help="Path to JSON array of items {coord, payload, type}"
-    )
-
-    p_range = sub.add_parser("range", help="Find memories within a coordinate bounding box")
-    p_range.add_argument(
-        "--min", dest="min_coord", required=True, help="Comma-separated min coord, e.g., 0,0,0"
-    )
-    p_range.add_argument(
-        "--max", dest="max_coord", required=True, help="Comma-separated max coord, e.g., 2,2,2"
-    )
-    p_range.add_argument("--type", dest="mem_type", default=None, choices=["episodic", "semantic"])
 
     args = parser.parse_args()
     # Run the async command runner

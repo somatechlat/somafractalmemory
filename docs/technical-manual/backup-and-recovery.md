@@ -1,72 +1,34 @@
-# Backup and Recovery Guide
+# Backup & Recovery
 
-## Overview
+This playbook explains how to protect the data behind the `/memories` API.
 
-This guide covers backup procedures and disaster recovery for Soma Fractal Memory.
+## PostgreSQL
 
-## Components to Backup
+- **Backups**: Use daily logical dumps via `pg_dump` or enable WAL archiving.
+  ```bash
+  pg_dump --dbname=$SOMA_POSTGRES_URL --file=/backups/sfm-$(date +%F).sql
+  ```
+- **Retention**: Keep 30 days of dumps encrypted at rest. Rotate keys quarterly.
+- **Restore**:
+  ```bash
+  psql $SOMA_POSTGRES_URL < /backups/sfm-2025-10-16.sql
+  ```
+  After restoring, restart the API to rebuild vector caches.
 
-### 1. PostgreSQL Data
-```bash
-# Backup PostgreSQL database
-docker compose exec postgres pg_dump -U soma somamemory > backup.sql
+## Qdrant
 
-# Restore PostgreSQL database
-cat backup.sql | docker compose exec -T postgres psql -U soma somamemory
-```
+- Enable the snapshot feature via `qdrant snapshot create <collection>`. Store snapshots alongside Postgres dumps.
+- When restoring, replay snapshots before restarting the API. The `/memories` endpoints remain read-only until Qdrant is back online.
 
-### 2. Redis Data
-```bash
-# Backup Redis
-docker compose exec redis redis-cli SAVE
+## Redis (Optional)
 
-# Copy dump.rdb
-docker cp somafractalmemory_redis:/data/dump.rdb ./redis-backup.rdb
-```
+Redis is only used for rate limiting. If it fails, the API falls back to an in-memory limiter. Backups are not required.
 
-### 3. Qdrant Vectors
-```bash
-# Backup Qdrant collections
-docker compose exec qdrant qdrant-backup /qdrant/storage backup.tar.gz
-```
+## Disaster Recovery Checklist
 
-## Backup Schedule
-
-| Component | Frequency | Retention |
-|-----------|-----------|------------|
-| PostgreSQL | Daily | 30 days |
-| Redis | Hourly | 7 days |
-| Qdrant | Daily | 30 days |
-
-## Disaster Recovery
-
-### Complete System Recovery
-
-1. Stop all services:
-   ```bash
-   docker compose down
-   ```
-
-2. Restore data:
-   ```bash
-   # Restore PostgreSQL
-   cat backup.sql | docker compose exec -T postgres psql -U soma somamemory
-
-   # Restore Redis
-   docker cp redis-backup.rdb somafractalmemory_redis:/data/dump.rdb
-
-   # Restore Qdrant
-   docker compose exec qdrant qdrant-restore /qdrant/storage backup.tar.gz
-   ```
-
-3. Restart services:
-   ```bash
-   docker compose up -d
-   ```
-
-### Verification
-
-After recovery, verify:
-1. API health endpoint
-2. Sample memory retrieval
-3. Metrics and monitoring
+1. Declare an incident and freeze writes to `/memories` by revoking the API token.
+2. Restore PostgreSQL from the most recent good dump.
+3. Restore Qdrant snapshot.
+4. Rotate `SOMA_API_TOKEN` and redeploy the API.
+5. Execute synthetic smoke tests (`store → search → get → delete`).
+6. Re-enable external traffic and close the incident with a timeline.

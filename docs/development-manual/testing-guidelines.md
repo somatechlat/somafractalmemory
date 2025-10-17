@@ -1,73 +1,30 @@
 # Testing Guidelines
 
-## Test Structure
+## Test Pyramid
 
-### Unit Tests
+| Layer | Tools | Purpose |
+|-------|-------|---------|
+| Unit | `pytest`, `pytest-mock` | Validate core logic in `core.py` without hitting external services. |
+| Integration | `pytest` + dockerised Postgres/Qdrant | Exercise `POST /memories`, `GET /memories/{coord}`, and search pipelines end-to-end. |
+| Contract | `schemathesis` | Ensure the public OpenAPI schema matches generated responses. |
 
-- Test individual components in isolation
-- Mock external dependencies
-- Fast execution
+## Required Checks
 
-Example:
-```python
-def test_memory_importance_calculation():
-    # Arrange
-    memory_age = 3600  # 1 hour
-    access_count = 10
+- `pytest` (runs unit and integration tests)
+- `ruff check .`
+- `mypy somafractalmemory`
 
-    # Act
-    importance = calculate_importance(memory_age, access_count)
+## On Pull Requests
 
-    # Assert
-    assert 0 <= importance <= 1
-    assert importance == pytest.approx(0.05, rel=1e-2)
-```
+1. Run `make lint test` before opening the PR.
+2. Include new fixtures when adding fields to `/memories` payloads.
+3. Update documentation within this repo if behaviour changes (especially API reference or runbooks).
+4. Provide search smoke tests to confirm filters behave as expected and return JSON arrays only.
 
-### Integration Tests
-
-- Test component interactions
-- Use test containers for databases
-- Clean up test data
-
-### End-to-End Tests
-
-- Test complete workflows
-- Run against real services
-- Part of CI/CD pipeline
-
-## Test Data
-
-### Fixtures
-
-```python
-@pytest.fixture
-def memory_store():
-    store = PostgresKeyValueStore("postgresql://test:test@localhost/test")
-    yield store
-    store.clear()  # cleanup
-```
-
-### Test Cases
-
-- Cover edge cases
-- Include error conditions
-- Use parameterized tests
-
-## Running Tests
+## Smoke Test Script
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=somafractalmemory
-
-# Generate coverage report
-pytest --cov=somafractalmemory --cov-report=html
+scripts/smoke.sh
 ```
 
-## CI Integration
-
-- Tests run on every PR
-- Coverage reports uploaded
-- Required for merge
+The script stores, searches, fetches, and deletes a memory using the HTTP API and fails if any step returns a non-2xx status.

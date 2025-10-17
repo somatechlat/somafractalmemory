@@ -1,36 +1,17 @@
----
-title: "SomaFractalMemory User Manual"
-purpose: "Guide end-users on effectively using SomaFractalMemory for memory storage and retrieval"
-audience:
-  - "Primary: End-Users"
-  - "Secondary: Product Managers"
-version: "1.0.0"
-last_updated: "2025-10-15"
-review_frequency: "quarterly"
----
-
 # SomaFractalMemory User Manual
 
-## Overview
-SomaFractalMemory is a sophisticated memory storage and retrieval system that enables efficient storage, linking, and recall of information using fractal memory patterns.
+This manual explains how operators and product stakeholders interact with the SomaFractalMemory service from an end-user perspective. It focuses on the four supported workflows that every client or integration must follow:
 
-## Quick Links
-- [Installation Guide](./installation.md)
-- [Quick Start Tutorial](./quick-start-tutorial.md)
-- [Core Features](./feature/)
-  - [Memory Storage](./feature/memory-storage.md)
-  - [Memory Recall](./feature/memory-recall.md)
-  - [Memory Linking](./feature/memory-linking.md)
-- [FAQ](./faq.md)
+1. **Store** a memory with `POST /memories`.
+2. **Retrieve** a specific memory with `GET /memories/{coord}`.
+3. **Search** across stored memories with `POST /memories/search` or `GET /memories/search`.
+4. **Delete** a memory with `DELETE /memories/{coord}`.
 
-## Getting Started
-1. Follow the [Installation Guide](./installation.md)
-2. Complete the [Quick Start Tutorial](./quick-start-tutorial.md)
-3. Explore [Core Features](./feature/)
+The user manual is organised as follows:
 
-## Support
-- [Troubleshooting Guide](./troubleshooting.md)
-- [FAQ](./faq.md)
+- [Installation](installation.md): lightweight steps to run the HTTP API locally.
+- [Quick-Start Tutorial](quick-start-tutorial.md): a guided flow that exercises the full lifecycle.
+- [Feature Guides](features/): task-based walkthroughs for storage and search scenarios.
+- [FAQ](faq.md): answers to the most common usability questions.
 
----
-*Was this document helpful? [Rate this page](feedback-url)*
+> **Important:** All legacy HTTP endpoints (`/store`, `/recall`, `/link`, graph routes, batch variants) are removed as of version 2.0.0. Every client must migrate and exclusively use the `/memories` surface described in this manual.

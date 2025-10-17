@@ -1,50 +1,97 @@
-# Monitoring and Observability
+# Monitoring & Observability# Monitoring and Observability
 
-## Overview
 
-Comprehensive monitoring ensures SomaFractalMemory operates reliably across all service components in the 40020 port range.
 
-## Service Health Endpoints
+Monitoring focuses on the `/memories` request path and the public operational probes.## Overview
 
-### API Service (Port 40020)
 
-```bash
-# Overall health
-curl http://localhost:40020/health
 
-# Detailed component health
+## MetricsComprehensive monitoring ensures SomaFractalMemory operates reliably across all service components in the 40020 port range.
+
+
+
+The FastAPI service exposes Prometheus metrics at `/metrics`. Key series:## Service Health Endpoints
+
+
+
+| Metric | Labels | Description |### API Service (Port 40020)
+
+|--------|--------|-------------|
+
+| `api_requests_total` | `endpoint`, `method` | Request volume per route. Use it to confirm only `/memories` surfaces receive authenticated traffic. |```bash
+
+| `api_request_latency_seconds` | `endpoint`, `method` | Request latency histogram. Track `p95` latency for `POST /memories` and `POST /memories/search`. |# Overall health
+
+| `api_responses_total` | `endpoint`, `method`, `status` | Response status distribution. Alerts fire when 5xx for `/memories*` exceed 1% of traffic. |curl http://localhost:40020/health
+
+| `soma_memory_store_total` | `namespace` | Total store calls executed by the core layer. |
+
+| `soma_memory_recall_total` | `namespace` | Total hybrid recall calls executed. |# Detailed component health
+
 curl http://localhost:9595/health/detailed
-```
 
-### Component Checks
+## Dashboards```
 
-```bash
+
+
+1. **API Health**: display request rate, latency, and error ratio for `POST /memories`, `GET /memories/{coord}`, `POST /memories/search`.### Component Checks
+
+2. **Backend Dependencies**: monitor Postgres connections, Qdrant availability, and Redis latency (if enabled).
+
+3. **Rate Limiter Saturation**: chart remaining capacity derived from `429` responses.```bash
+
 # PostgreSQL (Port 40021)
-pg_isready -h localhost -p 40021 -U soma
 
-# Redis (Port 40022)
-redis-cli -p 40022 ping
+## Alertspg_isready -h localhost -p 40021 -U soma
 
-# Qdrant (Port 40023)
-curl http://localhost:40023/health
 
-# Kafka (Port 40024)
+
+| Alert | Condition | Response |# Redis (Port 40022)
+
+|-------|-----------|----------|redis-cli -p 40022 ping
+
+| `SOMAApiHighErrorRate` | `sum(rate(api_responses_total{status="500", endpoint=~"/memories.*"}[5m])) / sum(rate(api_requests_total{endpoint=~"/memories.*"}[5m])) > 0.02` for 10 minutes | Page the on-call SRE, run the [API service runbook](runbooks/api-service.md). |
+
+| `SOMANoSearchTraffic` | `sum(rate(api_requests_total{endpoint="/memories/search", method="POST"}[1h])) == 0` | Investigate upstream clients—search traffic should always be non-zero after business hours. |# Qdrant (Port 40023)
+
+| `SOMARedisUnavailable` | Redis ping failure longer than 5 minutes | The API falls back to in-memory rate limiting; review scaling requirements. |curl http://localhost:40023/health
+
+
+
+## Tracing# Kafka (Port 40024)
+
 kafka-topics --bootstrap-server localhost:40024 --list
-```
 
-## Key Metrics
+OpenTelemetry tracing is enabled via `configure_tracer` when available. The recommended configuration exports spans to the platform collector with the service name `somafractalmemory-api`. Each `/memories` request produces a span with:```
+
+
+
+- Attributes: `http.method`, `http.route`, `auth.authenticated` (bool), `client.namespace` (if header set).## Key Metrics
+
+- Events: rate limit checks and vector store latency measurements.
 
 ### API Metrics (Port 40020)
 
+## Logging
+
 ```bash
-curl http://localhost:9595/metrics
+
+Structured JSON logs are emitted with the following keys:curl http://localhost:9595/metrics
+
 ```
 
-Key indicators:
-- Request latency (p50, p95, p99)
-- Error rates
+- `event`: `request.start`, `request.finish`, `memory.store`, `memory.search`.
+
+- `path`: request path.Key indicators:
+
+- `status_code`: HTTP status.- Request latency (p50, p95, p99)
+
+- `duration_ms`: request duration.- Error rates
+
 - Throughput (requests/sec)
-- soma_memory_store_total
+
+Ship logs to the central ELK stack and set retention to 7 days for privacy compliance.- soma_memory_store_total
+
 - soma_memory_recall_total
 
 ### Database Metrics (Port 40021)

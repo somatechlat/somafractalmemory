@@ -1,37 +1,19 @@
 # Frequently Asked Questions
 
-## General Questions
+**Q: Which endpoints are supported?**
+A: Only the `/memories` family plus public operational probes. All legacy routes (`/store`, `/recall`, `/link`, graph operations, batch variants) are removed.
 
-### What is Soma Fractal Memory?
-Soma Fractal Memory is a sophisticated memory management system that stores and retrieves information using fractal patterns for efficient organization.
+**Q: Do I need a token for `GET /stats` or `GET /health`?**
+A: No. Operational probes remain public but are rate limited. Every `/memories` request requires a Bearer token.
 
-### How does it work?
-The system uses vector embeddings and importance scoring to organize memories in a hierarchical structure, allowing for efficient retrieval based on similarity and relevance.
+**Q: How do I update a memory?**
+A: Re-post to `POST /memories` with the same `coord` string. The service overwrites the previous payload atomically.
 
-## Technical Questions
+**Q: What coordinate format should I use?**
+A: Coordinates are comma-separated floats (e.g., `"1.2,3.4"`). Store the canonical string returned by the API.
 
-### What databases does it use?
-- PostgreSQL for key-value storage
-- Redis for caching
-- Qdrant for vector similarity search
+**Q: Can I search by metadata only?**
+A: Yes. Provide an empty query (`""`) plus the desired `filters`. The vector engine returns matches filtered on metadata.
 
-### How do I monitor system health?
-The system provides a `/healthz` endpoint and Prometheus metrics. See [Monitoring Guide](../technical-manual/monitoring.md).
-
-### What are the system requirements?
-- Docker and Docker Compose
-- 4GB+ RAM
-- 10GB+ disk space
-
-## Troubleshooting
-
-### Common Issues
-
-#### Authentication Failed
-Ensure you're using the correct bearer token (default: `devtoken`).
-
-#### Service Won't Start
-Check Docker logs and ensure all required services (PostgreSQL, Redis, Qdrant) are running.
-
-#### Memory Not Found
-Verify the memory was stored successfully and check the importance threshold in your search query.
+**Q: Is there graph traversal?**
+A: No. Graph operations were decommissioned. Build higher-level relationships in your application using coordinates if required.

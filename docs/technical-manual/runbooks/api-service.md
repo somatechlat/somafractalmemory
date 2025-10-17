@@ -1,172 +1,46 @@
-# API Service Runbook
+# Runbook: API Service
 
-## Overview
+## When to use this runbook
 
-This runbook covers common operational procedures for the Soma Fractal Memory API service.
+- Alert `SOMAApiHighErrorRate` fires.
+- `/health` or `/readyz` returns non-200.
+- Clients report failures from `/memories` routes.
 
-## Health Checks
+## Immediate Actions
 
-### 1. API Health
-```bash
-# Check API health endpoint
-curl http://localhost:9595/healthz
+1. **Confirm the alert**
+   ```bash
+   curl -s http://somafractalmemory.internal/readyz
+   curl -s -H "Authorization: Bearer $SOMA_API_TOKEN" http://somafractalmemory.internal/stats
+   ```
 
-# Expected output:
-{"status": "healthy"}
-```
+2. **Check logs**
+   ```bash
+   kubectl logs deploy/somafractalmemory-api --since=10m | jq -r '.message'
+   ```
 
-### 2. Service Status
-```bash
-# Check service status
-docker compose ps api
-```
+3. **Validate dependencies**
+   ```bash
+   nc -zv postgres.svc 5433
+   nc -zv qdrant.svc 6333
+   ```
 
-## Common Issues
+4. **Run synthetic request**
+   ```bash
+   curl -s -X POST http://somafractalmemory.internal/memories \
+     -H "Authorization: Bearer $SOMA_API_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"coord":"1,1","payload":{"probe":true}}'
+   ```
 
-### 1. API Not Responding
+5. **Roll the deployment**
+   ```bash
+   kubectl rollout restart deploy/somafractalmemory-api
+   kubectl rollout status deploy/somafractalmemory-api
+   ```
 
-**Symptoms:**
-- 502 Bad Gateway
-- Connection refused
-- Timeout errors
+## Post-incident
 
-**Steps:**
-```bash
-# 1. Check logs
-docker compose logs --tail=100 api
-
-# 2. Restart service
-docker compose restart api
-
-# 3. Check metrics
-curl http://localhost:9595/metrics
-```
-
-### 2. Authentication Failures
-
-**Symptoms:**
-- 401 Unauthorized
-- 403 Forbidden
-
-**Steps:**
-```bash
-# 1. Verify token
-echo $SOMA_API_TOKEN
-
-# 2. Check token file
-cat /path/to/token/file
-
-# 3. Reset token if needed
-docker compose down
-SOMA_API_TOKEN=newtoken docker compose up -d
-```
-
-### 3. High Latency
-
-**Symptoms:**
-- Slow response times
-- Timeouts
-
-**Steps:**
-```bash
-# 1. Check resource usage
-docker stats api
-
-# 2. View slow queries
-docker compose exec postgres psql -U soma -d somamemory -c \
-  'SELECT * FROM pg_stat_activity WHERE state != \'idle\' ORDER BY duration DESC;'
-
-# 3. Check connection pool
-curl http://localhost:9595/metrics | grep connections
-```
-
-## Maintenance Tasks
-
-### 1. Log Rotation
-```bash
-# Check log size
-du -h /var/log/containers/api*
-
-# Rotate logs
-docker compose exec api logrotate /etc/logrotate.d/api
-```
-
-### 2. Backup Configuration
-```bash
-# Backup config
-cp config.yaml config.yaml.bak
-
-# Restore config
-cp config.yaml.bak config.yaml
-```
-
-### 3. Version Update
-```bash
-# Pull new image
-docker compose pull api
-
-# Update service
-docker compose up -d api
-```
-
-## Monitoring
-
-### Key Metrics
-
-| Metric | Warning | Critical | Action |
-|--------|----------|-----------|--------|
-| API Latency | >200ms | >500ms | Check DB, cache |
-| Error Rate | >1% | >5% | Check logs |
-| Memory Usage | >80% | >90% | Scale up |
-
-### Useful Queries
-
-```sql
--- Active connections
-SELECT count(*) FROM pg_stat_activity;
-
--- Slow queries
-SELECT * FROM pg_stat_activity
-WHERE state != 'idle'
-ORDER BY duration DESC;
-```
-
-## Scaling
-
-### Horizontal Scaling
-```bash
-# Scale API instances
-docker compose up -d --scale api=3
-```
-
-### Vertical Scaling
-```bash
-# Update resource limits
-docker compose up -d --scale api=1 api
-```
-
-## Emergency Procedures
-
-### Service Recovery
-```bash
-# 1. Stop service
-docker compose stop api
-
-# 2. Clear state
-docker compose rm -f api
-
-# 3. Start fresh
-docker compose up -d api
-```
-
-### Data Recovery
-```bash
-# 1. Stop writes
-docker compose exec api curl -X POST /admin/readonly
-
-# 2. Backup data
-docker compose exec postgres pg_dump -U soma somamemory > backup.sql
-
-# 3. Restore service
-docker compose restart api
-```
+- Delete the synthetic probe memory: `curl -X DELETE http://.../memories/1,1`.
+- File an incident report capturing timeline, root cause, and remediation.
+- Review dashboards to ensure errors/latency returned to baseline.

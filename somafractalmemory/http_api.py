@@ -9,7 +9,7 @@ in place for legacy imports.
 import os
 import threading
 import time
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from common.utils.logger import configure_logging, get_logger
+from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
 print("Loading somafractalmemory.http_api")
@@ -58,6 +59,15 @@ except Exception:  # pragma: no cover - optional in some environments
 def parse_coord(text: str) -> tuple[float, ...]:
     parts = [p.strip() for p in text.split(",") if p.strip()]
     return tuple(float(p) for p in parts)
+
+
+def _resolve_memory_type(value: str | None) -> MemoryType:
+    if value is None:
+        return MemoryType.EPISODIC
+    try:
+        return MemoryType(value)
+    except ValueError as exc:  # pragma: no cover - defensive validation
+        raise HTTPException(status_code=400, detail="Unsupported memory_type") from exc
 
 
 # Configure tracing: prefer shared tracer if present, else fallback to console exporter
@@ -414,127 +424,35 @@ def rate_limit_dep(path: str):
     return _enforce
 
 
-class StoreRequest(BaseModel):
+class MemoryStoreRequest(BaseModel):
     coord: str
     payload: dict[str, Any]
+    memory_type: Literal["episodic", "semantic"] = MemoryType.EPISODIC.value
 
 
-class RecallRequest(BaseModel):
+class MemoryStoreResponse(BaseModel):
+    coord: str
+    memory_type: str
+    ok: bool = True
+
+
+class MemorySearchRequest(BaseModel):
     query: str
     top_k: int = 5
     filters: dict[str, Any] | None = None
 
 
-class ExportMemoriesRequest(BaseModel):
-    path: str
+class MemorySearchResponse(BaseModel):
+    memories: list[dict[str, Any]]
 
 
-class ImportMemoriesRequest(BaseModel):
-    path: str
-    replace: bool = False
+class MemoryGetResponse(BaseModel):
+    memory: dict[str, Any]
 
 
-class DeleteManyRequest(BaseModel):
-    coords: list[str]
-
-
-class LinkRequest(BaseModel):
-    from_coord: str
-    to_coord: str
-    type: str = "related"
-    weight: float = 1.0
-
-
-class BulkItem(BaseModel):
+class MemoryDeleteResponse(BaseModel):
     coord: str
-    payload: dict
-    type: str = "episodic"
-
-
-class StoreBulkRequest(BaseModel):
-    items: list[BulkItem]
-
-
-class RecallBatchRequest(BaseModel):
-    queries: list[str]
-    top_k: int = 5
-    filters: dict[str, Any] | None = None
-
-
-# --- Response models ---
-class OkResponse(BaseModel):
-    ok: bool
-
-
-class MatchesResponse(BaseModel):
-    matches: list[dict[str, Any]]
-
-
-class BatchesResponse(BaseModel):
-    batches: list[list[dict[str, Any]]]
-
-
-class ScoreItem(BaseModel):
-    payload: dict[str, Any]
-    score: float | None = None
-
-
-class ScoresResponse(BaseModel):
-    results: list[ScoreItem]
-
-
-class ResultsResponse(BaseModel):
-    results: list[dict[str, Any]]
-
-
-class RecallWithScoresBody(BaseModel):
-    query: str
-    top_k: int = 5
-    exact: bool = True
-    case_sensitive: bool = False
-
-
-class RecallWithContextBody(BaseModel):
-    query: str
-    context: dict
-    top_k: int = 5
-
-
-class HybridScoresResponse(BaseModel):
-    results: list[ScoreItem]
-
-
-class KeywordSearchRequest(BaseModel):
-    term: str
-    exact: bool = True
-    case_sensitive: bool = False
-    top_k: int = 50
-    type: str | None = None
-
-
-class NeighborsResponse(BaseModel):
-    # Preserve shape: [[coord:list[float], edge_data:dict], ...]
-    neighbors: list[list[Any]]
-
-
-class PathResponse(BaseModel):
-    path: list[list[float]]
-
-
-class ExportMemoriesResponse(BaseModel):
-    exported: int
-
-
-class ImportMemoriesResponse(BaseModel):
-    imported: int
-
-
-class DeleteManyResponse(BaseModel):
-    deleted: int
-
-
-class StoreBulkResponse(BaseModel):
-    stored: int
+    deleted: bool
 
 
 class StatsResponse(BaseModel):
@@ -625,81 +543,81 @@ async def log_requests(request: Request, call_next):
 
 
 @app.post(
-    "/store",
-    response_model=OkResponse,
+    "/memories",
+    response_model=MemoryStoreResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/store"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.store"))],
 )
-async def store(req: StoreRequest) -> OkResponse:
-    mem.store_memory(parse_coord(req.coord), req.payload)
-    return OkResponse(ok=True)
-
-
-@app.post(
-    "/recall",
-    response_model=MatchesResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall"))],
-)
-async def recall(req: RecallRequest) -> MatchesResponse:
-    if req.filters:
-        res = mem.find_hybrid_by_type(req.query, top_k=req.top_k, filters=req.filters)
-    else:
-        res = mem.recall(req.query, top_k=req.top_k)
-    return MatchesResponse(matches=res)
+async def store_memory(req: MemoryStoreRequest) -> MemoryStoreResponse:
+    memory_type = _resolve_memory_type(req.memory_type)
+    mem.store_memory(parse_coord(req.coord), req.payload, memory_type=memory_type)
+    return MemoryStoreResponse(coord=req.coord, memory_type=memory_type.value)
 
 
 @app.get(
-    "/recall",
-    response_model=MatchesResponse,
+    "/memories/{coord}",
+    response_model=MemoryGetResponse,
     tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall"))],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.fetch"))],
 )
-def recall_get(
+def fetch_memory(coord: str) -> MemoryGetResponse:
+    record = mem.retrieve(parse_coord(coord))
+    if not record:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return MemoryGetResponse(memory=record)
+
+
+@app.delete(
+    "/memories/{coord}",
+    response_model=MemoryDeleteResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.delete"))],
+)
+def delete_memory(coord: str) -> MemoryDeleteResponse:
+    deleted = mem.delete(parse_coord(coord))
+    return MemoryDeleteResponse(coord=coord, deleted=bool(deleted))
+
+
+@app.post(
+    "/memories/search",
+    response_model=MemorySearchResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.search"))],
+)
+def search_memories(req: MemorySearchRequest) -> MemorySearchResponse:
+    if req.filters:
+        results = mem.find_hybrid_by_type(req.query, top_k=req.top_k, filters=req.filters)
+    else:
+        results = mem.recall(req.query, top_k=req.top_k)
+    return MemorySearchResponse(memories=results)
+
+
+@app.get(
+    "/memories/search",
+    response_model=MemorySearchResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.search"))],
+)
+def search_memories_get(
     query: str,
     top_k: int = 5,
     filters: str | None = None,
-) -> MatchesResponse:
-    """Compatibility endpoint for clients that pass parameters via query string.
-
-    Returns the same shape as POST /recall: {"matches": [...]}
-    """
-
+) -> MemorySearchResponse:
     parsed_filters: dict[str, Any] | None = None
     if filters:
         try:
             import json as _json
 
-            parsed = _json.loads(filters)
-            if isinstance(parsed, dict):
-                parsed_filters = parsed
+            parsed_candidate = _json.loads(filters)
+            if isinstance(parsed_candidate, dict):
+                parsed_filters = parsed_candidate
         except Exception:
             parsed_filters = None
     if parsed_filters:
-        res = mem.find_hybrid_by_type(query, top_k=top_k, filters=parsed_filters)
+        results = mem.find_hybrid_by_type(query, top_k=top_k, filters=parsed_filters)
     else:
-        res = mem.recall(query, top_k=top_k)
-    return MatchesResponse(matches=res)
-
-
-@app.post(
-    "/recall_batch",
-    response_model=BatchesResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_batch"))],
-)
-def recall_batch(req: RecallBatchRequest) -> BatchesResponse:
-    # Some memory system implementations don't provide a recall_batch helper.
-    # Fall back to calling recall/find_hybrid_by_type per query to maintain
-    # compatibility across implementations.
-    batches: list[list[dict[str, Any]]] = []
-    for q in req.queries:
-        if req.filters:
-            batch = mem.find_hybrid_by_type(q, top_k=req.top_k, filters=req.filters)
-        else:
-            batch = mem.recall(q, top_k=req.top_k)
-        batches.append(batch)
-    return BatchesResponse(batches=batches)
+        results = mem.recall(query, top_k=top_k)
+    return MemorySearchResponse(memories=results)
 
 
 @app.get(
@@ -722,113 +640,6 @@ def stats() -> StatsResponse:
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health() -> HealthResponse:
     return HealthResponse(**mem.health_check())
-
-
-@app.get(
-    "/neighbors",
-    response_model=NeighborsResponse,
-    tags=["graph"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/neighbors"))],
-)
-def neighbors(
-    coord: str, link_type: str | None = None, limit: int | None = None
-) -> NeighborsResponse:
-    c = parse_coord(coord)
-    nbrs = mem.graph_store.get_neighbors(c, link_type=link_type, limit=limit)
-    # Convert coords to lists for JSON
-    return NeighborsResponse(neighbors=[[list(co), data] for co, data in nbrs])
-
-
-@app.post(
-    "/link",
-    response_model=OkResponse,
-    tags=["graph"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/link"))],
-)
-def link(req: LinkRequest) -> OkResponse:
-    mem.link_memories(
-        parse_coord(req.from_coord),
-        parse_coord(req.to_coord),
-        link_type=req.type,
-        weight=req.weight,
-    )
-    return OkResponse(ok=True)
-
-
-@app.get(
-    "/shortest_path",
-    response_model=PathResponse,
-    tags=["graph"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/shortest_path"))],
-)
-def shortest_path(frm: str, to: str, link_type: str | None = None) -> PathResponse:
-    path = mem.find_shortest_path(parse_coord(frm), parse_coord(to), link_type=link_type)
-    return PathResponse(path=[list(c) for c in path])
-
-
-@app.post(
-    "/store_bulk",
-    response_model=StoreBulkResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/store_bulk"))],
-)
-def store_bulk(req: StoreBulkRequest) -> StoreBulkResponse:
-    items = []
-    for it in req.items:
-        items.append((parse_coord(it.coord), it.payload))
-    mem.store_memories_bulk(items)
-    return StoreBulkResponse(stored=len(items))
-
-
-@app.post(
-    "/recall_with_scores",
-    response_model=ScoresResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_with_scores"))],
-)
-def recall_with_scores(req: RecallWithScoresBody) -> ScoresResponse:
-    res = mem.recall_with_scores(req.query, top_k=req.top_k)
-    return ScoresResponse(results=res)
-
-
-@app.post(
-    "/keyword_search",
-    response_model=ResultsResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/keyword_search"))],
-)
-def keyword_search(req: KeywordSearchRequest) -> ResultsResponse:
-    res = mem.keyword_search(
-        req.term,
-        exact=req.exact,
-        case_sensitive=req.case_sensitive,
-        top_k=req.top_k,
-    )
-    return ResultsResponse(results=res)
-
-
-@app.post(
-    "/recall_with_context",
-    response_model=ResultsResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/recall_with_context"))],
-)
-def recall_with_context(req: RecallWithContextBody) -> ResultsResponse:  # noqa: F811
-    res = mem.find_hybrid_with_context(req.query, req.context, top_k=req.top_k)
-    return ResultsResponse(results=res)
-
-
-@app.get(
-    "/range",
-    response_model=dict[str, list[list[float]]],
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/range"))],
-)
-def range_search(min: str, max: str):
-    mi = parse_coord(min)
-    ma = parse_coord(max)
-    res = mem.find_by_coordinate_range(mi, ma)
-    return {"coords": [m.get("coordinate") for m in res if m.get("coordinate")]}
 
 
 @app.get(

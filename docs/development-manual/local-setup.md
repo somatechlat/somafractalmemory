@@ -1,72 +1,42 @@
 # Local Development Setup
 
-## Prerequisites
+1. **Create a virtual environment**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip
+   ```
 
-- Python 3.10+
-- Docker and Docker Compose
-- Make (optional)
+2. **Install dependencies**
+   ```bash
+   pip install -e .
+   pip install -r api-requirements.txt
+   ```
 
-## Quick Setup
+3. **Configure environment variables**
+   ```bash
+   export SOMA_API_TOKEN=dev-token
+   export SOMA_POSTGRES_URL=postgresql://postgres:postgres@localhost:5433/somamemory
+   export QDRANT_URL=http://localhost:6333
+   ```
 
-```bash
-# Clone repository
-git clone https://github.com/somatechlat/somafractalmemory.git
-cd somafractalmemory
+4. **Run the API**
+   ```bash
+   uvicorn somafractalmemory.http_api:app --reload --host 0.0.0.0 --port 9595
+   ```
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+5. **Smoke test**
+   ```bash
+   curl -H "Authorization: Bearer ${SOMA_API_TOKEN}" http://localhost:9595/stats
+   curl -H "Authorization: Bearer ${SOMA_API_TOKEN}" -H "Content-Type: application/json" \
+     -d '{"coord":"0,0","payload":{"message":"hello"}}' \
+     http://localhost:9595/memories
+   ```
 
-# Install dependencies
-pip install -r requirements.txt
-```
+6. **CLI**
+   ```bash
+   python -m somafractalmemory.cli store --coord 0,0 --payload '{"message":"cli"}'
+   python -m somafractalmemory.cli search --query cli
+   ```
 
-## Starting Services
-
-```bash
-# Build and start services
-make compose-build
-make compose-up
-
-# Or using docker compose directly:
-docker compose build
-docker compose up -d
-```
-
-## Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_core.py
-
-# Run with coverage
-pytest --cov=somafractalmemory
-```
-
-## Development Tools
-
-### Pre-commit Hooks
-```bash
-pre-commit install
-```
-
-### Code Formatting
-```bash
-# Format code
-black .
-
-# Check types
-mypy .
-```
-
-## IDE Setup
-
-### VS Code
-
-1. Install Python extension
-2. Select Python interpreter (.venv)
-3. Enable format on save
-4. Install recommended extensions
+> The development workflow does not expose any deprecated `store`/`recall` routes. All tooling should operate through `/memories`.

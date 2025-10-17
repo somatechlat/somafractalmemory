@@ -1,12 +1,21 @@
----
+# Documentation Style Guide---
+
 title: "Documentation Style Guide"
-purpose: "Standard formatting, terminology, and style rules for all documentation"
-audience:
-  - "All Contributors"
-  - "Documentation Team"
-prerequisites:
-  - "Markdown basics"
-version: "1.0.0"
+
+- Use **sentence case** for headings.purpose: "Standard formatting, terminology, and style rules for all documentation"
+
+- Keep paragraphs concise and prefer bullet lists for procedures.audience:
+
+- All command examples must use fenced code blocks with language hints (`bash`, `json`).  - "All Contributors"
+
+- Link to other manual pages using relative paths.  - "Documentation Team"
+
+- Never reference removed endpoints (`/store`, `/recall`, graph routes). Always refer to the `/memories` API.prerequisites:
+
+- Include verification steps for every procedure.  - "Markdown basics"
+
+- Run `markdownlint` before committing documentation changes: `markdownlint-cli2 docs/**/*.md`.version: "1.0.0"
+
 last_updated: "2025-10-16"
 review_frequency: "quarterly"
 ---
