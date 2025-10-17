@@ -4,7 +4,8 @@
 replicaCount: 1
 
 service:
-  port: 9393  # Kubernetes API port
+  port: 9595
+  targetPort: 9595
 
 postgres:
   replicaCount: 1

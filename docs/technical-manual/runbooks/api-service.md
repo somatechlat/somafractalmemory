@@ -1,9 +1,9 @@
 ---
 title: "Runbook: API Service"
-purpose: "## When to use this runbook"
+purpose: "Standard operating procedure when the HTTP API degrades or fails."
 audience:
   - "Operators and SREs"
-last_updated: "2025-10-16"
+last_updated: "2025-10-17"
 ---
 
 # Runbook: API Service
@@ -29,8 +29,9 @@ last_updated: "2025-10-16"
 
 3. **Validate dependencies**
    ```bash
-   nc -zv postgres.svc 5433
-   nc -zv qdrant.svc 6333
+   nc -zv postgres.svc 40021
+   nc -zv redis.svc 40022
+   nc -zv qdrant.svc 40023
    ```
 
 4. **Run synthetic request**

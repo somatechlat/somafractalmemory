@@ -7,9 +7,9 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 @pytest.fixture
 def memory_manager() -> SomaFractalMemoryEnterprise:
     config = {
-        "postgres": {"url": "postgresql://soma:soma@localhost:40001/somamemory"},
-        "redis": {"host": "localhost", "port": 40002},
-        "qdrant": {"host": "localhost", "port": 40003},
+        "postgres": {"url": "postgresql://soma:soma@localhost:40021/somamemory"},
+        "redis": {"host": "localhost", "port": 40022},
+        "qdrant": {"host": "localhost", "port": 40023},
     }
     system = create_memory_system(
         mode=MemoryMode.EVENTED_ENTERPRISE, namespace="test", config=config

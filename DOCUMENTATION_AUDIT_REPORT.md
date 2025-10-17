@@ -86,8 +86,8 @@ The SomaFractalMemory documentation suite has been **fully aligned** with the Do
 
 **Port Documentation**: ✅
 - All references updated to 9595 (public entry point)
-- 9393 for Kubernetes documented
-- 40021-40024 support services documented
+- 9595 for Kubernetes documented
+- 40021-40023 support services documented
 
 ---
 
@@ -255,11 +255,11 @@ All items from the template checklist verified:
 | Deployment | Port | Status | Reference |
 |------------|------|--------|-----------|
 | **Docker Compose** | **9595** | ✅ Public | deployment.md, PORT_STRATEGY.md |
-| **Kubernetes** | **9393** | ✅ Service port | deployment.md, PORT_STRATEGY.md |
+| **Kubernetes** | **9595** | ✅ Service port | deployment.md, PORT_STRATEGY.md |
 | **PostgreSQL** | **40021** | ✅ Support svc | deployment.md |
 | **Redis** | **40022** | ✅ Support svc | deployment.md |
 | **Qdrant** | **40023** | ✅ Support svc | deployment.md |
-| **Kafka** | **40024** | ✅ Support svc | deployment.md |
+| **gRPC (reserved)** | **50053** | ✅ Documented | PORT_STRATEGY.md |
 
 ### ✅ Documentation Updates
 
@@ -326,7 +326,7 @@ All items from the template checklist verified:
 | **YAML frontmatter complete** | ✅ | Title, purpose, audience, version, dates |
 | **Content blueprint implemented** | ✅ | All sections present and documented |
 | **Navigation configured** | ✅ | mkdocs.yml with all manuals |
-| **Port strategy documented** | ✅ | 9595 public, 9393 K8s, 40021-40024 support |
+| **Port strategy documented** | ✅ | 9595 public, 9595 K8s, 40021-40023 support |
 | **Checklists provided** | ✅ | Setup, pre-commit, PR checklists |
 | **Style guide established** | ✅ | Formatting, naming, metadata rules |
 | **CI/CD automation ready** | ✅ | Linting, link-checking configured |
@@ -362,8 +362,8 @@ All documentation has been aligned with the Documentation Guide Template. The fo
 **Port Strategy**: ✅ **CORRECTLY DOCUMENTED**
 
 - Docker: **9595** (public API entry point)
-- Kubernetes: **9393** (service port)
-- Support services: **40021-40024** (consistent across both)
+- Kubernetes: **9595** (service port)
+- Support services: **40021-40023** (consistent across both)
 
 **Auditor**: AI Assistant
 **Date**: October 16, 2025

@@ -32,9 +32,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY pyproject.toml uv.lock* requirements*.txt api-requirements*.txt /app/
 
 RUN if [ "${ENABLE_REAL_EMBEDDINGS}" = "1" ]; then \
-        EXTRAS="--extra api --extra events --extra hash-embeddings"; \
+        EXTRAS="--extra api --extra hash-embeddings"; \
     else \
-        EXTRAS="--extra api --extra events"; \
+        EXTRAS="--extra api"; \
     fi && \
     if [ -f uv.lock ]; then \
         echo "Using uv.lock (frozen)"; \
@@ -51,7 +51,6 @@ RUN if [ "${ENABLE_REAL_EMBEDDINGS}" = "1" ]; then \
 COPY somafractalmemory/ ./somafractalmemory/
 COPY common/ ./common/
 # COPY workers/ ./workers/
-COPY somafractalmemory/eventing/ ./somafractalmemory/eventing/
 COPY scripts/ ./scripts/
 # COPY langfuse/ ./langfuse/
 # COPY examples/ ./examples/

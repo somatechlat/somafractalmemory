@@ -1,145 +1,114 @@
 ---
-title: Architecture Overview---
-purpose: 'title: "System Architecture"'
+title: "System Architecture"
+purpose: "High-level system design and component interactions for SomaFractalMemory."
 audience:
-- Operators and SREs
-last_updated: '2025-10-16'
+  - "Architects"
+  - "DevOps engineers"
+  - "Technical leads"
+last_updated: "2025-10-17"
+review_frequency: "quarterly"
 ---
 
+# System Architecture
 
-# Architecture Overview---
+SomaFractalMemory is delivered as a FastAPI application that orchestrates persistent storage (PostgreSQL), caching (Redis), and vector search (Qdrant). All environments expose the same port assignments defined in `.env.template`.
 
-title: "System Architecture"
+## Component Summary
 
-SomaFractalMemory is delivered as a FastAPI application backed by modular storage backends. The current production architecture contains the following components:purpose: "High-level system design and component interactions"
+| Component | Purpose | Exposed Port | Container Port |
+|-----------|---------|--------------|----------------|
+| FastAPI (`somafractalmemory.http_api`) | `/memories` CRUD + operational probes | 9595 | 9595 |
+| PostgreSQL | Durable memory payload storage | 40021 | 5432 |
+| Redis | Rate limiting + ephemeral cache | 40022 | 6379 |
+| Qdrant | Vector similarity search | 40023 | 6333 |
+| gRPC listener (reserved) | Future binary API surface | 50053 | 50053 |
 
-audience: "Architects, DevOps, technical leads"
+## Security Boundaries
 
-| Component | Purpose | Default Port |last_updated: "2025-10-16"
+- `/memories*` requires a bearer token set via `SOMA_API_TOKEN`; health and metrics endpoints remain public but throttled.
+- Secrets are injected through environment variables or mounted files—refer to the [Secrets Policy](security/secrets-policy.md) for rotation cadence.
+- The gRPC port (`50053`) is reserved but not exposed; firewall rules only need to cover the HTTP port 9595 today.
 
-|-----------|---------|--------------|review_frequency: "quarterly"
+## Service Topology
 
-| FastAPI service (`somafractalmemory.http_api`) | Exposes the `/memories` CRUD/search surface and operational probes. | 9595 |---
-
-| PostgreSQL | Durable key-value store for memory payloads and metadata. | 5433 |
-
-| Qdrant | Vector similarity search for hybrid recall. | 6333 |# System Architecture
-
-| Redis | Optional distributed rate limiter backing store; falls back to in-memory if unavailable. | 6381 |
-
-| Prometheus | Scrapes `/metrics` for latency and throughput dashboards. | 9090 |## Overview
-
-
-
-## Data FlowSomaFractalMemory is a distributed memory system combining vector search, graph relationships, and multi-tier caching for high-performance semantic memory operations.
-
-
-
-1. Clients authenticate using a Bearer token and invoke `POST /memories` with a coordinate and payload.## Component Architecture
-
-2. The API writes JSON payloads to PostgreSQL, embeds text via the configured model (hash-only in CI/local), and upserts vectors into Qdrant.
-
-3. Retrieval uses `GET /memories/{coord}` to fetch canonical JSON, while searches call `POST /memories/search` which delegates to the hybrid recall pipeline in `core.py`.```
-
-4. Deletes remove entries from PostgreSQL, Qdrant, and invalidates rate-limiter buckets.┌─────────────────────────────────────────────────────────────┐
-
-│                    Client Layer                             │
-
-## Security Boundaries│  (HTTP / gRPC / CLI)  →  Port 40020                        │
-
-└────────────────
-
-- Only the `/memories` routes require authentication; `/stats`, `/health*`, `/metrics`, `/ping`, and `/` remain public but rate limited.                 │
-
-- Tokens are sourced from `SOMA_API_TOKEN` or `SOMA_API_TOKEN_FILE`. No other auth schemes are supported.┌────────────────▼──────────────────────────────────────────────┐
-
-- Secrets are stored in environment variables or mounted files; see [Security Policy](security/secrets-policy.md).│              SomaFractalMemory Service                        │
-
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  API Layer (HTTP/gRPC)  →  Port 40020               │   │
-│  ├──────────────────────────────────────────────────────┤   │
-│  │  Core Logic (Memory, Vector, Graph Managers)        │   │
-│  └──────────────────────────────────────────────────────┘   │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-    ┌────────────┼────────────┬────────────┬────────────┐
-    │            │            │            │            │
-    ▼            ▼            ▼            ▼            ▼
-┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
-│ Postgres│  │ Redis  │  │ Qdrant │  │ Kafka  │  │ Logs   │
-│40021    │  │40022   │  │40023   │  │40024   │  │outputs │
-└────────┘  └────────┘  └────────┘  └────────┘  └────────┘
 ```
-
-## Service Port Map (40020 Range)
-
-| Service | Port | Protocol | Purpose |
-|---------|------|----------|---------|
-| **API** | 40020 | HTTP/gRPC | Client entry point |
-| **PostgreSQL** | 40021 | TCP | Persistent memory storage |
-| **Redis** | 40022 | TCP | Hot cache layer |
-| **Qdrant** | 40023 | HTTP | Vector similarity search |
-| **Kafka** | 40024 | TCP | Event bus (optional) |
+┌─────────────────────────────────────────┐
+│             Client Layer                │
+│        (HTTP ➜ Port 9595)               │
+└─────────────────────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────┐
+│         SomaFractalMemory Service       │
+│ ┌─────────────────────────────────────┐ │
+│ │  API Layer (FastAPI HTTP)          │ │
+│ ├─────────────────────────────────────┤ │
+│ │  Core Logic (memory/vector/graph)  │ │
+│ └─────────────────────────────────────┘ │
+└─────────────────┬───────────────────────┘
+                  │
+    ┌─────────────┼───────────────┬───────────────┐
+    │             │               │               │
+    ▼             ▼               ▼               ▼
+┌────────┐   ┌────────┐     ┌────────┐     ┌───────────┐
+│Postgres│   │ Redis  │     │ Qdrant │     │ Observability │
+│40021→5432│ │40022→6379│ │40023→6333│ │ Logs & Metrics │
+└────────┘   └────────┘     └────────┘     └───────────┘
+```
 
 ## Data Flow
 
 ### Memory Storage
 ```
-Client → API (40020) → Memory Manager → PostgreSQL (40021)
+Client → API (9595) → Memory Manager → PostgreSQL (40021)
                                       ↓
                                   Redis Cache (40022)
 ```
 
 ### Vector Search
 ```
-Client → API (40020) → Vector Engine → Qdrant (40023)
+Client → API (9595) → Vector Engine → Qdrant (40023)
                       ↓
                     Redis Cache (40022)
 ```
 
 ### Graph Relations
 ```
-Client → API (40020) → Graph Manager → PostgreSQL (40021)
-```
-
-### Event Processing
-```
-API (40020) → Kafka (40024) → Workers → Services
+Client → API (9595) → Graph Manager → PostgreSQL (40021)
 ```
 
 ## Deployment Models
 
 ### Kubernetes (Production)
 
-- Multi-replica services with load balancing
-- StatefulSets for databases
-- ConfigMaps for configuration
-- Secrets for credentials
-- PersistentVolumeClaims for data
+- Helm chart deploys Deployments + Services with the unified ports above.
+- StatefulSets manage PostgreSQL, Redis, and Qdrant with optional persistence classes.
+- ConfigMaps and Secrets supply runtime configuration and credentials.
+- Horizontal Pod Autoscaler can scale the API deployment independently of backing stores.
 
-### Docker Compose (Development)
+### Docker Compose (Development/QA)
 
-- Single-node deployment
-- Shared volumes for persistence
-- Health checks on all services
-- Profile-based service selection
+- Single-node stack mirrors production components and ports.
+- Bind mounts provide live code reload (`./:/app:delegated`).
+- Health checks mirror Kubernetes readiness probes.
+- Environment settings derive from `.env.template` for consistency.
 
-## Scaling Architecture
+## Scaling Considerations
 
 ### Horizontal Scaling
 
-- Multiple API replicas behind load balancer
-- PostgreSQL read replicas for query distribution
-- Redis cluster mode for distributed caching
-- Kafka multi-broker cluster
+- Add FastAPI replicas behind ingress or a load balancer.
+- Enable PostgreSQL read replicas for analytics workloads.
+- Promote Redis to clustered mode for high write traffic.
+- Shard or replicate Qdrant collections to maintain low search latency.
 
 ### Vertical Scaling
 
-- Increase resource limits for CPU/memory
-- Configure Qdrant index settings
-- Adjust cache eviction policies
-- Tune connection pool sizes
+- Increase CPU/memory resources on API pods when latency spikes.
+- Tune PostgreSQL shared buffers and connection pools.
+- Adjust Redis max memory and eviction policy for workload characteristics.
+- Configure Qdrant optimizers (HNSW parameters) to match dataset size.
 
 ## Further Reading
 - [Deployment Guide](deployment.md)
 - [Monitoring Guide](monitoring.md)
+- [Security Policy](security/secrets-policy.md)

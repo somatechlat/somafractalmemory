@@ -6,6 +6,7 @@ ENV/
 .env
 .env.*
 *.env
+!.env.template
 .python-version
 
 # --- Python bytecode and caches ---
@@ -69,6 +70,10 @@ docs/README.md
 
 # Environment variables
 .env
+.env.auto
+.env.development
+.env.local
+!.env.template
 
 # local virtualenv used for tests
 .venv-test/

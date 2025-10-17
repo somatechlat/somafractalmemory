@@ -1,332 +1,124 @@
 ---
-title: Deployment Guide---
-purpose: 'title: "Deployment Guide"'
+title: "Deployment Guide"
+purpose: "Comprehensive instructions for deploying SomaFractalMemory across local, QA, and production environments"
 audience:
-- Operators and SREs
-last_updated: '2025-10-16'
+  - "Platform & SRE teams"
+  - "DevOps engineers"
+last_updated: "2025-10-17"
+review_frequency: "quarterly"
 ---
 
+# Deployment Guide
 
-# Deployment Guide---
+This guide explains how to deploy SomaFractalMemory with Docker Compose for workstation testing or QA and with Helm for Kubernetes clusters. Both options expose the FastAPI `/memories` surface, Redis-backed cache, and Qdrant vector search tier.
 
-title: "Deployment Guide"
+## Prerequisites
+- Docker Desktop 4.28+ (or Docker Engine 24+) with `docker compose`
+- `make`, `curl`, and `jq`
+- Access to the target Docker host or Kubernetes cluster
+- A secret management process for production credentials
 
-This guide describes the supported deployment paths for SomaFractalMemory. Each approach exposes the same `/memories` API.purpose: "Comprehensive instructions for deploying SomaFractalMemory in production"
+## Docker Compose (Local / QA)
+Follow these steps to provision or redeploy the local stack. The sequence replaces stale containers so the API always reflects the latest code.
 
-audience: "DevOps engineers, SREs, system administrators"
+1. **Prepare environment defaults**
+   ```bash
+   cp .env.template .env
+   ```
+   - Set `SOMA_API_TOKEN` to a value you control.
+   - The bundled credentials are development-only and safe for local testing.
+   - Never commit the populated `.env` file.
 
-## Docker Compose (Local / QA)last_updated: "2025-10-16"
+2. **Redeploy the stack**
+   ```bash
+   docker compose down --remove-orphans
+   docker compose build --progress=plain
+   docker compose up -d
+   ```
+   The `build` step ensures the API container uses the currently checked-in source.
 
-review_frequency: "quarterly"
+3. **Verify readiness**
+   ```bash
+   make compose-health
+   curl -H "Authorization: Bearer $SOMA_API_TOKEN" http://127.0.0.1:9595/stats
+   make test-e2e
+   ```
+   The automated end-to-end test stores and retrieves a memory to confirm Postgres, Redis, and Qdrant connectivity.
 
-```bash---
+4. **Stop the stack (optional)**
+   ```bash
+   docker compose down
+   ```
 
-cp .env.example .env
+### Port Map (Compose)
+| Service | Host Port | Container Port | Purpose |
+|---------|-----------|----------------|---------|
+| API     | 9595      | 9595           | Public HTTP entry point |
+| Postgres| 40021     | 5432           | Canonical memory store |
+| Redis   | 40022     | 6379           | Hot cache |
+| Qdrant  | 40023     | 6333           | Vector similarity search |
 
-export SOMA_API_TOKEN=local-dev-token# Deployment Guide
-
-export SOMA_RATE_LIMIT_MAX=120
-
-export SOMA_RATE_LIMIT_WINDOW_SECONDS=60## Prerequisites
-
-
-
-# Build images and start the stack- Kubernetes 1.20+ (or Docker Compose 2.0+)
-
-make compose-up- Helm 3.0+
-
-- kubectl configured with cluster access
-
-# Verify readiness
-
-curl http://localhost:9595/readyz## Port Strategy
-
-curl -H "Authorization: Bearer ${SOMA_API_TOKEN}" http://localhost:9595/stats
-
-```### SomaFractalMemory API
-
-
-
-To stop the stack:| Environment | Public Port | Purpose | Notes |
-
-|-------------|------------|---------|-------|
-
-```bash| **Docker Compose** | 9595 | Public API Entry Point | Direct access, standard port |
-
-make compose-down| **Kubernetes** | 9393 | Service Access (non-conflicting) | Internal Kubernetes port |
-
-```
-
-### Supporting Services (All Environments)
+> ⚠️ Replace every credential in `.env` with production-grade secrets before deploying outside of local or QA environments.
 
 ## Kubernetes (Helm)
-
-| Service | Port | Purpose |
-
-1. Configure secrets:|---------|------|---------|
-
-| **PostgreSQL** | 40021 | Persistent memory storage |
-
-   ```bash| **Redis** | 40022 | Hot cache layer |
-
-   kubectl create secret generic somafractal-secrets \| **Qdrant Vector Store** | 40023 | Vector similarity search |
-
-     --from-literal=SOMA_API_TOKEN=prod-token \| **Kafka** | 40024 | Event bus (optional) |
-
-     --from-literal=SOMA_POSTGRES_URL=postgresql://user:pass@postgres:5432/soma
-
-   ```## Docker Compose Deployment
-
-
-
-2. Install the chart:### Environment Variables
-
-
-
-   ```bash```bash
-
-   helm install somafractalmemory ./helm -f helm/values-prod-ha.yamlexport API_PORT=9595               # PUBLIC API ENTRY POINT (default)
-
-   ```export POSTGRES_HOST_PORT=40021
-
-export REDIS_HOST_PORT=40022
-
-3. Validate deployment:export QDRANT_HOST_PORT=40023
-
-export KAFKA_INTERNAL_PORT=40024
-
-   ```bash```
-
-   kubectl get pods -l app.kubernetes.io/name=somafractalmemory
-
-   kubectl port-forward svc/somafractalmemory 9595:9595### Startup
-
-   curl -H "Authorization: Bearer prod-token" http://localhost:9595/health
-
-   ``````bash
-
-docker compose up -d
-
-4. Configure ingress/mesh policies to expose `/memories`, `/stats`, `/health*`, and `/metrics` as required.```
-
-
-
-## Configuration Reference### Verification
-
-
-
-| Environment Variable | Purpose | Default |```bash
-
-|----------------------|---------|---------|# Test API (9595 is the PUBLIC ENTRY POINT)
-
-| `SOMA_API_TOKEN` | Token required for `/memories` routes. | _none_ |curl http://localhost:9595/health
-
-| `SOMA_API_TOKEN_FILE` | Path to file containing the token. | _unset_ |
-
-| `SOMA_RATE_LIMIT_MAX` | Requests allowed per window (global). | `60` |# Database (40021)
-
-| `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Rate limiter window length. | `60` |psql -h localhost -p 40021 -U soma -d somafractalmemory
-
-| `SOMA_CORS_ORIGINS` | Comma-separated list of allowed origins. | _unset_ |
-
-| `SOMA_MAX_REQUEST_BODY_MB` | Maximum request size. | `5` |# Cache (40022)
-
-| `SOMA_MEMORY_NAMESPACE` | Logical namespace for stored payloads. | `api_ns` |redis-cli -p 40022 ping
-
-
-
-## Post-Deployment Checklist# Vector Store (40023)
-
-curl http://localhost:40023/health
-
-- [ ] `/readyz` returns HTTP 200.
-
-- [ ] `/metrics` is scraped by Prometheus.# Kafka (40024)
-
-- [ ] `/stats` includes accurate `total_memories` counts during smoke tests.kafka-topics --bootstrap-server localhost:40024 --list
-
-- [ ] Dashboards and alerts reference only the `/memories` latency histograms.```
-
-
-## Kubernetes Deployment
-
-### Port Configuration
-
-All Kubernetes services use the 40020+ range with API on **port 9393**:
-
-```bash
-helm install somafractalmemory ./helm \
-  -f ./helm/values-prod.yaml \
-  -n memory
-```
-
-### Environment Variables (Kubernetes)
-
-```yaml
-POSTGRES_URL: "postgresql://soma:PASSWORD@somafractalmemory-postgres:40021/somafractalmemory"
-REDIS_URL: "redis://somafractalmemory-redis:40022/0"
-QDRANT_URL: "http://somafractalmemory-qdrant:40023"
-KAFKA_BOOTSTRAP_SERVERS: "somafractalmemory-kafka:40024"
-```
-
-### Verification
-
-```bash
-# Port-forward to test API (9393)
-kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
-curl http://localhost:9393/health
-
-# Check service endpoints
-kubectl get svc -n memory
-```
-
-## Configuration Reference
-
-### Helm Values (values-local-dev.yaml)
-
-```yaml
-service:
-  port: 9393  # Kubernetes API port (9393 for Kubernetes)
-
-postgres:
-  persistence:
-    enabled: false
-
-redis:
-  persistence:
-    enabled: false
-
-qdrant:
-  persistence:
-    enabled: false
-
-kafka:
-  replicaCount: 1
-```
-
-### Docker Compose (docker-compose.yml)
-
-```yaml
-api:
-  ports:
-    - "9595:9595"  # Public API entry point
-  command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "9595"]
-```
-
-## Post-Deployment Checks
-
-### Docker Compose
-
-```bash
-# API Health (port 9595 - public entry point)
-curl http://localhost:9595/health
-
-# Database (40021)
-psql -h localhost -p 40021 -U soma -d somafractalmemory
-
-# Cache (40022)
-redis-cli -p 40022 ping
-```
-
-### Kubernetes
-
-```bash
-# API Health (via port 9393)
-kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
-curl http://localhost:9393/health
-
-# Service status
-kubectl get svc -n memory
-```
+Use the Helm chart in `helm/` to deploy SomaFractalMemory to a Kubernetes namespace.
+
+1. **Create secrets**
+   ```bash
+   kubectl create secret generic somafractal-secrets \
+     --from-literal=SOMA_API_TOKEN=replace-me \
+     --from-literal=SOMA_POSTGRES_URL=postgresql://user:pass@postgres:5432/somamemory \
+     -n somafractalmemory
+   ```
+
+2. **Install or upgrade the release**
+   ```bash
+   helm upgrade --install somafractalmemory ./helm \
+     -f ./helm/values-prod-ha.yaml \
+     --namespace somafractalmemory --create-namespace
+   ```
+
+3. **Validate deployment**
+   ```bash
+   kubectl get pods -n somafractalmemory
+   kubectl port-forward svc/somafractalmemory 9595:9595 -n somafractalmemory
+   curl -H "Authorization: Bearer $SOMA_API_TOKEN" http://127.0.0.1:9595/readyz
+   ```
+
+4. **Expose externally**
+   Configure ingress, mesh routes, or load balancers for `/memories`, `/stats`, `/metrics`, `/healthz`, and `/readyz` as required by your platform.
+
+### Port Map (Kubernetes)
+| Service | Service Port | Target Port | Notes |
+|---------|--------------|-------------|-------|
+| API     | 9595         | 9595        | Matches HTTP exposure in Compose |
+| Postgres| 40021        | 5432        | Mirror Compose host mapping |
+| Redis   | 40022        | 6379        | Shared with rate limiter |
+| Qdrant  | 40023        | 6333        | Vector search API |
+
+## Environment Variables
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOMA_API_TOKEN` | Bearer token required for `/memories` routes | `devtoken`
+| `SOMA_POSTGRES_URL` | Connection string for Postgres | `postgresql://soma:soma@postgres:5432/somamemory`
+| `REDIS_HOST` / `REDIS_PORT` | Redis connection details | `redis` / `6379`
+| `QDRANT_URL` | Qdrant endpoint | `http://qdrant:6333`
+| `SOMA_RATE_LIMIT_MAX` | Requests allowed per rate-limit window | `120`
+| `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length (seconds) | `60`
+| `SOMA_MAX_REQUEST_BODY_MB` | Maximum accepted payload size (MB) | `5`
+
+## Post-Deployment Checklist
+- [ ] `/readyz` returns HTTP 200 with `kv_store`, `vector_store`, and `graph_store` set to `true`.
+- [ ] `/metrics` is scraped by the monitoring stack.
+- [ ] `/stats` reflects non-zero `total_memories` after smoke tests.
+- [ ] Container logs show no recurring connection failures.
 
 ## Troubleshooting
-
-### Port Conflicts
-
-- **Docker**: If port 40020 is in use, set `API_PORT=XXXX` environment variable
-- **Kubernetes**: Port 9393 is reserved for Kubernetes. Adjust with `helm install --set service.port=XXXX`
-
-### Connection Strings
-
-Update your client configuration based on deployment:
-
-**Docker**:
-```
-API: http://localhost:9595
-Database: postgresql://localhost:40021
-Cache: redis://localhost:40022
-```
-
-**Kubernetes**:
-```
-API: http://somafractalmemory:9393 (from within cluster)
-Database: postgresql://somafractalmemory-postgres:40021
-Cache: redis://somafractalmemory-redis:40022
-```
+- **API returns 404 for `/memories`**: Rebuild and redeploy the API container (`docker compose build && docker compose up -d`). Endpoints are tied to the running image.
+- **Port conflict on localhost**: Override the host ports in `.env` (e.g., `POSTGRES_HOST_PORT=5435`) before starting Compose.
+- **Rate limiter blocks traffic**: Increase `SOMA_RATE_LIMIT_MAX` or set it to `0` during load testing in non-production environments.
 
 ## Further Reading
 - [Monitoring Guide](monitoring.md)
-- [Architecture Guide](architecture.md)
-
-
-
-### Resource Requirements
-
-| Component | CPU | Memory | Storage |
-|-----------|-----|---------|----------|
-| API | 1-2 cores | 2-4GB | - |
-| PostgreSQL | 2-4 cores | 4-8GB | 100GB |
-| Redis | 1-2 cores | 2-4GB | 20GB |
-| Qdrant | 2-4 cores | 4-8GB | 50GB |
-
-## Monitoring Setup
-
-```bash
-# Install monitoring stack
-helm install prometheus prometheus-community/kube-prometheus-stack
-
-# Configure Grafana
-kubectl apply -f monitoring/
-```
-
-## Security Considerations
-
-1. Set strong passwords
-2. Enable TLS
-3. Configure network policies
-4. Set up RBAC
-
-## Scaling Guidelines
-
-### Horizontal Scaling
-
-```bash
-# Scale API pods
-kubectl scale deployment memory-api --replicas=3
-
-# Scale Redis cluster
-helm upgrade memory soma/somafractalmemory --set redis.replicas=3
-```
-
-## Verification
-
-```bash
-# Check pod status
-kubectl get pods
-
-# Test API health
-curl https://api.example.com/healthz
-
-# View logs
-kubectl logs -l app=memory-api
-```
-
-## Rollback Procedure
-
-```bash
-# List Helm revisions
-helm history memory
-
-# Rollback to previous version
-helm rollback memory 1
-```
+- [Architecture Overview](architecture.md)
+- [Runbooks](runbooks/)

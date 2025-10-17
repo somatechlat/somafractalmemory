@@ -1,9 +1,9 @@
 ---
 title: "Local Development Setup"
-purpose: "1."
+purpose: "Step-by-step instructions for running SomaFractalMemory directly on a developer workstation."
 audience:
   - "Developers and Contributors"
-last_updated: "2025-10-16"
+last_updated: "2025-10-17"
 ---
 
 # Local Development Setup
@@ -24,8 +24,8 @@ last_updated: "2025-10-16"
 3. **Configure environment variables**
    ```bash
    export SOMA_API_TOKEN=dev-token
-   export SOMA_POSTGRES_URL=postgresql://postgres:postgres@localhost:5433/somamemory
-   export QDRANT_URL=http://localhost:6333
+   export SOMA_POSTGRES_URL=postgresql://soma:soma@localhost:40021/somamemory
+   export QDRANT_URL=http://localhost:40023
    ```
 
 4. **Run the API**

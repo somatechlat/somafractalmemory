@@ -27,9 +27,9 @@ It ships with a FastAPI service, a CLI, and a gRPC service, plus Docker Compose 
 ### Installation and Running with Docker (Recommended)
 
 1.  **Set up your environment:**
-    Copy the example environment file. This contains the default ports and tokens.
+    Copy the shared template and adjust any values you need for local work. The template only contains development-safe credentials.
     ```bash
-    cp .env.example .env
+    cp .env.template .env
     ```
 
 2.  **Build and start the services:**
@@ -51,7 +51,9 @@ It ships with a FastAPI service, a CLI, and a gRPC service, plus Docker Compose 
     make test-e2e
     ```
 
-The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`. The Kubernetes deployment uses port `9393` by default.
+    > ⚠️  Replace every credential in `.env` with values from your secret manager before deploying to shared or production infrastructure.
+
+The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`. The Kubernetes deployment exposes the API on port `9595` by default.
 
 ### Local Development without Docker
 
@@ -70,7 +72,7 @@ The Makefile provides shortcuts:
 - Tail API logs: `make compose-logs`
 - Stop: `make compose-down`
 
-The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`. The Kubernetes deployment uses port `9393` by default.
+The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`. The Kubernetes deployment exposes the API on port `9595` by default.
 
 ## Documentation
 

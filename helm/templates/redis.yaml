@@ -18,7 +18,7 @@ spec:
       - name: redis
         image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
         ports:
-        - containerPort: 40022
+        - containerPort: {{ .Values.redis.containerPort }}
         {{- if .Values.redis.persistence.enabled }}
         volumeMounts:
         - name: redis-data
@@ -42,7 +42,8 @@ metadata:
   name: {{ .Release.Name }}-redis
 spec:
   ports:
-  - port: 40022
+  - port: {{ .Values.redis.service.port }}
+    targetPort: {{ .Values.redis.containerPort }}
   selector:
     app: redis
 {{- end }}

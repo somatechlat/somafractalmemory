@@ -1,114 +1,66 @@
 ---
-title: "Installation Guide# Installation Guide"
-purpose: "Follow these steps to run the SomaFractalMemory HTTP API locally for evaluation and manual testing.## Prerequisites"
+title: "Installation Guide"
+purpose: "Step-by-step instructions for running the SomaFractalMemory HTTP API locally"
 audience:
-  - "End Users"
-last_updated: "2025-10-16"
+  - "End users"
+  - "Product managers"
+last_updated: "2025-10-17"
 ---
 
-# Installation Guide# Installation Guide
+# Installation Guide
 
+Follow these steps to run the SomaFractalMemory HTTP API on your workstation for evaluation or manual testing.
 
+## Prerequisites
+- Docker Desktop 4.28+ (or Docker Engine 24+)
+- `docker compose` plugin (bundled with Docker Desktop)
+- 4 CPU cores and 4 GB RAM available
+- 10 GB free disk space
+- A shell with `curl` (macOS and most Linux distributions ship with it by default)
 
-Follow these steps to run the SomaFractalMemory HTTP API locally for evaluation and manual testing.## Prerequisites
+## Installation Steps
 
-
-
-## Prerequisites- Docker and Docker Compose
-
-- 4GB+ RAM
-
-- macOS 13+ or Linux with Docker Desktop 4.28+.- 10GB+ free disk space
-
-- `docker compose` plugin (bundled with Docker Desktop).
-
-- A shell with `curl` (default on macOS/Linux).## Installation Steps
-
-
-
-## Steps### 1. Using Docker Compose (Recommended)
-
-
-
-1. **Clone the repository**```bash
-
-   # Clone the repository
-
-   ```bashgit clone https://github.com/somatechlat/somafractalmemory.git
-
-   git clone https://github.com/somatechlat/somafractalmemory.gitcd somafractalmemory
-
-   cd somafractalmemory
-
-   ```# Start the services
-
-docker compose up -d
-
-2. **Copy the sample environment file**```
-
-
-
-   ```bash### 2. Verifying Installation
-
-   cp .env.example .env
-
-   ``````bash
-
-   # Check if services are running
-
-   Set the required token that is used by the HTTP API:docker compose ps
-
-
-
-   ```bash# Test the health endpoint
-
-   echo "SOMA_API_TOKEN=local-dev-token" >> .envcurl http://localhost:9595/health
-
-   ``````
-
-
-
-3. **Start the stack**## Configuration
-
-
-
-   ```bashThe system can be configured through environment variables or a config file. See the [Deployment Guide](../technical-manual/deployment.md) for operational details.
-
-   docker compose up -d
-
-   ```## Next Steps
-
-
-
-   The HTTP API is now available at `http://localhost:9595` with OpenAPI documentation at `http://localhost:9595/docs`.- [Complete the Quick Start Tutorial](quick-start-tutorial.md)
-
-- [Explore Features](features/)
-
-4. **Verify the `/memories` surface**- [Read the FAQ](faq.md)
-
-
+1. **Clone the repository**
    ```bash
-   curl -i http://localhost:9595/health
-   curl -i -H "Authorization: Bearer local-dev-token" http://localhost:9595/stats
+   git clone https://github.com/somatechlat/somafractalmemory.git
+   cd somafractalmemory
    ```
 
-   Both commands should respond with HTTP `200` once the services have initialised.
+2. **Copy the environment template**
+   ```bash
+   cp .env.template .env
+   ```
+   Edit `.env` and set `SOMA_API_TOKEN` to any value you control. The remaining credentials are scoped for development only.
 
-5. **Stop the stack**
+3. **Start the services**
+   ```bash
+   docker compose up --build -d
+   ```
+   This builds the API image and launches Postgres, Redis, Qdrant, and the HTTP API in the background.
 
+4. **Verify the deployment**
+   ```bash
+   curl http://127.0.0.1:9595/health
+   curl -H "Authorization: Bearer $(grep SOMA_API_TOKEN .env | cut -d'=' -f2)" \
+     http://127.0.0.1:9595/stats
+   ```
+   Both commands should return HTTP `200` once the services finish initialising.
+
+5. **Run the automated smoke test (optional)**
+   ```bash
+   make test-e2e
+   ```
+   The test stores and retrieves a memory, confirming that all backing services are connected.
+
+6. **Stop the stack (optional)**
    ```bash
    docker compose down
    ```
 
-## Optional: Local Python Client
+## Configuration
+Use the `.env.template` file as the canonical source for development defaults. Replace every credential before deploying to production or sharing access outside your workstation.
 
-If you prefer a Python REPL over `curl`, you can install the packaged client:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-python -m somafractalmemory.cli --help
-```
-
-The CLI uses exactly the same `/memories` primitives as the HTTP API and is covered in the Development Manual.
+## Next Steps
+- [Complete the Quick Start Tutorial](quick-start-tutorial.md)
+- [Explore the feature guides](features/)
+- [Read the FAQ](faq.md)

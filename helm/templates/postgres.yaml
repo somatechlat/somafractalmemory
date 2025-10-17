@@ -18,7 +18,7 @@ spec:
       - name: postgres
         image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
         ports:
-        - containerPort: 40021
+        - containerPort: {{ .Values.postgres.containerPort }}
         env:
         - name: POSTGRES_USER
           value: soma
@@ -52,7 +52,8 @@ metadata:
   name: {{ .Release.Name }}-postgres
 spec:
   ports:
-  - port: 40021
+  - port: {{ .Values.postgres.service.port }}
+    targetPort: {{ .Values.postgres.containerPort }}
   selector:
     app: postgres
 {{- end }}

@@ -50,16 +50,16 @@ curl http://localhost:40023/health
 ### ☸️ Kubernetes (Production)
 
 ```
-PUBLIC API ENTRY POINT: http://somafractalmemory:9393 (from within cluster)
-SERVICE ACCESS: kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393
+PUBLIC API ENTRY POINT: http://somafractalmemory:9595 (from within cluster)
+SERVICE ACCESS: kubectl port-forward svc/somafractalmemory-somafractalmemory 9595:9595
 ```
 
 | Service | Container Port | Service Port | Internal Connection |
-|---------|-----------------|------|---|
-| **API** | 9393 | 9393 | `http://somafractalmemory:9393` |
-| **PostgreSQL** | 5432 | 40021 | `postgresql://postgres:40021` |
-| **Redis** | 6379 | 40022 | `redis://redis:40022` |
-| **Qdrant** | 6333 | 40023 | `http://qdrant:40023` |
+|---------|----------------|--------------|---------------------|
+| **API** | 9595 | 9595 | `http://somafractalmemory:9595` |
+| **PostgreSQL** | 5432 | 40021 | `postgresql://somafractalmemory-postgres:40021` |
+| **Redis** | 6379 | 40022 | `redis://somafractalmemory-redis:40022` |
+| **Qdrant** | 6333 | 40023 | `http://somafractalmemory-qdrant:40023` |
 
 ### Access Patterns
 
@@ -74,8 +74,8 @@ curl http://localhost:9595/api/v1/memory/store \
 
 #### From Within Cluster
 ```bash
-# Use service name and port 9393
-curl http://somafractalmemory:9393/api/v1/memory/store \
+# Use service name and port 9595
+curl http://somafractalmemory:9595/api/v1/memory/store \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"content": "Your memory"}'
@@ -84,10 +84,10 @@ curl http://somafractalmemory:9393/api/v1/memory/store \
 #### From External Host
 ```bash
 # Port-forward first
-kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
+kubectl port-forward svc/somafractalmemory-somafractalmemory 9595:9595 -n memory
 
-# Then connect via localhost:9393
-curl http://localhost:9393/api/v1/memory/store \
+# Then connect via localhost:9595
+curl http://localhost:9595/api/v1/memory/store \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"content": "Your memory"}'
@@ -104,19 +104,24 @@ curl http://localhost:9393/api/v1/memory/store \
 3. **Consistency**: Same across all documentation and examples
 4. **Simplicity**: Easy to remember and configure
 
-### Why Different Ports for Kubernetes (9393)?
+### Why Match Kubernetes to 9595?
 
-1. **Conflict Avoidance**: Prevents port collision with other services
-2. **Standards Alignment**: Follows Kubernetes conventions
-3. **Security**: Isolates public and internal ports
-4. **Flexibility**: Allows running multiple API versions simultaneously
+1. **Single Source of Truth**: `.env` defaults apply to every deployment target
+2. **Fewer Surprises**: Developers and operators hit the same API port everywhere
+3. **Operational Simplicity**: Load balancers, port-forwards, and tests reuse one config value
+4. **Audit Compliance**: Documentation stays aligned with runtime settings
 
-### Supporting Services (40021-40024)
+### Supporting Services (40021-40023)
 
 1. **High Port Range**: 40000+ is less likely to conflict
 2. **Predictable**: Sequential numbering for easy management
 3. **Documentation**: Easy to identify as "support services"
 4. **Consistency**: Same across Docker and Kubernetes
+
+### Reserved gRPC Port (50053)
+
+- Held for future gRPC exposure; not exposed via Docker Compose or Helm yet.
+- Keeping the reservation documents intent without risking collisions.
 
 ---
 
@@ -125,24 +130,25 @@ curl http://localhost:9393/api/v1/memory/store \
 ### docker-compose.yml
 ```yaml
 ports:
-  - "${API_PORT:-9595}:9595"  # PUBLIC ENTRY POINT
+  - "${API_PORT:-9595}:${SOMA_API_PORT:-9595}"  # PUBLIC ENTRY POINT
 ```
 
-### helm/values-local-dev.yaml
+### helm/values.yaml
 ```yaml
 service:
-  port: 9393  # Kubernetes service port
+  port: 9595
+  targetPort: 9595
 ```
 
 ### helm/templates/service.yaml
 ```yaml
-targetPort: 9393
+targetPort: {{ .Values.service.targetPort }}
 port: {{ .Values.service.port }}
 ```
 
 ### helm/templates/deployment.yaml
 ```yaml
-containerPort: 9393
+containerPort: {{ .Values.service.targetPort }}
 ```
 
 ---
@@ -150,9 +156,9 @@ containerPort: 9393
 ## Verification Checklist
 
 - ✅ Docker Compose API: `curl http://localhost:9595/health`
-- ✅ Kubernetes API: `kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393`
-- ✅ Support services on 40021-40024 range
-- ✅ All documentation references 9595 (Docker) and 9393 (Kubernetes)
+- ✅ Kubernetes API: `kubectl port-forward svc/somafractalmemory-somafractalmemory 9595:9595`
+- ✅ Support services on 40021-40023 range
+- ✅ Documentation and configs reference the same port numbers
 - ✅ Health checks configured correctly
 - ✅ Connection strings point to correct ports
 
@@ -166,7 +172,7 @@ If updating from version using port mapping (40020:9595):
 2. **Update connection strings**: Change from `localhost:40020` to `localhost:9595`
 3. **Update firewall rules**: Open port 9595 instead of 40020
 4. **Update documentation**: All examples now use 9595 as primary port
-5. **Update Helm deployments**: Kubernetes already uses 9393 (no change needed)
+5. **Update Helm deployments**: Ensure `service.port` and `targetPort` are set to 9595
 
 ---
 
