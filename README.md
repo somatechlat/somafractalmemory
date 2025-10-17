@@ -4,7 +4,6 @@
 Soma Fractal Memory (SFM) is a modular, agent‑centric memory system in Python. It exposes a unified interface to store, recall, and link memories using:
 - PostgreSQL (canonical KV store) with Redis as cache
 - Qdrant for vector similarity search
-- Optional Kafka eventing for asynchronous pipelines
 - A semantic graph in NetworkX
 
 It ships with a FastAPI service, a CLI, and a gRPC service, plus Docker Compose and a Helm chart for deployment.

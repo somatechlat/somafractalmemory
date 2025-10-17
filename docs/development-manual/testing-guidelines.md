@@ -1,3 +1,11 @@
+---
+title: "Testing Guidelines"
+purpose: "## Test Pyramid"
+audience:
+  - "Developers and Contributors"
+last_updated: "2025-10-16"
+---
+
 # Testing Guidelines
 
 ## Test Pyramid

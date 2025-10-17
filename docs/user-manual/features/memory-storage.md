@@ -1,3 +1,12 @@
+---
+title: Memory Storage Workflow---
+purpose: 'title: "Memory Storage in SomaFractalMemory"'
+audience:
+- End Users
+last_updated: '2025-10-16'
+---
+
+
 # Memory Storage Workflow---
 
 title: "Memory Storage in SomaFractalMemory"
@@ -149,5 +158,3 @@ curl http://localhost:9595/stats \
 
 ## References
 - [API Reference](../../development-manual/api-reference.md)
-- [Memory Types Guide](memory-types.md)
-- [Importance Scoring Details](importance-scoring.md)

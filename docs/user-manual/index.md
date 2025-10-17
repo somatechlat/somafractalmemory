@@ -1,3 +1,11 @@
+---
+title: "SomaFractalMemory User Manual"
+purpose: "This manual explains how operators and product stakeholders interact with the SomaFractalMemory service from an end-user perspective."
+audience:
+  - "End Users"
+last_updated: "2025-10-16"
+---
+
 # SomaFractalMemory User Manual
 
 This manual explains how operators and product stakeholders interact with the SomaFractalMemory service from an end-user perspective. It focuses on the four supported workflows that every client or integration must follow:

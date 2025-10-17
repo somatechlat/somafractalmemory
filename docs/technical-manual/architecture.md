@@ -1,3 +1,12 @@
+---
+title: Architecture Overview---
+purpose: 'title: "System Architecture"'
+audience:
+- Operators and SREs
+last_updated: '2025-10-16'
+---
+
+
 # Architecture Overview---
 
 title: "System Architecture"
@@ -38,7 +47,7 @@ audience: "Architects, DevOps, technical leads"
 
 ## Security Boundaries│  (HTTP / gRPC / CLI)  →  Port 40020                        │
 
-└────────────────┬────────────────────────────────────────────┘
+└────────────────
 
 - Only the `/memories` routes require authentication; `/stats`, `/health*`, `/metrics`, `/ping`, and `/` remain public but rate limited.                 │
 
@@ -134,5 +143,3 @@ API (40020) → Kafka (40024) → Workers → Services
 ## Further Reading
 - [Deployment Guide](deployment.md)
 - [Monitoring Guide](monitoring.md)
-- [Scaling Guide](scaling.md)
-- [Troubleshooting Guide](troubleshooting.md)

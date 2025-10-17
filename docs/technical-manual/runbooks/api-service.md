@@ -1,3 +1,11 @@
+---
+title: "Runbook: API Service"
+purpose: "## When to use this runbook"
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # Runbook: API Service
 
 ## When to use this runbook

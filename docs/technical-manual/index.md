@@ -1,3 +1,11 @@
+---
+title: "Technical Manual"
+purpose: "This manual is for SREs, platform engineers, and operators responsible for deploying and running SomaFractalMemory."
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # Technical Manual
 
 This manual is for SREs, platform engineers, and operators responsible for deploying and running SomaFractalMemory. It documents:

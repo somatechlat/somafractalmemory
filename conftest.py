@@ -82,15 +82,6 @@ def pytest_sessionstart(session):
     # Qdrant
     q_host = os.getenv("QDRANT_HOST", "localhost")
     q_port = int(os.getenv("QDRANT_PORT", "6333"))
-    # Kafka (first bootstrap server)
-    kafka_bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
-    first_broker = kafka_bootstrap.split(",")[0]
-    try:
-        k_host, k_port_raw = first_broker.split(":", 1)
-        # Strip any trailing path suffix (unlikely here)
-        k_port = int(k_port_raw.split("/")[0])
-    except Exception:
-        k_host, k_port = "localhost", 19092
 
     # Export back resolved env for tests and library code.
     os.environ["POSTGRES_URL"] = pg_url
@@ -122,11 +113,10 @@ def pytest_sessionstart(session):
         # If Qdrant probe fails, keep the preferred default; tests will still run.
         chosen_collection = preferred_ns
     os.environ["QDRANT_COLLECTION"] = chosen_collection
-    os.environ["KAFKA_BOOTSTRAP_SERVERS"] = f"{k_host}:{k_port}"
 
     # Connectivity check with small retry if needed.
     deadline = time.time() + 10
-    ok_pg = ok_redis = ok_q = ok_kafka = False
+    ok_pg = ok_redis = ok_q = False
     while time.time() < deadline:
         # Parse pg host/port from URL for reachability
         try:
@@ -141,26 +131,24 @@ def pytest_sessionstart(session):
         ok_pg = _tcp_open(pg_host, pg_port)
         ok_redis = _tcp_open(redis_host, redis_port)
         ok_q = _tcp_open(q_host, q_port)
-        ok_kafka = _tcp_open(k_host, k_port)
-        if ok_pg and ok_redis and ok_q and ok_kafka:
+        if ok_pg and ok_redis and ok_q:
             break
         time.sleep(0.5)
 
-    if not (ok_pg and ok_redis and ok_q and ok_kafka):
+    if not (ok_pg and ok_redis and ok_q):
         # Best-effort to start compose services if nothing reachable on localhost
-        _start_compose_services(["redis", "postgres", "qdrant", "kafka"])
+        _start_compose_services(["redis", "postgres", "qdrant"])
         # Wait up to another 20s
         deadline = time.time() + 20
-        while time.time() < deadline and not (ok_pg and ok_redis and ok_q and ok_kafka):
+        while time.time() < deadline and not (ok_pg and ok_redis and ok_q):
             ok_pg = _tcp_open(pg_host, pg_port)
             ok_redis = _tcp_open(redis_host, redis_port)
             ok_q = _tcp_open(q_host, q_port)
-            ok_kafka = _tcp_open(k_host, k_port)
-            if ok_pg and ok_redis and ok_q and ok_kafka:
+            if ok_pg and ok_redis and ok_q:
                 break
             time.sleep(1.0)
 
-    if ok_pg and ok_redis and ok_q and ok_kafka:
+    if ok_pg and ok_redis and ok_q:
         print("[conftest] All required infra reachable.")
         os.environ["SOMA_INFRA_AVAILABLE"] = "1"
     else:
@@ -171,8 +159,6 @@ def pytest_sessionstart(session):
             missing.append("Postgres")
         if not ok_q:
             missing.append("Qdrant")
-        if not ok_kafka:
-            missing.append("Kafka")
         print(
             f"[conftest] Required infra not reachable: {', '.join(missing)}. "
             "Integration tests may skip."

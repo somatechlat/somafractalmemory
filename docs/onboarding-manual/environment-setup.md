@@ -1,3 +1,11 @@
+---
+title: "Environment Setup"
+purpose: "1."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Environment Setup
 
 1. Request access to the GitHub repository and production secrets.

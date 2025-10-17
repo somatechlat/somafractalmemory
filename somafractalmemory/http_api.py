@@ -383,10 +383,6 @@ try:
     if redis_cfg:
         config["redis"] = redis_cfg
 
-    eventing_env = os.getenv("EVENTING_ENABLED")
-    if eventing_env is not None:
-        config["eventing"] = {"enabled": eventing_env.lower() in ("1", "true", "yes", "on")}
-
     mem = create_memory_system(memory_mode, namespace_default, config=config)
     _log_startup_config(memory_mode, namespace_default, config, redis_cfg)
     _RATE_LIMITER = _build_rate_limiter(redis_cfg)

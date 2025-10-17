@@ -1,3 +1,11 @@
+---
+title: "Local Development Setup"
+purpose: "1."
+audience:
+  - "Developers and Contributors"
+last_updated: "2025-10-16"
+---
+
 # Local Development Setup
 
 1. **Create a virtual environment**

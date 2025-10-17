@@ -1,3 +1,11 @@
+---
+title: "Team Collaboration"
+purpose: "- **Slack**: `#somafractalmemory-dev` for engineering, `#somafractalmemory-incidents` for operations."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Team Collaboration
 
 - **Slack**: `#somafractalmemory-dev` for engineering, `#somafractalmemory-incidents` for operations.

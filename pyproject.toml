@@ -47,10 +47,6 @@ api = [
   "jsonschema",
   "httpx",
 ]
-events = [
-    "aiokafka",
-    "confluent-kafka",
-]
 dev = [
   "pytest",
   "fakeredis>=2.0.0",

@@ -20,38 +20,53 @@ DOCS_ROOT = Path(__file__).parent.parent / "docs"
 MAX_AGE_DAYS = 90
 
 
-def check_frontmatter(file_path):
-    """Validate frontmatter in markdown files."""
-    with open(file_path) as f:
+def check_frontmatter(file_path: Path):
+    """Validate YAML frontmatter at top of markdown file.
+
+    Uses explicit '---\n' start and '\n---\n' end delimiters to avoid
+    accidental splits on horizontal rules in the body.
+    """
+    with open(file_path, encoding="utf-8") as f:
         content = f.read()
-        if not content.startswith("---"):
-            return False, "Missing frontmatter"
 
-        try:
-            # Extract frontmatter
-            _, fm, _ = content.split("---", 2)
-            metadata = yaml.safe_load(fm)
+    if not content.startswith("---\n"):
+        return False, "Missing frontmatter"
 
-            # Required fields
-            required = ["title", "purpose", "audience", "last_updated"]
-            missing = [f for f in required if f not in metadata]
-            if missing:
-                return False, f"Missing required fields: {', '.join(missing)}"
+    try:
+        start = 4  # len('---\n')
+        end = content.find("\n---\n", start)
+        if end == -1:
+            return False, "Invalid frontmatter: closing delimiter not found"
+        fm_text = content[start:end]
+        metadata = yaml.safe_load(fm_text) or {}
+        if not isinstance(metadata, dict):
+            return False, "Invalid frontmatter: not a mapping"
 
-            # Check last_updated
-            last_updated = datetime.strptime(metadata["last_updated"], "%Y-%m-%d")
-            age = datetime.now() - last_updated
-            if age.days > MAX_AGE_DAYS:
-                return False, f"Content is {age.days} days old"
+        # Required fields
+        required = ["title", "purpose", "audience", "last_updated"]
+        missing = [f for f in required if f not in metadata or not metadata[f]]
+        if missing:
+            return False, f"Missing required fields: {', '.join(missing)}"
 
-        except Exception as e:
-            return False, f"Invalid frontmatter: {str(e)}"
+        # Check last_updated
+        last_updated = datetime.strptime(str(metadata["last_updated"]), "%Y-%m-%d")
+        age = datetime.now() - last_updated
+        if age.days > MAX_AGE_DAYS:
+            return False, f"Content is {age.days} days old"
 
-        return True, "OK"
+    except Exception as e:
+        return False, f"Invalid frontmatter: {str(e)}"
+
+    return True, "OK"
 
 
-def check_internal_links(file_path):
-    """Validate internal documentation links."""
+def check_internal_links(file_path: Path):
+    """Validate internal documentation links.
+
+    Resolve links relative to the file's own directory.
+    Ignore external links (http/https/mailto) and pure anchors (#...).
+    For links with anchors (file.md#section), validate only the file's existence.
+    """
     with open(file_path) as f:
         content = f.read()
 
@@ -59,10 +74,21 @@ def check_internal_links(file_path):
     issues = []
 
     for _text, link in links:
-        if not link.startswith(("http", "#")):
-            target = DOCS_ROOT / link
-            if not target.exists():
-                issues.append(f"Broken link to {link}")
+        if link.startswith("http") or link.startswith("#") or link.startswith("mailto:"):
+            continue
+
+        # Strip anchor/query
+        link_path = link.split("#", 1)[0].split("?", 1)[0]
+        target = (file_path.parent / link_path).resolve()
+
+        try:
+            target.relative_to(DOCS_ROOT.resolve())
+        except Exception:
+            issues.append(f"Broken link to {link}")
+            continue
+
+        if not target.exists():
+            issues.append(f"Broken link to {link}")
 
     return len(issues) == 0, issues
 

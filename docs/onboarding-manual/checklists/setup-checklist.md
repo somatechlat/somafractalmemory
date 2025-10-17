@@ -1,3 +1,11 @@
+---
+title: "Setup Checklist"
+purpose: "- [ ] Repository cloned."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Setup Checklist
 
 - [ ] Repository cloned.

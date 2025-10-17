@@ -1,3 +1,11 @@
+---
+title: "Monitoring & Observability# Monitoring and Observability"
+purpose: "Monitoring focuses on the `/memories` request path and the public operational probes.## Overview"
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # Monitoring & Observability# Monitoring and Observability
 
 
@@ -225,8 +233,6 @@ Prometheus scrapes metrics from `/metrics` endpoint on port 40020.
 
 ## Further Reading
 - [Deployment Guide](deployment.md)
-- [Troubleshooting Guide](troubleshooting.md)
-- [Scaling Guide](scaling.md)
 - Memory store latency > 200ms
 - Cache hit rate < 80%
 - Available storage < 20%

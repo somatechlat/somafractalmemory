@@ -23,20 +23,3 @@ qdrant:
   replicaCount: 1
   persistence:
     enabled: false
-
-kafka:
-  replicaCount: 1
-  persistence:
-    enabled: false
-  config:
-    heapOpts: "-Xms512m -Xmx1024m"
-    advertised:
-      listeners: PLAINTEXT://localhost:40024
-    listener:
-      security:
-        protocol:
-          map: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-    inter:
-      broker:
-        listener:
-          name: PLAINTEXT

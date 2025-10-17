@@ -1,3 +1,11 @@
+---
+title: "Secrets Management Policy"
+purpose: "- **Source of truth**: Secrets are stored in the platform secret manager (Vault in production, Kubernetes secrets in staging)."
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # Secrets Management Policy
 
 - **Source of truth**: Secrets are stored in the platform secret manager (Vault in production, Kubernetes secrets in staging). No secrets are committed to Git.

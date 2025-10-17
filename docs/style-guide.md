@@ -1,3 +1,12 @@
+---
+title: Documentation Style Guide---
+purpose: 'title: "Documentation Style Guide"'
+audience:
+- All Stakeholders
+last_updated: '2025-10-16'
+---
+
+
 # Documentation Style Guide---
 
 title: "Documentation Style Guide"

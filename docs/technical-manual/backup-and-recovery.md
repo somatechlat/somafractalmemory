@@ -1,3 +1,11 @@
+---
+title: "Backup & Recovery"
+purpose: "This playbook explains how to protect the data behind the `/memories` API."
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # Backup & Recovery
 
 This playbook explains how to protect the data behind the `/memories` API.

@@ -1,3 +1,11 @@
+---
+title: "Glossary"
+purpose: "| Term | Definition | |------|------------| | `/memories` | The sole HTTP API surface for storing, searching, fetching, and deleting memories."
+audience:
+  - "All Stakeholders"
+last_updated: "2025-10-16"
+---
+
 # Glossary
 
 | Term | Definition |

@@ -7,7 +7,6 @@ grpc_port: 50053
 # Infrastructure endpoints
 infra:
   redis: "redis"
-  kafka: "kafka"
   vault: ""
   opa: ""
   auth: ""
@@ -20,12 +19,3 @@ infra:
 # Database connections
 postgres_url: "postgresql://soma:soma@postgres:5432/somamemory"
 qdrant_host: "qdrant"
-
-# Kafka configuration
-kafka:
-  bootstrap_servers: "kafka:9092"
-  security_protocol: "PLAINTEXT"
-  ssl_ca_location: ""
-  sasl_mechanism: "PLAIN"
-  sasl_username: ""
-  sasl_password: ""

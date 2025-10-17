@@ -50,18 +50,6 @@ qdrant:
     enabled: false
     size: 10Gi
 
-kafka:
-  enabled: true
-  replicaCount: 1
-  image:
-    repository: apache/kafka
-    tag: latest
-  service:
-    port: 40004
-  persistence:
-    enabled: false
-    size: 10Gi
-
 secrets:
   apiToken: "devtoken"
   postgresPassword: "soma"

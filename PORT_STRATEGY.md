@@ -22,16 +22,13 @@ PUBLIC API ENTRY POINT: http://localhost:9595
 | **PostgreSQL** | 40021 | 5432 | Persistent storage |
 | **Redis** | 40022 | 6379 | Cache layer |
 | **Qdrant** | 40023 | 6333 | Vector similarity search |
-| **Kafka** | 40024 | 9092 | Event bus |
 
-**Environment Variables:**
-```bash
+### Environment Variables (`.env`)
+
 export API_PORT=9595               # PUBLIC (default: 9595)
 export POSTGRES_HOST_PORT=40021
 export REDIS_HOST_PORT=40022
 export QDRANT_HOST_PORT=40023
-export KAFKA_INTERNAL_PORT=40024
-```
 
 **Connection Examples:**
 ```bash
@@ -63,16 +60,37 @@ SERVICE ACCESS: kubectl port-forward svc/somafractalmemory-somafractalmemory 939
 | **PostgreSQL** | 5432 | 40021 | `postgresql://postgres:40021` |
 | **Redis** | 6379 | 40022 | `redis://redis:40022` |
 | **Qdrant** | 6333 | 40023 | `http://qdrant:40023` |
-| **Kafka** | 9092 | 40024 | `kafka:40024` |
 
-**Connection Examples:**
+### Access Patterns
+
+#### From Local Machine (e.g., developer laptop)
 ```bash
-# API - PORT FORWARD FOR TESTING
-kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
-curl http://localhost:9393/health
+# Always use port 9595
+curl http://localhost:9595/api/v1/memory/store \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Your memory"}'
+```
 
-# From within cluster
-curl http://somafractalmemory:9393/health
+#### From Within Cluster
+```bash
+# Use service name and port 9393
+curl http://somafractalmemory:9393/api/v1/memory/store \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Your memory"}'
+```
+
+#### From External Host
+```bash
+# Port-forward first
+kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
+
+# Then connect via localhost:9393
+curl http://localhost:9393/api/v1/memory/store \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Your memory"}'
 ```
 
 ---
@@ -99,43 +117,6 @@ curl http://somafractalmemory:9393/health
 2. **Predictable**: Sequential numbering for easy management
 3. **Documentation**: Easy to identify as "support services"
 4. **Consistency**: Same across Docker and Kubernetes
-
----
-
-## Client Connection Guide
-
-### For Docker Compose Users
-
-```bash
-# Always use port 9595
-curl http://localhost:9595/api/v1/memory/store \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Your memory"}'
-```
-
-### For Kubernetes Users (From Within Cluster)
-
-```bash
-# Use service name and port 9393
-curl http://somafractalmemory:9393/api/v1/memory/store \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Your memory"}'
-```
-
-### For Kubernetes Users (From External Host)
-
-```bash
-# Port-forward first
-kubectl port-forward svc/somafractalmemory-somafractalmemory 9393:9393 -n memory
-
-# Then connect via localhost:9393
-curl http://localhost:9393/api/v1/memory/store \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Your memory"}'
-```
 
 ---
 

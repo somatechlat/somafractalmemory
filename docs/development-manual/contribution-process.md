@@ -1,3 +1,11 @@
+---
+title: "Contribution Process"
+purpose: "1."
+audience:
+  - "Developers and Contributors"
+last_updated: "2025-10-16"
+---
+
 # Contribution Process
 
 1. **Discuss** the change in `#somafractalmemory-dev` or open a GitHub issue.

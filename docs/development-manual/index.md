@@ -1,3 +1,12 @@
+---
+title: Development Manual---
+purpose: 'title: "SomaFractalMemory Development Manual"'
+audience:
+- Developers and Contributors
+last_updated: '2025-10-16'
+---
+
+
 # Development Manual---
 
 title: "SomaFractalMemory Development Manual"
@@ -28,7 +37,6 @@ Welcome to the Soma Fractal Memory Developer Manual. This guide provides compreh
 - [Testing Guidelines](testing-guidelines.md)
 - [API Reference](api-reference.md)
 - [Contribution Process](contribution-process.md)
-- [Core Concepts](concepts/)
 
 ## Repository Structure
 

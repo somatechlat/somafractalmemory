@@ -261,21 +261,8 @@ class SomaFractalMemoryEnterprise:
             registry=self.registry,
         )
 
-        # eventing.
-        self.eventing_enabled = os.getenv("SOMA_EVENTING_ENABLED", "1").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if self.eventing_enabled:
-            try:
-                from .eventing.producer import build_memory_event, produce_event
-
-                self._build_event = build_memory_event
-                self._produce_event = produce_event
-            except ImportError:
-                logger.warning("Kafka eventing enabled but producer components not found.")
-                self.eventing_enabled = False
+        # Eventing (Kafka) removed: keep flag permanently disabled for now.
+        self.eventing_enabled = False
         self.langfuse = None
 
         self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
@@ -1237,13 +1224,6 @@ class SomaFractalMemoryEnterprise:
         with self.store_latency.labels(self.namespace).time():
             self.store_count.labels(self.namespace).inc()
             result = self.store(coord_t, value)
-            if self.eventing_enabled:
-                try:
-                    event = self._build_event(self.namespace, value)
-                    self._produce_event(event)
-                    result["event"] = event
-                except Exception as e:
-                    logger.warning(f"Failed to produce Kafka event: {e}")
         if self.fast_core_enabled:
             try:
                 # Reuse embedding work: embed serialized payload (same as store())

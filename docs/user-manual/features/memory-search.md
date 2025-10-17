@@ -1,3 +1,11 @@
+---
+title: "Memory Search Workflow"
+purpose: "SomaFractalMemory provides a single hybrid search surface which combines vector similarity with optional metadata filters."
+audience:
+  - "End Users"
+last_updated: "2025-10-16"
+---
+
 # Memory Search Workflow
 
 SomaFractalMemory provides a single hybrid search surface which combines vector similarity with optional metadata filters.

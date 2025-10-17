@@ -1,3 +1,11 @@
+---
+title: "API Reference (v2)"
+purpose: "All endpoints require the `Authorization: Bearer <token>` header unless noted."
+audience:
+  - "Developers and Contributors"
+last_updated: "2025-10-16"
+---
+
 # API Reference (v2)
 
 All endpoints require the `Authorization: Bearer <token>` header unless noted. The base URL is `https://<host>`.

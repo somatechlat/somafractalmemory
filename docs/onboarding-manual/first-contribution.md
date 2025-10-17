@@ -1,3 +1,11 @@
+---
+title: "First Contribution Guide"
+purpose: "1."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # First Contribution Guide
 
 1. Pick an issue labelled `good-first-issue`.

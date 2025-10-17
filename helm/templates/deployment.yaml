@@ -29,10 +29,6 @@ spec:
               value: "redis://{{ .Release.Name }}-redis:40022/0"
             - name: QDRANT_URL
               value: "http://{{ .Release.Name }}-qdrant:40023"
-            - name: KAFKA_BOOTSTRAP_SERVERS
-              value: "{{ .Release.Name }}-kafka:40024"
-            - name: SOMA_API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-somafractalmemory-secrets
-                  key: SOMA_API_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /healthz

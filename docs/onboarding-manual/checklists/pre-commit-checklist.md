@@ -1,3 +1,11 @@
+---
+title: "Pre-Commit Checklist"
+purpose: "- [ ] `make lint` passes."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Pre-Commit Checklist
 
 - [ ] `make lint` passes.

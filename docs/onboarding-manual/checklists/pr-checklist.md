@@ -1,3 +1,11 @@
+---
+title: "Pull Request Checklist"
+purpose: "- [ ] Linked issue or clear rationale provided."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Pull Request Checklist
 
 - [ ] Linked issue or clear rationale provided.

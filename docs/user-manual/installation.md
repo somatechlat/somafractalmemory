@@ -1,3 +1,11 @@
+---
+title: "Installation Guide# Installation Guide"
+purpose: "Follow these steps to run the SomaFractalMemory HTTP API locally for evaluation and manual testing.## Prerequisites"
+audience:
+  - "End Users"
+last_updated: "2025-10-16"
+---
+
 # Installation Guide# Installation Guide
 
 
@@ -64,7 +72,7 @@ docker compose up -d
 
 
 
-   ```bashThe system can be configured through environment variables or a config file. See [Configuration Reference](../technical-manual/configuration.md) for details.
+   ```bashThe system can be configured through environment variables or a config file. See the [Deployment Guide](../technical-manual/deployment.md) for operational details.
 
    docker compose up -d
 

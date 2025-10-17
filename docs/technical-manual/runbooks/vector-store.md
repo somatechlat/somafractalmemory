@@ -1,3 +1,11 @@
+---
+title: "Runbook: Vector Store"
+purpose: "## Trigger Conditions"
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # Runbook: Vector Store
 
 ## Trigger Conditions

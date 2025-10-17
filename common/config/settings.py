@@ -42,7 +42,6 @@ class InfraEndpoints(BaseModel):
     """DNS endpoints for shared infrastructure services."""
 
     redis: str = Field(default="redis")
-    kafka: str = Field(default="kafka")
     vault: str = Field(default="vault")
     opa: str = Field(default="opa")
     auth: str = Field(default="auth")
@@ -65,15 +64,6 @@ class LangfuseSettings(BaseModel):
     host: str = Field(default="", alias="langfuse_host")
 
 
-class KafkaSettings(BaseSettings):
-    bootstrap_servers: str = "localhost:9092"
-    security_protocol: str = "PLAINTEXT"
-    ssl_ca_location: str | None = None
-    sasl_mechanism: str = "PLAIN"
-    sasl_username: str | None = None
-    sasl_password: str | None = None
-
-
 class SMFSettings(SomaBaseSettings):
     """Settings specific to the SomaFractalMemory service."""
 
@@ -93,7 +83,6 @@ class SMFSettings(SomaBaseSettings):
     )
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
-    kafka: KafkaSettings = Field(default_factory=KafkaSettings)
 
     model_config = SettingsConfigDict(arbitrary_types_allowed=True)
 
@@ -159,7 +148,6 @@ def load_settings(
 __all__ = [
     "InfraEndpoints",
     "LangfuseSettings",
-    "KafkaSettings",
     "SMFSettings",
     "SomaBaseSettings",
     "load_settings",

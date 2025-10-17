@@ -1,3 +1,12 @@
+---
+title: Deployment Guide---
+purpose: 'title: "Deployment Guide"'
+audience:
+- Operators and SREs
+last_updated: '2025-10-16'
+---
+
+
 # Deployment Guide---
 
 title: "Deployment Guide"
@@ -257,7 +266,6 @@ Cache: redis://somafractalmemory-redis:40022
 
 ## Further Reading
 - [Monitoring Guide](monitoring.md)
-- [Troubleshooting Guide](troubleshooting.md)
 - [Architecture Guide](architecture.md)
 
 

@@ -1,3 +1,11 @@
+---
+title: "Coding Standards"
+purpose: "- **Language**: Python 3.11 with `ruff` and `black` enforced via pre-commit."
+audience:
+  - "Developers and Contributors"
+last_updated: "2025-10-16"
+---
+
 # Coding Standards
 
 - **Language**: Python 3.11 with `ruff` and `black` enforced via pre-commit.

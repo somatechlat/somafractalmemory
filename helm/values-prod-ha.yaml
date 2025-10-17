@@ -23,9 +23,3 @@ qdrant:
   persistence:
     enabled: true
     storageClass: "gp2" # Example for AWS, change as needed
-
-kafka:
-  replicaCount: 3
-  persistence:
-    enabled: true
-    storageClass: "gp2" # Example for AWS, change as needed

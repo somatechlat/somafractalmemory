@@ -1,3 +1,11 @@
+---
+title: "Domain Knowledge"
+purpose: "- **Memory Types**: `episodic` memories represent time-bound events; `semantic` memories represent durable facts."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Domain Knowledge
 
 - **Memory Types**: `episodic` memories represent time-bound events; `semantic` memories represent durable facts. The API defaults to `episodic` but both share the same storage pipeline.

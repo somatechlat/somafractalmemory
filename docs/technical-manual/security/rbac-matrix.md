@@ -1,3 +1,11 @@
+---
+title: "RBAC Matrix"
+purpose: "| Role | Permissions | Notes | |------|-------------|-------| | `sfm-admin` | Manage deployments, rotate secrets, access `/metrics`, read/write `/memories`."
+audience:
+  - "Operators and SREs"
+last_updated: "2025-10-16"
+---
+
 # RBAC Matrix
 
 | Role | Permissions | Notes |

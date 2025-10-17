@@ -1,3 +1,12 @@
+---
+title: Onboarding Manual---
+purpose: 'title: "SomaFractalMemory Onboarding Manual"'
+audience:
+- New Team Members
+last_updated: '2025-10-16'
+---
+
+
 # Onboarding Manual---
 
 title: "SomaFractalMemory Onboarding Manual"

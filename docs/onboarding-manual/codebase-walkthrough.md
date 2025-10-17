@@ -1,3 +1,11 @@
+---
+title: "Codebase Walkthrough"
+purpose: "| Path | Description | |------|-------------| | `somafractalmemory/http_api.py` | FastAPI application exposing `/memories` endpoints plus operational probes."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Codebase Walkthrough
 
 | Path | Description |

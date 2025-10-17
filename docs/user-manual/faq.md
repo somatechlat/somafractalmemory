@@ -1,3 +1,11 @@
+---
+title: "Frequently Asked Questions"
+purpose: "**Q: Which endpoints are supported?** A: Only the `/memories` family plus public operational probes."
+audience:
+  - "End Users"
+last_updated: "2025-10-16"
+---
+
 # Frequently Asked Questions
 
 **Q: Which endpoints are supported?**

@@ -1,3 +1,11 @@
+---
+title: "Troubleshooting"
+purpose: "| Symptom | Root Cause | Fix | |---------|------------|-----| | `401 Missing bearer token` | Header missing or token blank."
+audience:
+  - "New Team Members"
+last_updated: "2025-10-16"
+---
+
 # Troubleshooting
 
 | Symptom | Root Cause | Fix |
