@@ -72,3 +72,4 @@ docs/README.md
 
 # local virtualenv used for tests
 .venv-test/
+.env
