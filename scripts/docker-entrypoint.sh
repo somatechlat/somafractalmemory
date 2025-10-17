@@ -52,7 +52,7 @@ fi
 echo "Launching memory API with uvicorn (workers=$UV_WORKERS)"
 # Note: not all uvicorn builds support --graceful-timeout. Use safe flags.
 exec uvicorn somafractalmemory.http_api:app \
-  --host 0.0.0.0 --port 9595 \
+  --host 0.0.0.0 --port "${SOMA_API_PORT:-9595}" \
   --workers ${UV_WORKERS} \
   --timeout-keep-alive ${UV_TIMEOUT_KEEP_ALIVE} \
   --log-level info

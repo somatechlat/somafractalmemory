@@ -16,6 +16,47 @@ It ships with a FastAPI service, a CLI, and a gRPC service, plus Docker Compose 
 - Prometheus metrics and optional OpenTelemetry tracing
 - Docker/Compose and Helm/Kubernetes ready
 
+## Getting Started
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Python 3.10+
+- `uv` (recommended for local development)
+
+### Installation and Running with Docker (Recommended)
+
+1.  **Set up your environment:**
+    Copy the example environment file. This contains the default ports and tokens.
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  **Build and start the services:**
+    This command will build the Docker image for the API and start all the necessary services (PostgreSQL, Redis, Qdrant) in the background.
+    ```bash
+    docker compose up --build -d
+    ```
+
+3.  **Verify the API is running:**
+    Check the health endpoint. It may take a minute for all services to become available.
+    ```bash
+    curl http://localhost:9595/health
+    ```
+    You should see a response like: `{"kv_store":true,"vector_store":true,"graph_store":true}`.
+
+4.  **Run an End-to-End Test:**
+    To confirm that all components are working together, you can run the automated end-to-end test. This will create, retrieve, and verify a memory.
+    ```bash
+    make test-e2e
+    ```
+
+The API will listen on http://127.0.0.1:9595. Most endpoints require a bearer token. Compose sets `SOMA_API_TOKEN=devtoken` by default; add header `Authorization: Bearer devtoken`. The Kubernetes deployment uses port `9393` by default.
+
+### Local Development without Docker
+
+For developers who prefer to run the Python service directly on the host (e.g., for debugging), follow the [local setup guide in the development manual](docs/development-manual/local-setup.md).
+
 ## Quick start
 
 Local stack with Docker Compose:

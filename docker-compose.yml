@@ -58,8 +58,8 @@ services:
       dockerfile: Dockerfile
     container_name: somafractalmemory_api
     ports:
-      - "${API_PORT:-9595}:9595"
-    command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "9595"]
+      - "${API_PORT:-9595}:${SOMA_API_PORT:-9595}"
+    command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "${SOMA_API_PORT:-9595}"]
     # Port 9595 is the PUBLIC API ENTRY POINT (externally accessible)
     environment:
       SOMA_API_TOKEN: ${SOMA_API_TOKEN:-devtoken}
@@ -72,7 +72,7 @@ services:
     volumes:
       - ./:/app:delegated
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9595/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-9595}/healthz"]
       interval: 30s
       timeout: 5s
       retries: 5

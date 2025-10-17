@@ -19,6 +19,41 @@ prereqs-docker: ## Check docker and docker compose
 	@docker compose version >/dev/null 2>&1 || { echo "Error: docker compose not available"; exit 1; }
 	@command -v curl >/dev/null 2>&1 || { echo "Error: curl not found in PATH"; exit 1; }
 
+test-e2e: compose-health ## Run a simple end-to-end test against the running services
+	@echo "→ [E2E] Running end-to-end test..."
+	@API_URL="http://127.0.0.1:$(API_PORT)"; \
+	SOMA_TOKEN=$$(grep SOMA_API_TOKEN .env | cut -d '=' -f2); \
+	TEST_COORD="999.99,888.88"; \
+	\
+	echo "  - Storing a new memory at coord ($$TEST_COORD)..."; \
+	STORE_RESPONSE=$$(curl -s -X POST $$API_URL/memories \
+	  -H "Content-Type: application/json" \
+	  -H "Authorization: Bearer $$SOMA_TOKEN" \
+	  -d "{\"coord\": \"$$TEST_COORD\", \"payload\": {\"test_id\": \"e2e-test-$$RANDOM\", \"data\": \"This is a test memory.\"}}"); \
+	echo "    Response: $$STORE_RESPONSE"; \
+	if ! echo "$$STORE_RESPONSE" | grep -q '"ok":true'; then \
+		echo "  ✗ [FAIL] Failed to store memory."; exit 1; \
+	fi; \
+	\
+	echo "  - Retrieving the memory..."; \
+	RETRIEVE_RESPONSE=$$(curl -s -X GET $$API_URL/memories/$$TEST_COORD \
+	  -H "Authorization: Bearer $$SOMA_TOKEN"); \
+	if ! echo "$$RETRIEVE_RESPONSE" | grep -q '"test_id"'; then \
+		echo "  ✗ [FAIL] Failed to retrieve memory."; exit 1; \
+	fi; \
+	echo "    Successfully retrieved memory."; \
+	\
+	echo "  - Verifying infrastructure stats..."; \
+	STATS_RESPONSE=$$(curl -s -X GET $$API_URL/stats \
+	  -H "Authorization: Bearer $$SOMA_TOKEN"); \
+	TOTAL_MEM=$$(echo $$STATS_RESPONSE | sed -n 's/.*"total_memories":\([0-9]*\).*/\1/p'); \
+	if [ -z "$$TOTAL_MEM" ] || [ $$TOTAL_MEM -lt 1 ]; then \
+		echo "  ✗ [FAIL] Total memory count in stats is not greater than 0."; exit 1; \
+	fi; \
+	echo "    Stats check passed. Total memories: $$TOTAL_MEM."; \
+	\
+	echo "✓ [SUCCESS] End-to-end test completed successfully."
+
 compose-up: prereqs-docker ## Start the full stack in the background
 	docker compose --profile core --profile consumer up -d
 	@echo "→ API will be available at: http://127.0.0.1:$(API_PORT)"

@@ -20,15 +20,62 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 9393
+              containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
           env:
+            - name: SOMA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-somafractalmemory-secrets
+                  key: SOMA_API_TOKEN
+            - name: SOMA_POSTGRES_URL
+              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:{{ .Values.postgres.service.port }}/somafractalmemory"
+            - name: SOMA_INFRA__POSTGRES
+              value: "{{ .Release.Name }}-postgres"
+            - name: SOMA_INFRA__REDIS
+              value: "{{ .Release.Name }}-redis"
+            - name: SOMA_INFRA__QDRANT
+              value: "{{ .Release.Name }}-qdrant"
+            - name: SOMA_QDRANT_HOST
+              value: "{{ .Release.Name }}-qdrant"
+            - name: POSTGRES_HOST
+              value: "{{ .Release.Name }}-postgres"
+            - name: POSTGRES_PORT
+              value: "{{ .Values.postgres.service.port }}"
             - name: POSTGRES_URL
-              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:40021/somafractalmemory"
+              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:{{ .Values.postgres.service.port }}/somafractalmemory"
+            - name: REDIS_HOST
+              value: "{{ .Release.Name }}-redis"
+            - name: REDIS_PORT
+              value: "{{ .Values.redis.service.port }}"
             - name: REDIS_URL
-              value: "redis://{{ .Release.Name }}-redis:40022/0"
+              value: "redis://{{ .Release.Name }}-redis:{{ .Values.redis.service.port }}/0"
+            - name: QDRANT_HOST
+              value: "{{ .Release.Name }}-qdrant"
+            - name: QDRANT_PORT
+              value: "{{ .Values.qdrant.service.port }}"
             - name: QDRANT_URL
-              value: "http://{{ .Release.Name }}-qdrant:40023"
+              value: "http://{{ .Release.Name }}-qdrant:{{ .Values.qdrant.service.port }}"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 12
           livenessProbe:
             httpGet:
               path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

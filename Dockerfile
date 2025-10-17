@@ -69,8 +69,6 @@ USER appuser
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # Expose HTTP API and gRPC ports (sync gRPC 50053, async gRPC 50054)
-EXPOSE 20000 8001 50053 50054
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:20000/healthz || exit 1
+EXPOSE 9595 8001 50053 50054
 
 CMD ["/app/scripts/docker-entrypoint.sh"]
