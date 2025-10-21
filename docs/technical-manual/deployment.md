@@ -107,6 +107,8 @@ Use the Helm chart in `helm/` to deploy SomaFractalMemory to a Kubernetes namesp
 | `SOMA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length (seconds) | `60`
 | `SOMA_MAX_REQUEST_BODY_MB` | Maximum accepted payload size (MB) | `5`
 
+> **CAUTION (DEVELOPMENT ONLY)**: The rate limiter is a safety control to protect the API and downstream stores from abusive or accidental high-volume traffic. You may temporarily increase `SOMA_RATE_LIMIT_MAX` or set it to `0` to disable the limiter for local development or load testing, but never perform this change in production. After testing, restore the original values and redeploy. When increasing limits, also monitor Postgres, Redis, and Qdrant for resource pressure.
+
 ## Post-Deployment Checklist
 - [ ] `/readyz` returns HTTP 200 with `kv_store`, `vector_store`, and `graph_store` set to `true`.
 - [ ] `/metrics` is scraped by the monitoring stack.
@@ -117,6 +119,9 @@ Use the Helm chart in `helm/` to deploy SomaFractalMemory to a Kubernetes namesp
 - **API returns 404 for `/memories`**: Rebuild and redeploy the API container (`docker compose build && docker compose up -d`). Endpoints are tied to the running image.
 - **Port conflict on localhost**: Override the host ports in `.env` (e.g., `POSTGRES_HOST_PORT=5435`) before starting Compose.
 - **Rate limiter blocks traffic**: Increase `SOMA_RATE_LIMIT_MAX` or set it to `0` during load testing in non-production environments.
+- **Rate limiter blocks traffic**: Increase `SOMA_RATE_LIMIT_MAX` or set it to `0` during load testing in non-production environments.
+
+> NOTE: Changes to rate limiting should be made only in development or QA environments. Do not disable or raise limits in production. Follow your platform's change control process when performing load tests that temporarily alter operational controls.
 
 ## Further Reading
 - [Monitoring Guide](monitoring.md)
