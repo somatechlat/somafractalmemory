@@ -61,6 +61,19 @@ def parse_coord(text: str) -> tuple[float, ...]:
     return tuple(float(p) for p in parts)
 
 
+def safe_parse_coord(text: str) -> tuple[float, ...]:
+    """Parse coordinate string and raise HTTP 400 on invalid input.
+
+    Returns a tuple of floats for valid input. This wrapper ensures we return
+    a client-friendly HTTP 400 when the payload contains malformed coords
+    instead of bubbling ValueError and producing a 500.
+    """
+    try:
+        return parse_coord(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid coord: {text}") from exc
+
+
 def _resolve_memory_type(value: str | None) -> MemoryType:
     if value is None:
         return MemoryType.EPISODIC
@@ -546,7 +559,9 @@ async def log_requests(request: Request, call_next):
 )
 async def store_memory(req: MemoryStoreRequest) -> MemoryStoreResponse:
     memory_type = _resolve_memory_type(req.memory_type)
-    mem.store_memory(parse_coord(req.coord), req.payload, memory_type=memory_type)
+    # Validate coordinate and return HTTP 400 for malformed input
+    coord = safe_parse_coord(req.coord)
+    mem.store_memory(coord, req.payload, memory_type=memory_type)
     return MemoryStoreResponse(coord=req.coord, memory_type=memory_type.value)
 
 
@@ -557,7 +572,12 @@ async def store_memory(req: MemoryStoreRequest) -> MemoryStoreResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.fetch"))],
 )
 def fetch_memory(coord: str) -> MemoryGetResponse:
-    record = mem.retrieve(parse_coord(coord))
+    try:
+        parsed = safe_parse_coord(coord)
+    except HTTPException:
+        # Propagate as-is (400)
+        raise
+    record = mem.retrieve(parsed)
     if not record:
         raise HTTPException(status_code=404, detail="Memory not found")
     return MemoryGetResponse(memory=record)
@@ -570,7 +590,11 @@ def fetch_memory(coord: str) -> MemoryGetResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.delete"))],
 )
 def delete_memory(coord: str) -> MemoryDeleteResponse:
-    deleted = mem.delete(parse_coord(coord))
+    try:
+        parsed = safe_parse_coord(coord)
+    except HTTPException:
+        raise
+    deleted = mem.delete(parsed)
     return MemoryDeleteResponse(coord=coord, deleted=bool(deleted))
 
 

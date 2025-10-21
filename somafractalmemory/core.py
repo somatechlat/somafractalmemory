@@ -600,7 +600,10 @@ class SomaFractalMemoryEnterprise:
             semantic = 0
 
             # Pattern for data keys
-            data_like = f"%:data"
+            # SQL LIKE uses '%' as wildcard, but kv_store.scan_iter expects
+            # a glob-style pattern using '*' (RedisKeyValueStore test path).
+            data_like_sql = f"%:data"
+            data_like = data_like_sql.replace("%", "*")
 
             # If we have a Postgres-backed store available, query it directly
             pg_store = None
@@ -643,6 +646,7 @@ class SomaFractalMemoryEnterprise:
                             semantic += 1
             else:
                 # Fall back to scanning the kv_store interface (unique keys)
+                # Use glob-style pattern when scanning non-SQL kv stores.
                 keys = set(self.kv_store.scan_iter(data_like))
                 kv_count = len(keys)
                 for key in keys:
