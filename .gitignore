@@ -75,6 +75,11 @@ docs/README.md
 .env.local
 !.env.template
 
+# Common env backup/temp files (created during local edits or token rotation)
+.env.bak
+.env.new
+.env.old
+
 # local virtualenv used for tests
 .venv-test/
 .env
