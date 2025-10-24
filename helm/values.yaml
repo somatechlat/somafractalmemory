@@ -10,6 +10,14 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
 
+resources:
+  limits:
+    cpu: "1"
+    memory: "2Gi"
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+
 service:
   type: ClusterIP
   port: 9595
@@ -58,5 +66,5 @@ qdrant:
     size: 10Gi
 
 secrets:
-  apiToken: "devtoken"
-  postgresPassword: "soma"
+  apiTokenSecretName: "soma-api-token"
+  postgresPasswordSecretName: "soma-postgres-password"

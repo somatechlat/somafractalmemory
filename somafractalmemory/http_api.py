@@ -12,6 +12,7 @@ import time
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from common.utils.logger import configure_logging, get_logger
+from common.utils.opa_client import OPAClient
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
@@ -54,6 +56,41 @@ try:
 except Exception:  # pragma: no cover - optional in some environments
     load_settings = None  # type: ignore
     configure_tracer = None  # type: ignore
+
+
+def get_opa_client() -> OPAClient:
+    # Load settings and get OPA endpoint
+    settings = None
+    try:
+        if load_settings:
+            settings = load_settings()
+    except Exception:
+        settings = None
+    opa_host = None
+    policy_path = os.getenv("OPA_POLICY_PATH", "soma/authz/allow")
+    if settings and getattr(settings, "infra", None):
+        opa_host = getattr(settings.infra, "opa", None)
+    opa_url = os.getenv("OPA_URL") or (f"http://{opa_host}:8181" if opa_host else "http://opa:8181")
+    return OPAClient(opa_url=opa_url, policy_path=policy_path)
+
+
+OPA = get_opa_client()
+
+
+def opa_enforce(request: Request, action: str, extra: dict = None):
+    # Compose input for OPA
+    user = request.headers.get("Authorization", "").replace("Bearer ", "")
+    input_data = {
+        "user": user,
+        "method": request.method,
+        "path": request.url.path,
+        "action": action,
+    }
+    if extra:
+        input_data.update(extra)
+    allowed = OPA.check(input_data)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Access denied by policy")
 
 
 def parse_coord(text: str) -> tuple[float, ...]:
@@ -404,24 +441,68 @@ except Exception as e:
     raise
     raise
 
-# Prediction providers are optional and intentionally out-of-process. The
-# data-plane does not install or report prediction providers by default.
+    # Prediction providers are optional and intentionally out-of-process. The
+    # data-plane does not install or report prediction providers by default.
 
-
-def auth_dep(request: Request):  # noqa: B008 - FastAPI dependency signature
     """Extract Authorization header manually to avoid Header call in defaults.
 
     FastAPI recommends using ``Header`` for dependency injection, but the linter
     flags calling it in a default argument. This implementation reads the header
     from the ``Request`` object directly, preserving the same security checks.
     """
-    if API_TOKEN:
-        authorization = request.headers.get("Authorization")
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing bearer token")
-        token = authorization.split(" ", 1)[1]
-        if token != API_TOKEN:
-            raise HTTPException(status_code=403, detail="Invalid token")
+    # Load settings for JWT config
+    settings = None
+    try:
+        if load_settings:
+            settings = load_settings()
+    except Exception:
+        settings = None
+    jwt_enabled = getattr(settings, "jwt_enabled", False) if settings else False
+    jwt_issuer = getattr(settings, "jwt_issuer", "") if settings else ""
+    jwt_audience = getattr(settings, "jwt_audience", "") if settings else ""
+    jwt_secret = getattr(settings, "jwt_secret", "") if settings else ""
+    jwt_public_key = getattr(settings, "jwt_public_key", "") if settings else ""
+
+    authorization = request.headers.get("Authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1]
+
+    if jwt_enabled:
+        # Validate JWT
+        try:
+            # Choose key and algorithm
+            if jwt_public_key:
+                key = jwt_public_key
+                alg = "RS256"
+            elif jwt_secret:
+                key = jwt_secret
+                alg = "HS256"
+            else:
+                raise HTTPException(status_code=500, detail="JWT key not configured")
+            payload = jwt.decode(
+                token,
+                key,
+                algorithms=[alg],
+                issuer=jwt_issuer if jwt_issuer else None,
+                audience=jwt_audience if jwt_audience else None,
+                options={"require": ["exp", "iat"]},
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="JWT expired")
+        except jwt.InvalidIssuerError:
+            raise HTTPException(status_code=403, detail="JWT issuer invalid")
+        except jwt.InvalidAudienceError:
+            raise HTTPException(status_code=403, detail="JWT audience invalid")
+        except jwt.InvalidTokenError as e:
+            raise HTTPException(status_code=403, detail=f"JWT invalid: {str(e)}")
+        # Optionally: attach claims to request.state for downstream use
+        request.state.jwt_claims = payload
+    else:
+        # Fallback: static token
+        if API_TOKEN:
+            if token != API_TOKEN:
+                raise HTTPException(status_code=403, detail="Invalid token")
 
 
 def rate_limit_dep(path: str):
@@ -557,9 +638,14 @@ async def log_requests(request: Request, call_next):
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.store"))],
 )
-async def store_memory(req: MemoryStoreRequest) -> MemoryStoreResponse:
+async def store_memory(req: MemoryStoreRequest, request: Request = None) -> MemoryStoreResponse:
+    if request:
+        opa_enforce(
+            request,
+            action="store_memory",
+            extra={"coord": req.coord, "memory_type": req.memory_type},
+        )
     memory_type = _resolve_memory_type(req.memory_type)
-    # Validate coordinate and return HTTP 400 for malformed input
     coord = safe_parse_coord(req.coord)
     mem.store_memory(coord, req.payload, memory_type=memory_type)
     return MemoryStoreResponse(coord=req.coord, memory_type=memory_type.value)
@@ -571,11 +657,12 @@ async def store_memory(req: MemoryStoreRequest) -> MemoryStoreResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.fetch"))],
 )
-def fetch_memory(coord: str) -> MemoryGetResponse:
+def fetch_memory(coord: str, request: Request = None) -> MemoryGetResponse:
+    if request:
+        opa_enforce(request, action="fetch_memory", extra={"coord": coord})
     try:
         parsed = safe_parse_coord(coord)
     except HTTPException:
-        # Propagate as-is (400)
         raise
     record = mem.retrieve(parsed)
     if not record:
@@ -589,7 +676,9 @@ def fetch_memory(coord: str) -> MemoryGetResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.delete"))],
 )
-def delete_memory(coord: str) -> MemoryDeleteResponse:
+def delete_memory(coord: str, request: Request = None) -> MemoryDeleteResponse:
+    if request:
+        opa_enforce(request, action="delete_memory", extra={"coord": coord})
     try:
         parsed = safe_parse_coord(coord)
     except HTTPException:
@@ -604,7 +693,9 @@ def delete_memory(coord: str) -> MemoryDeleteResponse:
     tags=["memories"],
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.search"))],
 )
-def search_memories(req: MemorySearchRequest) -> MemorySearchResponse:
+def search_memories(req: MemorySearchRequest, request: Request = None) -> MemorySearchResponse:
+    if request:
+        opa_enforce(request, action="search_memories", extra={"query": req.query})
     if req.filters:
         results = mem.find_hybrid_by_type(req.query, top_k=req.top_k, filters=req.filters)
     else:
@@ -622,7 +713,10 @@ def search_memories_get(
     query: str,
     top_k: int = 5,
     filters: str | None = None,
+    request: Request = None,
 ) -> MemorySearchResponse:
+    if request:
+        opa_enforce(request, action="search_memories_get", extra={"query": query})
     parsed_filters: dict[str, Any] | None = None
     if filters:
         try:

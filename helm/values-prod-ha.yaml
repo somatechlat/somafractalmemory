@@ -3,14 +3,22 @@
 
 replicaCount: 3
 
+resources:
+  limits:
+    cpu: "2"
+    memory: "4Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+
 postgres:
   replicaCount: 1 # Typically managed by a stateful set or external service in production
   persistence:
     enabled: true
     storageClass: "gp2" # Example for AWS, change as needed
   secrets:
-    apiToken: "changeme-in-production"
-    postgresPassword: "changeme-in-production"
+    apiTokenSecretName: "soma-api-token"
+    postgresPasswordSecretName: "soma-postgres-password"
 
 redis:
   replicaCount: 2

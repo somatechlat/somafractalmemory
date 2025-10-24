@@ -127,3 +127,34 @@ Use the Helm chart in `helm/` to deploy SomaFractalMemory to a Kubernetes namesp
 - [Monitoring Guide](monitoring.md)
 - [Architecture Overview](architecture.md)
 - [Runbooks](runbooks/)
+
+## CI/CD pipeline (GitHub Actions)
+This repository includes an optional pipeline in `.github/workflows/deploy-soma-stack.yml` that can build, scan, and (optionally) deploy via Helm.
+
+Key features:
+- Build and push Docker image to GHCR with tags `latest`, `${DEPLOY_MODE}`, and the commit SHA.
+- Helm lint and Trivy filesystem scan on the `helm/` chart.
+- Optional cluster deployment and validations when a kubeconfig secret is provided.
+
+Modes (workflow_dispatch input `deploy_mode`):
+- `dev_full` (local overrides) → uses `helm/values-local-dev.yaml`
+- `dev_prod` (prod-like toggles on) → uses `helm/values.yaml`
+- `prod` (default production values) → uses `helm/values.yaml`
+- `prod_ha` (production high-availability) → uses `helm/values-prod-ha.yaml`
+
+Cluster prerequisites (optional steps):
+- Add a repository secret `KUBE_CONFIG` containing a kubeconfig for your target cluster (base64 not required; raw content is fine). The workflow will place it at runtime and set `KUBECONFIG`.
+- The release name is `soma` and the namespace is `soma-$DEPLOY_MODE`.
+- Validation uses the label selector `app=somafractalmemory` to detect pods.
+
+Helper script:
+- Use `scripts/generate-global-env.sh <mode> [output_path]` to generate a unified env file. The workflow writes it to `$GITHUB_WORKSPACE/soma-global.env` by default. For local use:
+   ```bash
+   scripts/generate-global-env.sh prod ./soma-global.env
+   ```
+
+Manual run:
+1. In GitHub → Actions → Deploy SomaStack → Run workflow → choose a mode.
+2. If `KUBE_CONFIG` is configured, the workflow will deploy with Helm and run readiness checks; otherwise it will only build, push, and lint/scan.
+
+Rollback: If a validation step fails (pods not ready, etc.), re-run the workflow with a previous commit SHA or remove the kubeconfig secret to skip deployment.

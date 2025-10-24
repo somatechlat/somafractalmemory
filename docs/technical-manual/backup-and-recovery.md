@@ -40,3 +40,24 @@ Redis is only used for rate limiting. If it fails, the API falls back to an in-m
 4. Rotate `SOMA_API_TOKEN` and redeploy the API.
 5. Execute synthetic smoke tests (`store → search → get → delete`).
 6. Re-enable external traffic and close the incident with a timeline.
+
+## Secure Secret Management & Rotation
+
+All API tokens and database passwords must be provisioned via Kubernetes secrets or Vault. Never use hardcoded or default values in production.
+
+### Creating Kubernetes Secrets
+
+```bash
+kubectl create secret generic soma-api-token \
+  --from-literal=SOMA_API_TOKEN=<your-secure-token>
+kubectl create secret generic soma-postgres-password \
+  --from-literal=SOMA_POSTGRES_PASSWORD=<your-secure-password>
+```
+
+Rotate secrets after any incident or quarterly as part of standard operational hygiene. Update Helm values to reference the correct secret names.
+
+### Recovery After Secret Rotation
+
+1. Update the secret in Kubernetes or Vault.
+2. Redeploy the API and dependent jobs.
+3. Validate with synthetic smoke tests.

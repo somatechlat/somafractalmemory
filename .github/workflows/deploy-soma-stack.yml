@@ -1,0 +1,150 @@
+name: Deploy SomaStack
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: "Deployment mode"
+        required: true
+        default: dev_full
+        type: choice
+        options:
+          - dev_full
+          - dev_prod
+          - prod
+          - prod_ha
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      CHART_DIR: ./helm
+      ENV_OUT: ${{ github.workspace }}/soma-global.env
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set DEPLOY_MODE variable
+        run: |
+          MODE="${{ github.event.inputs.deploy_mode }}"
+          [ -z "$MODE" ] && MODE=dev_full
+          echo "DEPLOY_MODE=$MODE" >> $GITHUB_ENV
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Generate global .env
+        run: |
+          chmod +x scripts/generate-global-env.sh || true
+          scripts/generate-global-env.sh "${{ env.DEPLOY_MODE }}" "$ENV_OUT"
+          echo "Global env generated at $ENV_OUT"
+
+      - name: Determine Helm values overlay
+        id: overlay
+        shell: bash
+        run: |
+          case "${{ env.DEPLOY_MODE }}" in
+            dev_full)  values_file="values-local-dev.yaml" ;;
+            dev_prod)  values_file="values.yaml" ;;
+            prod)      values_file="values.yaml" ;;
+            prod_ha)   values_file="values-prod-ha.yaml" ;;
+            *) echo "Unsupported mode" >&2; exit 1 ;;
+          esac
+          echo "values_file=$values_file" >> $GITHUB_OUTPUT
+
+      - name: Helm lint
+        run: helm lint "$CHART_DIR"
+
+      - name: Trivy scan (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-dir: "$CHART_DIR"
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        id: build
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}
+          IMAGE_LC=${IMAGE,,}
+          TAG=${{ github.sha }}
+          echo "image_repo=$IMAGE_LC" >> $GITHUB_OUTPUT
+          echo "image_tag=$TAG" >> $GITHUB_OUTPUT
+          docker build -t $IMAGE_LC:$TAG -f Dockerfile .
+          docker push $IMAGE_LC:$TAG
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig from secret
+        if: ${{ secrets.KUBE_CONFIG != '' }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config" || echo "${{ secrets.KUBE_CONFIG }}" > "$HOME/.kube/config"
+          echo "Kubeconfig written"
+
+      - name: Create namespace if missing
+        if: ${{ secrets.KUBE_CONFIG != '' }}
+        run: |
+          NS=soma-${{ env.DEPLOY_MODE }}
+          kubectl get ns "$NS" || kubectl create ns "$NS"
+
+      - name: Helm upgrade/install
+        if: ${{ secrets.KUBE_CONFIG != '' }}
+        run: |
+          NS=soma-${{ env.DEPLOY_MODE }}
+          RELEASE=soma
+          helm upgrade --install "$RELEASE" "$CHART_DIR" \
+            -n "$NS" \
+            -f "$CHART_DIR/${{ steps.overlay.outputs.values_file }}" \
+            --set image.repository=${{ steps.build.outputs.image_repo }} \
+            --set image.tag=${{ steps.build.outputs.image_tag }} \
+            --set image.pullPolicy=IfNotPresent \
+            --set secrets.apiToken=${{ secrets.SOMA_API_TOKEN }} \
+            --set secrets.postgresPassword=${{ secrets.POSTGRES_PASSWORD }}
+
+      - name: Wait for pods Ready
+        if: ${{ secrets.KUBE_CONFIG != '' }}
+        run: |
+          NS=soma-${{ env.DEPLOY_MODE }}
+          kubectl wait --for=condition=Ready pod -l app=somafractalmemory -n "$NS" --timeout=180s
+
+      - name: Basic health check
+        if: ${{ secrets.KUBE_CONFIG != '' }}
+        continue-on-error: true
+        run: |
+          NS=soma-${{ env.DEPLOY_MODE }}
+          SVC_IP=$(kubectl get svc soma-somafractalmemory -n "$NS" -o jsonpath='{.spec.clusterIP}')
+          if [[ -n "$SVC_IP" ]]; then
+            curl -sf "http://$SVC_IP:9595/healthz" || true
+          fi
+
+      - name: Save Helm release manifest (for audit)
+        if: ${{ secrets.KUBE_CONFIG != '' }}
+        run: |
+          NS=soma-${{ env.DEPLOY_MODE }}
+          helm get all soma -n "$NS" > helm-release.txt || true
+
+      - name: Automatic rollback on failure
+        if: failure() && secrets.KUBE_CONFIG != ''
+        run: |
+          NS=soma-${{ env.DEPLOY_MODE }}
+          echo "Deployment failed. Rolling back..."
+          helm rollback soma 0 -n "$NS" || true

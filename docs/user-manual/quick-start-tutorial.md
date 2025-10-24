@@ -17,6 +17,9 @@ This tutorial assumes you completed the [installation guide](installation.md) an
 > export API_URL=http://127.0.0.1:9595
 > ```
 
+> **Production Note:**
+> In production, never use `.env` or hardcoded tokens/passwords. Always provision secrets via Kubernetes secrets or Vault, and reference them in your deployment configuration. See the [technical manual](../technical-manual/backup-and-recovery.md#secure-secret-management--rotation) for details.
+
 ## 1. Store a Memory
 ```bash
 curl -s -X POST "$API_URL/memories" \

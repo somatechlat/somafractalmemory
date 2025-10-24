@@ -84,7 +84,35 @@ class SMFSettings(SomaBaseSettings):
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 
+    # JWT authentication config
+    jwt_enabled: bool = Field(default=False, description="Enable JWT authentication")
+    jwt_issuer: str = Field(default="", description="JWT expected issuer")
+    jwt_audience: str = Field(default="", description="JWT expected audience")
+    jwt_secret: str = Field(default="", description="JWT HMAC secret (if using HS256)")
+    jwt_public_key: str = Field(default="", description="JWT public key (if using RS256)")
+
+    # Vault/Kubernetes secrets integration
+    vault_url: str = Field(default="", description="Vault endpoint URL")
+    secrets_path: str = Field(default="", description="Path to secrets in Vault/K8s")
+
     model_config = SettingsConfigDict(arbitrary_types_allowed=True)
+
+    def validate_config(self) -> None:
+        """Validate critical config fields for production readiness."""
+        errors = []
+        if not self.namespace:
+            errors.append("namespace is required")
+        if not self.api_port or not (1024 <= self.api_port <= 65535):
+            errors.append("api_port must be valid TCP port")
+        if self.jwt_enabled:
+            if not (self.jwt_secret or self.jwt_public_key):
+                errors.append("JWT enabled but no key configured")
+            if not self.jwt_issuer:
+                errors.append("JWT issuer required")
+            if not self.jwt_audience:
+                errors.append("JWT audience required")
+        if errors:
+            raise ValueError(f"Config validation failed: {errors}")
 
 
 def _load_file_data(config_file: Path | None) -> dict[str, Any]:

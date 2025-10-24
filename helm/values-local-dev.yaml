@@ -3,6 +3,14 @@
 
 replicaCount: 1
 
+resources:
+  limits:
+    cpu: "500m"
+    memory: "1Gi"
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+
 service:
   port: 9595
   targetPort: 9595
@@ -12,8 +20,8 @@ postgres:
   persistence:
     enabled: false
   secrets:
-    apiToken: "devtoken"
-    postgresPassword: "soma"
+    apiTokenSecretName: "soma-api-token"
+    postgresPasswordSecretName: "soma-postgres-password"
 
 redis:
   replicaCount: 1

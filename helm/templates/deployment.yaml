@@ -18,18 +18,40 @@ spec:
         - name: somafractalmemory
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
           env:
+            # Securely source API token and Postgres password from Kubernetes secrets
             - name: SOMA_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-somafractalmemory-secrets
+                  name: {{ .Values.secrets.apiTokenSecretName }}
                   key: SOMA_API_TOKEN
+            - name: SOMA_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.postgresPasswordSecretName }}
+                  key: SOMA_POSTGRES_PASSWORD
             - name: SOMA_POSTGRES_URL
-              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:{{ .Values.postgres.service.port }}/somafractalmemory"
+              value: "postgresql://soma:$(SOMA_POSTGRES_PASSWORD)@{{ .Release.Name }}-postgres:{{ .Values.postgres.service.port }}/somafractalmemory"
+            ###############################################################
+            # Operator Instructions:
+            # Before deploying, create the following Kubernetes secrets:
+            #
+            # 1. API Token Secret:
+            #    kubectl create secret generic soma-api-token \
+            #      --from-literal=SOMA_API_TOKEN=<your-secure-token>
+            #
+            # 2. Postgres Password Secret:
+            #    kubectl create secret generic soma-postgres-password \
+            #      --from-literal=SOMA_POSTGRES_PASSWORD=<your-secure-password>
+            #
+            # Update values.yaml to reference these secret names if you use custom names.
+            ###############################################################
             - name: SOMA_INFRA__POSTGRES
               value: "{{ .Release.Name }}-postgres"
             - name: SOMA_INFRA__REDIS
@@ -43,7 +65,14 @@ spec:
             - name: POSTGRES_PORT
               value: "{{ .Values.postgres.service.port }}"
             - name: POSTGRES_URL
-              value: "postgresql://soma:{{ .Values.secrets.postgresPassword }}@{{ .Release.Name }}-postgres:{{ .Values.postgres.service.port }}/somafractalmemory"
+              value: "postgresql://soma:$(SOMA_POSTGRES_PASSWORD)@{{ .Release.Name }}-postgres:{{ .Values.postgres.service.port }}/somafractalmemory"
+                      # TLS/mTLS placeholders (uncomment and configure for production)
+                      # - name: SOMA_TLS_ENABLED
+                      #   value: "true"
+                      # - name: SOMA_TLS_CERT_PATH
+                      #   value: "/etc/tls/tls.crt"
+                      # - name: SOMA_TLS_KEY_PATH
+                      #   value: "/etc/tls/tls.key"
             - name: REDIS_HOST
               value: "{{ .Release.Name }}-redis"
             - name: REDIS_PORT
