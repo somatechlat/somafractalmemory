@@ -33,7 +33,13 @@ def test_metrics_exposed():
 
     metrics = prometheus_client.REGISTRY.collect()
     names = [m.name for m in metrics]
-    assert "api_requests_total" in names or "seed_requests_total" in names
+    # Accept either the historical `_total` suffix or the registered metric name
+    assert (
+        "api_requests_total" in names
+        or "seed_requests_total" in names
+        or "api_requests" in names
+        or "seed_requests" in names
+    )
 
 
 def test_retry_backoff(monkeypatch):
@@ -41,33 +47,33 @@ def test_retry_backoff(monkeypatch):
 
     class DummyRedis:
         async def get(self, key):
-            raise Exception("fail")
+            raise RuntimeError("fail")
 
         async def set(self, key, value, ex=None):
-            raise Exception("fail")
+            raise RuntimeError("fail")
 
         async def delete(self, key):
-            raise Exception("fail")
+            raise RuntimeError("fail")
 
         async def close(self):
-            raise Exception("fail")
+            raise RuntimeError("fail")
 
     cache = RedisCache(DummyRedis())
     import pytest
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         import asyncio
 
         asyncio.run(cache.get("x"))
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         import asyncio
 
         asyncio.run(cache.set("x", "y"))
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         import asyncio
 
         asyncio.run(cache.delete("x"))
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         import asyncio
 
         asyncio.run(cache.close())

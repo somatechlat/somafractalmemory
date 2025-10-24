@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from typing import Any
 
 try:
@@ -24,6 +25,15 @@ def serialize(obj: Any) -> bytes:
     is not JSON-serializable, callers should pre-convert distributed types to JSON
     friendly structures before calling.
     """
+    # Optional MessagePack path (opt-in via env var SOMA_SERIALIZER=msgpack).
+    if os.getenv("SOMA_SERIALIZER", "json").lower() == "msgpack":
+        try:
+            import msgpack
+
+            return msgpack.packb(obj, use_bin_type=True)
+        except Exception:
+            # Fall back to JSON if msgpack is unavailable
+            pass
     return json.dumps(obj, default=_json_default, separators=(",", ":")).encode("utf-8")
 
 
@@ -38,6 +48,16 @@ def deserialize(raw: bytes) -> Any:
         text = raw.decode("utf-8")
     except Exception:
         text = None
+
+    # If serializer is msgpack, attempt to unpack first
+    if os.getenv("SOMA_SERIALIZER", "json").lower() == "msgpack":
+        try:
+            import msgpack
+
+            return msgpack.unpackb(raw, raw=False)
+        except Exception:
+            # Fall back to JSON path
+            pass
 
     if text is not None:
         try:

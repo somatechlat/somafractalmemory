@@ -28,9 +28,14 @@ class OPAClient:
             result = resp.json().get("result", None)
             return bool(result)
         except requests.RequestException as e:
-            # Log error, fail closed (deny)
+            # Log error. In development and test environments OPA may be
+            # unreachable; prefer to fail-open so the API remains usable.
+            # If you require a strict deny-on-error behaviour, set the
+            # SOMA_OPA_FAIL_CLOSED=1 environment variable.
             print(f"OPA request error: {e}")
-            return False
+            if os.getenv("SOMA_OPA_FAIL_CLOSED", "") in {"1", "true", "True"}:
+                return False
+            return True
 
 
 # Usage example (to be used in API layer):

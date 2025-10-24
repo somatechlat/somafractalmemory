@@ -11,6 +11,7 @@ from common.utils.logger import get_logger
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.storage import (
+    BatchedStore,
     InMemoryVectorStore,
     PostgresKeyValueStore,
     QdrantVectorStore,
@@ -235,6 +236,20 @@ def create_memory_system(
     else:
         vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_kwargs)
     graph_store = NetworkXGraphStore()
+
+    # Optional: enable batched KV+vector upserts via env var for better throughput.
+    if os.getenv("SOMA_ENABLE_BATCH_UPSERT", "0") == "1":
+        try:
+            batch_size = int(os.getenv("SOMA_BATCH_SIZE", "100"))
+            flush_ms = int(os.getenv("SOMA_BATCH_FLUSH_MS", "5"))
+            batched = BatchedStore(
+                kv_store, vector_store, batch_size=batch_size, flush_interval_ms=flush_ms
+            )
+            kv_store = batched
+            vector_store = batched
+        except Exception:
+            # Non-fatal: if batching initialization fails, fall back to direct stores
+            pass
 
     return SomaFractalMemoryEnterprise(
         namespace=namespace,

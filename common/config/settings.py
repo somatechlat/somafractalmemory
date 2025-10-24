@@ -36,6 +36,10 @@ class SomaBaseSettings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(env_prefix="SOMA_", env_nested_delimiter="__")
+    # Avoid pydantic warnings about names that collide with internal protected
+    # namespaces (e.g. fields starting with "model_"). This keeps the
+    # settings classes free of noisy warnings in tests and runtime.
+    model_config.setdefault("protected_namespaces", ("settings_",))
 
 
 class InfraEndpoints(BaseModel):

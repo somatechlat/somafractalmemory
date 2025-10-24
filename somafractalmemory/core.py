@@ -13,8 +13,27 @@ from typing import Any, ContextManager, Dict, List, Optional, Tuple
 
 from cryptography.fernet import Fernet
 from common.config.settings import load_settings
+from common.utils.async_metrics import submit as _submit_metric
+
+_USE_ASYNC_METRICS = os.getenv("SOMA_ASYNC_METRICS", "0") == "1"
+
+
+def _maybe_submit(fn):
+    if _USE_ASYNC_METRICS:
+        try:
+            _submit_metric(fn)
+            return
+        except Exception:
+            pass
+    try:
+        fn()
+    except Exception:
+        pass
+
+
 import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Histogram
+from functools import lru_cache
 import structlog
 
 import urllib.request
@@ -290,35 +309,49 @@ class SomaFractalMemoryEnterprise:
         """
         while True:
             now = time.time()
-            for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
-                try:
-                    metadata = self.kv_store.hgetall(meta_key)
-                    created = float(metadata.get(b"creation_timestamp", b"0"))
-                    age = now - created
-                    data_key = meta_key.replace(":meta", ":data")
-                    raw_data = self.kv_store.get(data_key)
-                    if not raw_data:
-                        continue
+            try:
+                iterator = self.kv_store.scan_iter(f"{self.namespace}:*:meta")
+            except Exception as e:
+                logger.warning(f"Error enumerating keys for decay: {e}")
+                time.sleep(self.pruning_interval_seconds)
+                continue
+
+            try:
+                for meta_key in iterator:
                     try:
-                        memory_item = deserialize(raw_data)
-                    except Exception:
-                        logger.warning(f"Failed to deserialize memory {data_key} during decay")
-                        continue
-                    for i, threshold in enumerate(self.decay_thresholds_seconds):
-                        if age > threshold:
-                            keys_to_remove = (
-                                set(self.decayable_keys_by_level[i])
-                                if i < len(self.decayable_keys_by_level)
-                                else set()
-                            )
-                            for key in keys_to_remove:
-                                memory_item.pop(key, None)
-                    try:
-                        self.kv_store.set(data_key, serialize(memory_item))
-                    except Exception:
-                        logger.warning(f"Failed to write decayed memory {data_key}")
-                except Exception as e:
-                    logger.warning(f"Error during decay for {meta_key}: {e}")
+                        metadata = self.kv_store.hgetall(meta_key)
+                        created = float(metadata.get(b"creation_timestamp", b"0"))
+                        age = now - created
+                        data_key = meta_key.replace(":meta", ":data")
+                        raw_data = self.kv_store.get(data_key)
+                        if not raw_data:
+                            continue
+                        try:
+                            memory_item = deserialize(raw_data)
+                        except Exception:
+                            logger.warning(f"Failed to deserialize memory {data_key} during decay")
+                            continue
+                        for i, threshold in enumerate(self.decay_thresholds_seconds):
+                            if age > threshold:
+                                keys_to_remove = (
+                                    set(self.decayable_keys_by_level[i])
+                                    if i < len(self.decayable_keys_by_level)
+                                    else set()
+                                )
+                                for key in keys_to_remove:
+                                    memory_item.pop(key, None)
+                        try:
+                            self.kv_store.set(data_key, serialize(memory_item))
+                        except Exception:
+                            logger.warning(f"Failed to write decayed memory {data_key}")
+                    except Exception as e:
+                        logger.warning(f"Error during decay for {meta_key}: {e}")
+            except Exception as e:
+                # The scan iterator itself may raise (e.g., network/DNS errors). Catch
+                # these to avoid the background thread dying with an uncaught exception.
+                logger.warning(f"Error iterating keys for decay: {e}")
+                time.sleep(self.pruning_interval_seconds)
+                continue
             time.sleep(self.pruning_interval_seconds)
 
     # --------- Bulk and Export/Import ---------
@@ -501,7 +534,13 @@ class SomaFractalMemoryEnterprise:
         logger.debug("Applying advanced memory decay check...")
         now = time.time()
         decayed_count = 0
-        for meta_key in self.kv_store.scan_iter(f"{self.namespace}:*:meta"):
+        try:
+            iterator = self.kv_store.scan_iter(f"{self.namespace}:*:meta")
+        except Exception as e:
+            logger.warning(f"Error enumerating keys for run_decay_once: {e}")
+            return
+
+        for meta_key in iterator:
             try:
                 metadata = self.kv_store.hgetall(meta_key)
                 created = float(metadata.get(b"creation_timestamp", b"0"))
@@ -826,7 +865,7 @@ class SomaFractalMemoryEnterprise:
     ):
         self._call_hook("before_recall", query, context, top_k, memory_type)
         with self.recall_latency.labels(self.namespace).time():
-            self.recall_count.labels(self.namespace).inc()
+            _maybe_submit(lambda: self.recall_count.labels(self.namespace).inc())
             if context:
                 results = self.find_hybrid_with_context(
                     query, context, top_k=top_k, memory_type=memory_type
@@ -1226,7 +1265,7 @@ class SomaFractalMemoryEnterprise:
 
         # Persist via KV + vector store (legacy path) and optionally append to fast core slabs.
         with self.store_latency.labels(self.namespace).time():
-            self.store_count.labels(self.namespace).inc()
+            _maybe_submit(lambda: self.store_count.labels(self.namespace).inc())
             result = self.store(coord_t, value)
         if self.fast_core_enabled:
             try:
@@ -1555,8 +1594,9 @@ class SomaFractalMemoryEnterprise:
             raise SomaFractalMemoryError("Vector storage failed") from e
 
     def embed_text(self, text: str) -> np.ndarray:
-        def _fallback_hash() -> np.ndarray:
-            h = hashlib.blake2b(text.encode("utf-8")).digest()
+        @lru_cache(maxsize=10000)
+        def _cached_fallback_hash(s: str) -> np.ndarray:
+            h = hashlib.blake2b(s.encode("utf-8")).digest()
             arr = np.frombuffer(h, dtype=np.uint8).astype("float32")
             if arr.size < self.vector_dim:
                 reps = int(np.ceil(self.vector_dim / arr.size))
@@ -1564,7 +1604,11 @@ class SomaFractalMemoryEnterprise:
             return arr[: self.vector_dim].reshape(1, -1)
 
         if self.tokenizer is None or self.model is None:
-            return _fallback_hash()
+            # Use cached deterministic hash embedding for identical inputs
+            try:
+                return _cached_fallback_hash(text)
+            except Exception:
+                return _cached_fallback_hash(text)
         try:
             with self.model_lock:
                 inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)

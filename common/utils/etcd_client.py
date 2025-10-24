@@ -45,6 +45,7 @@ class EtcdFeatureFlagClient:
     def get_flag(self, flag_name: str, default: Any = None) -> Any:
         ETCD_OPS.labels(method="get_flag").inc()
         try:
+            key = self._key(flag_name)
             value, _ = self._client.get(key)
             if value is None:
                 return default

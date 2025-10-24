@@ -7,6 +7,7 @@ in place for legacy imports.
 """
 
 import os
+import os as _os
 import threading
 import time
 from typing import Any, Literal
@@ -25,10 +26,29 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from common.utils.async_metrics import submit as _submit_metric
 from common.utils.logger import configure_logging, get_logger
 from common.utils.opa_client import OPAClient
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
+
+# Helper wrappers to optionally enqueue metric updates when async metrics are enabled.
+_USE_ASYNC_METRICS = _os.getenv("SOMA_ASYNC_METRICS", "0") == "1"
+
+
+def _maybe_submit(fn):
+    if _USE_ASYNC_METRICS:
+        try:
+            _submit_metric(fn)
+            return
+        except Exception:
+            pass
+    # Fallback: run synchronously
+    try:
+        fn()
+    except Exception:
+        pass
+
 
 print("Loading somafractalmemory.http_api")
 
@@ -489,13 +509,13 @@ def auth_dep(request: Request):
                 options={"require": ["exp", "iat"]},
             )
         except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="JWT expired")
+            raise HTTPException(status_code=401, detail="JWT expired") from None
         except jwt.InvalidIssuerError:
-            raise HTTPException(status_code=403, detail="JWT issuer invalid")
+            raise HTTPException(status_code=403, detail="JWT issuer invalid") from None
         except jwt.InvalidAudienceError:
-            raise HTTPException(status_code=403, detail="JWT audience invalid")
+            raise HTTPException(status_code=403, detail="JWT audience invalid") from None
         except jwt.InvalidTokenError as e:
-            raise HTTPException(status_code=403, detail=f"JWT invalid: {str(e)}")
+            raise HTTPException(status_code=403, detail=f"JWT invalid: {str(e)}") from e
         # Attach claims for downstream use
         request.state.jwt_claims = payload
         return payload
@@ -579,7 +599,7 @@ API_RESPONSES = Counter(
 async def metrics_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
-    API_REQUESTS.labels(endpoint=path, method=method).inc()
+    _maybe_submit(lambda: API_REQUESTS.labels(endpoint=path, method=method).inc())
     import time as _t
 
     start = _t.perf_counter()
@@ -615,8 +635,10 @@ async def metrics_middleware(request: Request, call_next):
     finally:
         dur = max(_t.perf_counter() - start, 0.0)
         # Observe duration
-        API_LATENCY.labels(endpoint=path, method=method).observe(dur)
-        API_RESPONSES.labels(endpoint=path, method=method, status=status_code).inc()
+        _maybe_submit(lambda: API_LATENCY.labels(endpoint=path, method=method).observe(dur))
+        _maybe_submit(
+            lambda: API_RESPONSES.labels(endpoint=path, method=method, status=status_code).inc()
+        )
 
 
 @app.middleware("http")
@@ -790,7 +812,7 @@ HTTP_404_REQUESTS = Counter(
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
-        HTTP_404_REQUESTS.inc()
+        _maybe_submit(lambda: HTTP_404_REQUESTS.inc())
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
     # For other errors, let FastAPI handle them
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})

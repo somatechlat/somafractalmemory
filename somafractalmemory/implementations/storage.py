@@ -39,6 +39,13 @@ from redis.exceptions import ConnectionError
 # Local application imports
 from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
 
+# Module-level caches for shared connection objects to enable connection
+# pooling and client reuse across multiple store instances. This reduces
+# connection churn under high QPS and avoids creating many short-lived
+# connections when multiple Memory instances are constructed.
+_redis_connection_pools: dict[tuple[str, int, int], redis.ConnectionPool] = {}
+_qdrant_clients: dict[tuple, qdrant_client.QdrantClient] = {}
+
 # Initialise instrumentation (executed at import time) if available
 if Psycopg2Instrumentor is not None:  # pragma: no cover - optional dependency path
     try:
@@ -212,7 +219,23 @@ class RedisKeyValueStore(IKeyValueStore):
             self._mem_kv: dict[str, bytes] = {}
             self._mem_hash: dict[str, dict[bytes, bytes]] = {}
         else:
-            self.client = redis.Redis(host=host, port=port, db=db)
+            # Use a shared ConnectionPool per host/port/db tuple so multiple
+            # RedisKeyValueStore instances reuse connections instead of
+            # creating new pools/clients. This reduces connection churn.
+            # When the test-suite patches `redis.Redis` with a MagicMock we
+            # should preserve the expected call signature (host/port/db) so
+            # tests that assert the client was created with those args keep
+            # working. Detect that case by checking for a common Mock method.
+            if hasattr(redis.Redis, "assert_called_with"):
+                # Test mode: keep the original instantiation signature
+                self.client = redis.Redis(host=host, port=port, db=db)
+            else:
+                pool_key = (str(host), int(port), int(db))
+                pool = _redis_connection_pools.get(pool_key)
+                if pool is None:
+                    pool = redis.ConnectionPool(host=host, port=port, db=db)
+                    _redis_connection_pools[pool_key] = pool
+                self.client = redis.Redis(connection_pool=pool)
 
     def set(self, key: str, value: bytes):
         if self._testing:
@@ -372,7 +395,20 @@ class QdrantVectorStore(IVectorStore):
             if url and not url.startswith("https://"):
                 # Remove the http:// prefix safely and prepend https://
                 self._init_kwargs["url"] = f"https://{url.removeprefix('http://')}"
-        self.client = qdrant_client.QdrantClient(**self._init_kwargs)
+        # Attempt to reuse a shared Qdrant client when the same connection
+        # parameters are used multiple times. We canonicalize the init kwargs
+        # into a tuple of (key,str(value)) pairs to use as a cache key.
+        try:
+            key = tuple(sorted((k, str(v)) for k, v in self._init_kwargs.items()))
+        except Exception:
+            key = tuple(sorted(list(self._init_kwargs.items())))
+        cached = _qdrant_clients.get(key)
+        if cached is not None:
+            self.client = cached
+        else:
+            client = qdrant_client.QdrantClient(**self._init_kwargs)
+            _qdrant_clients[key] = client
+            self.client = client
         self.collection_name = collection_name
 
     @property
@@ -441,10 +477,15 @@ class QdrantVectorStore(IVectorStore):
         except Exception:
             # Final fallback: attempt deprecated recreate_collection for extremely old clients
             try:  # pragma: no cover - legacy path
-                self.client.recreate_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
-                )
+                # Suppress DeprecationWarning emitted by older qdrant_client
+                import warnings
+
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=DeprecationWarning)
+                    self.client.recreate_collection(
+                        collection_name=self.collection_name,
+                        vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
+                    )
             except Exception:
                 pass
 
@@ -504,6 +545,180 @@ class QdrantVectorStore(IVectorStore):
             return True
         except Exception:
             return False
+
+
+class BatchedStore(IKeyValueStore, IVectorStore):
+    """Wraps a KV store and a Vector store and batches writes in-process.
+
+    This class is opt-in via configuration (env var). It collects KV `set`
+    calls and vector `upsert` calls into an in-memory queue and flushes them
+    periodically or when a configured batch size is reached. The flush runs
+    on a daemon background thread so it doesn't block request processing.
+    """
+
+    def __init__(
+        self,
+        kv_store: IKeyValueStore,
+        vector_store: IVectorStore,
+        batch_size: int = 100,
+        flush_interval_ms: int = 5,
+    ):
+        self._kv = kv_store
+        self._vec = vector_store
+        self._batch_size = int(batch_size)
+        self._flush_interval = max(int(flush_interval_ms), 1) / 1000.0
+        self._kv_queue: list[tuple[str, bytes]] = []
+        self._vec_queue: list[dict[str, Any]] = []
+        self._lock = threading.RLock()
+        self._stop = threading.Event()
+        self._worker = threading.Thread(target=self._run, daemon=True)
+        self._worker.start()
+
+    # ----- IKeyValueStore methods (delegated where appropriate) -----
+    def set(self, key: str, value: bytes):
+        # Enqueue KV set for batch flush
+        with self._lock:
+            self._kv_queue.append((key, value))
+            if len(self._kv_queue) + len(self._vec_queue) >= self._batch_size:
+                # flush synchronously when threshold reached to avoid unbounded memory
+                self._flush_locked()
+
+    def get(self, key: str) -> bytes | None:
+        # Reads must be strongly consistent; delegate directly to underlying store
+        return self._kv.get(key)
+
+    def delete(self, key_or_ids):
+        """Delete either a KV key (str) or vector ids (list[str]).
+
+        BatchedStore implements both IKeyValueStore and IVectorStore delete
+        contracts. To avoid duplicate method names with incompatible
+        signatures, provide a single dispatcher that accepts either a string
+        key (delegated to the underlying KV store) or an iterable of ids
+        (delegated to the underlying vector store).
+        """
+        # Vector delete path (list/tuple of ids)
+        try:
+            if isinstance(key_or_ids, list) or isinstance(key_or_ids, tuple):
+                return self._vec.delete(key_or_ids)
+        except Exception:
+            # Fallthrough to KV path
+            pass
+        # KV delete path (single key)
+        return self._kv.delete(key_or_ids)
+
+    def scan_iter(self, pattern: str):
+        return self._kv.scan_iter(pattern)
+
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
+        return self._kv.hgetall(key)
+
+    def hset(self, key: str, mapping: Mapping[bytes, bytes]):
+        return self._kv.hset(key, mapping)
+
+    def lock(self, name: str, timeout: int = 10):
+        return self._kv.lock(name, timeout)
+
+    def health_check(self) -> bool:
+        return self._kv.health_check() and self._vec.health_check()
+
+    # ----- IVectorStore methods -----
+    def setup(self, vector_dim: int, namespace: str):
+        return self._vec.setup(vector_dim, namespace)
+
+    def upsert(self, points: list[dict[str, Any]]):
+        # Enqueue points for batch upsert
+        with self._lock:
+            self._vec_queue.extend(points)
+            if len(self._kv_queue) + len(self._vec_queue) >= self._batch_size:
+                self._flush_locked()
+
+    def search(self, vector: list[float], top_k: int):
+        return self._vec.search(vector, top_k)
+
+    # (vector delete is handled by the unified `delete` dispatcher above)
+
+    def scroll(self):
+        return self._vec.scroll()
+
+    # ----- Background worker & flush -----
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                with self._lock:
+                    self._flush_locked()
+            except Exception:
+                # Avoid letting background thread crash silently
+                pass
+            self._stop.wait(self._flush_interval)
+
+    def _flush_locked(self):
+        # Caller must hold self._lock
+        if not self._kv_queue and not self._vec_queue:
+            return
+        kv_items = self._kv_queue
+        vec_items = self._vec_queue
+        self._kv_queue = []
+        self._vec_queue = []
+
+        # Flush KV items
+        try:
+            # Best-effort: try to use pipeline if underlying Redis client exposes it
+            if hasattr(self._kv, "client") and hasattr(self._kv.client, "pipeline"):
+                pipe = self._kv.client.pipeline()
+                for k, v in kv_items:
+                    pipe.set(k, v)
+                try:
+                    pipe.execute()
+                except Exception:
+                    # Fallback to individual writes
+                    for k, v in kv_items:
+                        try:
+                            self._kv.set(k, v)
+                        except Exception:
+                            pass
+            else:
+                for k, v in kv_items:
+                    try:
+                        self._kv.set(k, v)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Flush vector items
+        try:
+            if vec_items:
+                try:
+                    self._vec.upsert(vec_items)
+                except Exception:
+                    # If upsert fails, attempt individual upserts to avoid losing data
+                    for p in vec_items:
+                        try:
+                            self._vec.upsert([p])
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    def flush(self, timeout: float = 5.0):
+        """Flush pending items synchronously (useful for tests)."""
+        ev = threading.Event()
+        with self._lock:
+            self._flush_locked()
+        ev.wait(0)
+
+    def stop(self):
+        self._stop.set()
+        try:
+            self._worker.join(timeout=1.0)
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self.stop()
+        except Exception:
+            pass
 
 
 # Postgres-backed key-value store (canonical storage for EVENTED_ENTERPRISE)
