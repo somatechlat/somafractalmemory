@@ -47,24 +47,29 @@ title: "Document Title"
 purpose: "One-sentence purpose"
 audience:
   - "Primary audience"
-version: "1.0.0"
 last_updated: "YYYY-MM-DD"
-review_frequency: "quarterly"
 ---
-```
+ This style guide enforces ISO/IEC 12207 §8.3 for SomaFractalMemory documentation.
 
-## Naming Conventions
+ ## Formatting
+ - Use `kebab-case.md` for files
+ - Use singular nouns for directories
+ - All diagrams stored as source (`.puml`, `.drawio`)
+ - Fenced code blocks for commands and output
+ - Use tables for mapping, checklists, and matrices
 
-- Use **kebab-case**: `memory-storage.md`
-- Use **descriptive names**: `postgresql-setup.md`
-- Use **prefixes**: `how-to-*`, `guide-*`, `ref-*`
+ ## Terminology
+ - Use consistent terms from `glossary.md`
+ - Prefer active voice, short sentences
+ - All acronyms defined on first use
 
-## Writing Style
+ ## Linting & Automation
+ - All docs must pass `markdownlint` and link checks in CI
+ - Diagrams rendered via CI hooks
+ - Version badge auto-generated from git tag
 
-- Active voice: "Run the command"
-- Direct and concise
-- Address reader directly
+ ## Accessibility
+ - Alt-text for images
+ - Colour contrast and screen-reader friendly
 
----
-
-*Documentation feedback welcome.*
+ See [front_matter.yaml](front_matter.yaml) for standards mapping.

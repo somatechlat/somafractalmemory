@@ -1,17 +1,20 @@
 ---
 title: "Glossary"
-purpose: "| Term | Definition | |------|------------| | `/memories` | The sole HTTP API surface for storing, searching, fetching, and deleting memories."
+purpose: "Key terms and definitions for SomaFractalMemory."
 audience:
-  - "All Stakeholders"
-last_updated: "2025-10-16"
+  - "All stakeholders"
+last_updated: "2025-10-24"
 ---
-
-# Glossary
 
 | Term | Definition |
 |------|------------|
-| `/memories` | The sole HTTP API surface for storing, searching, fetching, and deleting memories. |
-| Bearer Token | Authentication credential supplied via the `Authorization` header. |
-| Hybrid Search | Combination of vector similarity and metadata filters. |
-| Namespace | Logical partition used for memory keys; defaults to `api_ns`. |
-| Rate Limiter | Global limiter protecting the API from abuse. |
+| **Runbook** | Step-by-step operational guide for a specific service or incident. |
+| **Helm Release** | Named deployment of a Helm chart into a Kubernetes namespace. |
+| **Kind** | Local Kubernetes cluster tool used for development and CI. |
+| **SLO** | Service-Level Objective – measurable performance target. |
+| **SLA** | Service-Level Agreement – contractual commitment to an SLO. |
+| **RBAC** | Role-Based Access Control – Kubernetes permission model. |
+| **Vault** | Secrets management system used by the project. |
+| **CI** | Continuous Integration – automated testing & linting pipeline. |
+| **MkDocs** | Static-site generator for Markdown documentation. |
+| **PlantUML** | Text-based diagram language; source kept under version control. |

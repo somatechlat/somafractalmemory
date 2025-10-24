@@ -1,34 +1,27 @@
 ---
-title: Development Manual---
-purpose: 'title: "SomaFractalMemory Development Manual"'
+title: "Development Manual"
+purpose: "How to build, modify, and contribute to SomaFractalMemory."
 audience:
-- Developers and Contributors
-last_updated: '2025-10-16'
+  - "Engineers"
+  - "Contributors"
+last_updated: "2025-10-24"
 ---
 
+# Development Manual
 
-# Development Manual---
+## Scope & Audience
+This manual covers the development lifecycle, local setup, coding standards, testing guidelines, API reference, and contribution process for SomaFractalMemory. It is written for engineers and contributors.
 
-title: "SomaFractalMemory Development Manual"
+## Content Blueprint
+| Section | ISO Reference | Content |
+|---------|---------------|---------|
+| Local Setup | ISO 29148 § 5.2 | Dev environment guide |
+| Coding Standards | ISO 12207 § 8.3 | Style guide, linting, naming |
+| Testing Guidelines | ISO 29119 § 4 | Unit, integration, e2e strategy |
+| API Reference | ISO 29148 § 5.4 | OpenAPI spec, versioned |
+| Contribution Process | ISO 12207 § 6.6 | Branching, PR workflow, review |
 
-This manual is for contributors extending SomaFractalMemory. It defines environment setup, coding conventions, test strategy, and the supported `/memories` API contract.purpose: "Guide for software engineers on how to build, modify, and contribute to the codebase"
-
-audience:
-
-All legacy API variants were removed in October 2025. Only merge code and documentation that respects the `/memories` CRUD/search surface and the new CLI commands (`store`, `search`, `get`, `delete`).  - "Primary: Software Engineers"
-
-  - "Primary: Contributors"
-  - "Secondary: Technical Leads"
-version: "1.0.0"
-last_updated: "2025-10-16"
-review_frequency: "quarterly"
----
-
-# Developer Manual
-
-## Overview
-
-Welcome to the Soma Fractal Memory Developer Manual. This guide provides comprehensive information for developers who want to contribute to or build upon the Soma Fractal Memory system.
+See [local-setup.md](local-setup.md) and [api-reference.md](../technical-manual/api-reference.md) for details.
 
 ## Quick Links
 

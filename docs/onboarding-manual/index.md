@@ -1,26 +1,28 @@
 ---
-title: Onboarding Manual---
-purpose: 'title: "SomaFractalMemory Onboarding Manual"'
+title: "Onboarding Manual"
+purpose: "How to quickly become productive with SomaFractalMemory."
 audience:
-- New Team Members
-last_updated: '2025-10-16'
+  - "New team members"
+  - "Contractors"
+last_updated: "2025-10-24"
 ---
 
+# Onboarding Manual
 
-# Onboarding Manual---
+## Scope & Audience
+This manual provides project context, codebase walkthrough, first contribution steps, team collaboration, and domain knowledge for new team members and contractors.
 
-title: "SomaFractalMemory Onboarding Manual"
+## Content Blueprint
+| Section | ISO Reference | Content |
+|---------|---------------|---------|
+| Project Context | ISO 21500 § 5.2 | Mission, goals, stakeholder map |
+| Codebase Walkthrough | ISO 42010 § 4 | Architecture, module responsibilities |
+| First Contribution | ISO 12207 § 6.6 | PR checklist, CI feedback |
+| Team Collaboration | ISO 21500 § 7.3 | Communication, meetings |
+| Domain Knowledge | ISO 29148 § 5.5 | Business rules, data model |
 
-Welcome to SomaFractalMemory. This manual equips new contributors—internal engineers and contract agents—with all the context and checklists necessary to become productive quickly while respecting the simplified `/memories` API.purpose: "Help new team members, agents, and contractors quickly become productive on the project"
+See [onboarding-timeline.md](onboarding-timeline.md) for step-by-step onboarding.
 
-audience:
-  - "Primary: New Team Members"
-  - "Primary: Agent Coders"
-  - "Primary: Contractors"
-  - "Secondary: Project Leads"
-version: "1.0.0"
-last_updated: "2025-10-16"
-review_frequency: "quarterly"
 ---
 
 # Welcome to Soma Fractal Memory

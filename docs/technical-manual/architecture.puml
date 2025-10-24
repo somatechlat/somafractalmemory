@@ -1,0 +1,11 @@
+@startuml
+actor User
+rectangle "SomaFractalMemory API" as API
+rectangle "PostgreSQL" as DB
+rectangle "Redis" as Redis
+rectangle "Qdrant" as Qdrant
+User --> API : HTTP/REST
+API --> DB : SQL
+API --> Redis : Cache
+API --> Qdrant : Vector Search
+@enduml

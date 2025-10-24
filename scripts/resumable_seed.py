@@ -7,14 +7,20 @@ Features:
 - Uses environment variable SOMA_API_TOKEN or a token file via SOMA_API_TOKEN_FILE
 
 Usage examples:
-  # basic: seed 1000 entries starting from 1
-  python scripts/resumable_seed.py --total 1000
+    # basic: seed 1000 entries starting from 1
+    python scripts/resumable_seed.py --total 1000
 
-  # resume from checkpoint automatically
-  python scripts/resumable_seed.py --total 1000 --concurrency 20
+    # resume from checkpoint automatically
+    python scripts/resumable_seed.py --total 1000 --concurrency 20
 
-  # run in background and survive terminal disconnect (nohup)
-  nohup python scripts/resumable_seed.py --total 1000 --concurrency 20 > seed.log 2>&1 &
+    # require OPA enforcement
+    python scripts/resumable_seed.py --total 1000 --require-opa
+
+    # run backup/restore validation after seeding
+    python scripts/resumable_seed.py --total 1000 --backup-validate scripts/backup_restore.py
+
+    # run in background and survive terminal disconnect (nohup)
+    nohup python scripts/resumable_seed.py --total 1000 --concurrency 20 > seed.log 2>&1 &
 
 Note: ensure the API token is securely provisioned to the script (prefer Kubernetes secrets, Vault, or a secure file; never hardcode or use default values).
 """
@@ -196,16 +202,14 @@ class Seeder:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument(
-        "--base", default=os.getenv("SOMA_API_BASE", "http://127.0.0.1:9595"), help="API base URL"
-    )
+    p.add_argument("--base", default=os.getenv("SOMA_API_BASE", "http://127.0.0.1:9595"), help="API base URL")
     p.add_argument("--total", type=int, required=True, help="Total number of memories to write")
     p.add_argument("--start", type=int, default=1, help="Starting index (default 1)")
     p.add_argument("--concurrency", type=int, default=20, help="Number of concurrent workers")
-    p.add_argument(
-        "--checkpoint-file", default=".seed_checkpoint.json", help="Checkpoint file path"
-    )
+    p.add_argument("--checkpoint-file", default=".seed_checkpoint.json", help="Checkpoint file path")
     p.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout seconds per request")
+    p.add_argument("--require-opa", action="store_true", help="Fail if OPA is not enforced (any memory not blocked by OPA policy)")
+    p.add_argument("--backup-validate", type=str, help="Path to backup/restore validation script to run after seeding")
     args = p.parse_args()
 
     # Start Prometheus metrics server on port 8001
@@ -227,6 +231,28 @@ def main():
         timeout=args.timeout,
     )
     seeder.run()
+
+    # OPA enforcement check
+    if args.require_opa:
+        if seeder.successes == 0:
+            print("[OPA] No memories stored. OPA enforcement may be too strict or API is down.")
+        elif seeder.successes > 0 and SEED_OPA_DENIED._value.get() == 0:
+            print("[OPA] WARNING: No OPA denied responses detected. OPA enforcement may not be active!")
+            sys.exit(3)
+        else:
+            print(f"[OPA] {SEED_OPA_DENIED._value.get()} OPA denied responses detected. Enforcement active.")
+
+    # Backup/restore validation hook
+    if args.backup_validate:
+        print(f"[BACKUP] Running backup/restore validation: {args.backup_validate}")
+        import subprocess
+        result = subprocess.run([sys.executable, args.backup_validate], capture_output=True, text=True)
+        print("[BACKUP] Validation output:\n", result.stdout)
+        if result.returncode != 0:
+            print("[BACKUP] Validation failed!")
+            sys.exit(result.returncode)
+        else:
+            print("[BACKUP] Validation succeeded.")
 
 
 if __name__ == "__main__":

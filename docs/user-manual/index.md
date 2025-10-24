@@ -1,25 +1,24 @@
 ---
-title: "SomaFractalMemory User Manual"
-purpose: "This manual explains how operators and product stakeholders interact with the SomaFractalMemory service from an end-user perspective."
+title: "User Manual"
+purpose: "How to use SomaFractalMemory as an end user."
 audience:
-  - "End Users"
-last_updated: "2025-10-16"
+  - "End users"
+  - "Product managers"
+last_updated: "2025-10-24"
 ---
 
-# SomaFractalMemory User Manual
+# User Manual
 
-This manual explains how operators and product stakeholders interact with the SomaFractalMemory service from an end-user perspective. It focuses on the four supported workflows that every client or integration must follow:
+## Scope & Audience
+This manual provides step-by-step instructions for using SomaFractalMemory, including installation, quick-start, feature guides, and troubleshooting. It is written for end users and product managers.
 
-1. **Store** a memory with `POST /memories`.
-2. **Retrieve** a specific memory with `GET /memories/{coord}`.
-3. **Search** across stored memories with `POST /memories/search` or `GET /memories/search`.
-4. **Delete** a memory with `DELETE /memories/{coord}`.
+## Content Blueprint
+| Section | ISO Reference | Content |
+|---------|---------------|---------|
+| Introduction | ISO 21500 § 5.1 | High-level product purpose |
+| Installation | ISO 12207 § 6.4 | Prerequisites, install steps |
+| Quick-Start | ISO 29148 § 5.2 | First-time success scenario |
+| Core Features | ISO 29148 § 5.3 | Feature-by-feature guides |
+| FAQ & Troubleshooting | ISO 21500 § 7.4 | Common user problems & resolutions |
 
-The user manual is organised as follows:
-
-- [Installation](installation.md): lightweight steps to run the HTTP API locally.
-- [Quick-Start Tutorial](quick-start-tutorial.md): a guided flow that exercises the full lifecycle.
-- [Feature Guides](features/): task-based walkthroughs for storage and search scenarios.
-- [FAQ](faq.md): answers to the most common usability questions.
-
-> **Important:** All legacy HTTP endpoints (`/store`, `/recall`, `/link`, graph routes, batch variants) are removed as of version 2.0.0. Every client must migrate and exclusively use the `/memories` surface described in this manual.
+See [quick-start-tutorial.md](quick-start-tutorial.md) for hands-on usage.
