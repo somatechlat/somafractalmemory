@@ -439,29 +439,30 @@ try:
 except Exception as e:
     logger.error(f"FATAL: Error during initialization: {e}", exc_info=True)
     raise
-    raise
 
-    # Prediction providers are optional and intentionally out-of-process. The
-    # data-plane does not install or report prediction providers by default.
 
-    """Extract Authorization header manually to avoid Header call in defaults.
+# Authentication dependency
+def auth_dep(request: Request):
+    """FastAPI dependency that enforces either JWT authentication (when
+    enabled via settings) or the static SOMA_API_TOKEN fallback.
 
-    FastAPI recommends using ``Header`` for dependency injection, but the linter
-    flags calling it in a default argument. This implementation reads the header
-    from the ``Request`` object directly, preserving the same security checks.
+    On success, when JWT is used, the decoded claims are attached to
+    ``request.state.jwt_claims`` and the claims dict is returned. When the
+    static token is used or no claims are required, None is returned.
     """
-    # Load settings for JWT config
-    settings = None
+    # Load settings safely (settings are optional in some environments)
+    settings_local = None
     try:
         if load_settings:
-            settings = load_settings()
+            settings_local = load_settings()
     except Exception:
-        settings = None
-    jwt_enabled = getattr(settings, "jwt_enabled", False) if settings else False
-    jwt_issuer = getattr(settings, "jwt_issuer", "") if settings else ""
-    jwt_audience = getattr(settings, "jwt_audience", "") if settings else ""
-    jwt_secret = getattr(settings, "jwt_secret", "") if settings else ""
-    jwt_public_key = getattr(settings, "jwt_public_key", "") if settings else ""
+        settings_local = None
+
+    jwt_enabled = getattr(settings_local, "jwt_enabled", False) if settings_local else False
+    jwt_issuer = getattr(settings_local, "jwt_issuer", "") if settings_local else ""
+    jwt_audience = getattr(settings_local, "jwt_audience", "") if settings_local else ""
+    jwt_secret = getattr(settings_local, "jwt_secret", "") if settings_local else ""
+    jwt_public_key = getattr(settings_local, "jwt_public_key", "") if settings_local else ""
 
     authorization = request.headers.get("Authorization")
     if not authorization or not authorization.startswith("Bearer "):
@@ -471,7 +472,6 @@ except Exception as e:
     if jwt_enabled:
         # Validate JWT
         try:
-            # Choose key and algorithm
             if jwt_public_key:
                 key = jwt_public_key
                 alg = "RS256"
@@ -496,13 +496,15 @@ except Exception as e:
             raise HTTPException(status_code=403, detail="JWT audience invalid")
         except jwt.InvalidTokenError as e:
             raise HTTPException(status_code=403, detail=f"JWT invalid: {str(e)}")
-        # Optionally: attach claims to request.state for downstream use
+        # Attach claims for downstream use
         request.state.jwt_claims = payload
+        return payload
     else:
-        # Fallback: static token
+        # Static token fallback
         if API_TOKEN:
             if token != API_TOKEN:
                 raise HTTPException(status_code=403, detail="Invalid token")
+        return None
 
 
 def rate_limit_dep(path: str):

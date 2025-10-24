@@ -202,14 +202,26 @@ class Seeder:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--base", default=os.getenv("SOMA_API_BASE", "http://127.0.0.1:9595"), help="API base URL")
+    p.add_argument(
+        "--base", default=os.getenv("SOMA_API_BASE", "http://127.0.0.1:9595"), help="API base URL"
+    )
     p.add_argument("--total", type=int, required=True, help="Total number of memories to write")
     p.add_argument("--start", type=int, default=1, help="Starting index (default 1)")
     p.add_argument("--concurrency", type=int, default=20, help="Number of concurrent workers")
-    p.add_argument("--checkpoint-file", default=".seed_checkpoint.json", help="Checkpoint file path")
+    p.add_argument(
+        "--checkpoint-file", default=".seed_checkpoint.json", help="Checkpoint file path"
+    )
     p.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout seconds per request")
-    p.add_argument("--require-opa", action="store_true", help="Fail if OPA is not enforced (any memory not blocked by OPA policy)")
-    p.add_argument("--backup-validate", type=str, help="Path to backup/restore validation script to run after seeding")
+    p.add_argument(
+        "--require-opa",
+        action="store_true",
+        help="Fail if OPA is not enforced (any memory not blocked by OPA policy)",
+    )
+    p.add_argument(
+        "--backup-validate",
+        type=str,
+        help="Path to backup/restore validation script to run after seeding",
+    )
     args = p.parse_args()
 
     # Start Prometheus metrics server on port 8001
@@ -237,16 +249,23 @@ def main():
         if seeder.successes == 0:
             print("[OPA] No memories stored. OPA enforcement may be too strict or API is down.")
         elif seeder.successes > 0 and SEED_OPA_DENIED._value.get() == 0:
-            print("[OPA] WARNING: No OPA denied responses detected. OPA enforcement may not be active!")
+            print(
+                "[OPA] WARNING: No OPA denied responses detected. OPA enforcement may not be active!"
+            )
             sys.exit(3)
         else:
-            print(f"[OPA] {SEED_OPA_DENIED._value.get()} OPA denied responses detected. Enforcement active.")
+            print(
+                f"[OPA] {SEED_OPA_DENIED._value.get()} OPA denied responses detected. Enforcement active."
+            )
 
     # Backup/restore validation hook
     if args.backup_validate:
         print(f"[BACKUP] Running backup/restore validation: {args.backup_validate}")
         import subprocess
-        result = subprocess.run([sys.executable, args.backup_validate], capture_output=True, text=True)
+
+        result = subprocess.run(
+            [sys.executable, args.backup_validate], capture_output=True, text=True
+        )
         print("[BACKUP] Validation output:\n", result.stdout)
         if result.returncode != 0:
             print("[BACKUP] Validation failed!")

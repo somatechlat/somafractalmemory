@@ -25,6 +25,8 @@ dependencies = [
   "qdrant-client",
   "scikit-learn",
   "cryptography",
+  "PyJWT",
+  "requests",
   "prometheus-client",
   "structlog",
   "pydantic-settings",

@@ -25,8 +25,8 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ .Release.Name }}-somafractalmemory-secrets
-              key: POSTGRES_PASSWORD
+              name: {{ .Values.secrets.postgresPasswordSecretName }}
+              key: SOMA_POSTGRES_PASSWORD
         - name: POSTGRES_DB
           value: somafractalmemory
         {{- if .Values.postgres.persistence.enabled }}
@@ -40,7 +40,9 @@ spec:
       name: pgdata
     spec:
       accessModes: [ "ReadWriteOnce" ]
+      {{- if .Values.postgres.persistence.storageClass }}
       storageClassName: {{ .Values.postgres.persistence.storageClass | quote }}
+      {{- end }}
       resources:
         requests:
           storage: {{ .Values.postgres.persistence.size }}

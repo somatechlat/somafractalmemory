@@ -63,13 +63,18 @@ Follow these steps to provision or redeploy the local stack. The sequence replac
 ## Kubernetes (Helm)
 Use the Helm chart in `helm/` to deploy SomaFractalMemory to a Kubernetes namespace.
 
-1. **Create secrets**
-   ```bash
-   kubectl create secret generic somafractal-secrets \
-     --from-literal=SOMA_API_TOKEN=replace-me \
-     --from-literal=SOMA_POSTGRES_URL=postgresql://user:pass@postgres:5432/somamemory \
-     -n somafractalmemory
-   ```
+1. **Create secrets (required)**
+    ```bash
+    # API token secret (referenced by .Values.secrets.apiTokenSecretName)
+    kubectl create secret generic soma-api-token \
+       --from-literal=SOMA_API_TOKEN=<your-secure-token> \
+       -n somafractalmemory
+
+    # Postgres password secret (referenced by .Values.secrets.postgresPasswordSecretName)
+    kubectl create secret generic soma-postgres-password \
+       --from-literal=SOMA_POSTGRES_PASSWORD=<your-secure-password> \
+       -n somafractalmemory
+    ```
 
 2. **Install or upgrade the release**
    ```bash
@@ -85,8 +90,32 @@ Use the Helm chart in `helm/` to deploy SomaFractalMemory to a Kubernetes namesp
    curl -H "Authorization: Bearer $SOMA_API_TOKEN" http://127.0.0.1:9595/readyz
    ```
 
-4. **Expose externally**
-   Configure ingress, mesh routes, or load balancers for `/memories`, `/stats`, `/metrics`, `/healthz`, and `/readyz` as required by your platform.
+4. **Expose externally (optional)**
+    Enable ingress in values and configure TLS:
+    ```yaml
+    ingress:
+       enabled: true
+       className: nginx
+       hosts:
+          - host: sfm.example.com
+             paths:
+                - path: /
+                   pathType: Prefix
+       tls:
+          - hosts: ["sfm.example.com"]
+             secretName: sfm-tls
+    ```
+
+### Optional: Scheduled Backups
+Enable a backup CronJob that runs the built-in backup script on a schedule:
+```yaml
+backup:
+   enabled: true
+   schedule: "0 3 * * *"
+   image: "somafractalmemory:latest"
+   backupDir: "/backups"
+   dataDir: "/data"
+```
 
 ### Port Map (Kubernetes)
 | Service | Service Port | Target Port | Notes |

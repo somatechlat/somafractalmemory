@@ -19,9 +19,13 @@ postgres:
   replicaCount: 1
   persistence:
     enabled: false
-  secrets:
-    apiTokenSecretName: "soma-api-token"
-    postgresPasswordSecretName: "soma-postgres-password"
+
+secrets:
+  create: false
+  apiTokenSecretName: "soma-api-token"
+  postgresPasswordSecretName: "soma-postgres-password"
+  apiTokenLiteral: ""
+  postgresPasswordLiteral: ""
 
 redis:
   replicaCount: 1

@@ -30,7 +30,9 @@ spec:
       name: qdrant-storage
     spec:
       accessModes: [ "ReadWriteOnce" ]
+      {{- if .Values.qdrant.persistence.storageClass }}
       storageClassName: {{ .Values.qdrant.persistence.storageClass | quote }}
+      {{- end }}
       resources:
         requests:
           storage: {{ .Values.qdrant.persistence.size }}

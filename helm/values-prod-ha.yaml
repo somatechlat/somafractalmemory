@@ -16,9 +16,13 @@ postgres:
   persistence:
     enabled: true
     storageClass: "gp2" # Example for AWS, change as needed
-  secrets:
-    apiTokenSecretName: "soma-api-token"
-    postgresPasswordSecretName: "soma-postgres-password"
+
+secrets:
+  create: false
+  apiTokenSecretName: "soma-api-token"
+  postgresPasswordSecretName: "soma-postgres-password"
+  apiTokenLiteral: ""
+  postgresPasswordLiteral: ""
 
 redis:
   replicaCount: 2

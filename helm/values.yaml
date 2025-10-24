@@ -23,6 +23,16 @@ service:
   port: 9595
   targetPort: 9595
 
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
 postgres:
   enabled: true
   replicaCount: 1
@@ -66,5 +76,16 @@ qdrant:
     size: 10Gi
 
 secrets:
+  create: false
   apiTokenSecretName: "soma-api-token"
   postgresPasswordSecretName: "soma-postgres-password"
+  # Optional: used only if `secrets.create` is true
+  apiTokenLiteral: ""
+  postgresPasswordLiteral: ""
+
+  backup:
+    enabled: false
+    schedule: "0 3 * * *"
+    image: "somafractalmemory:latest"
+    backupDir: "/backups"
+    dataDir: "/data"

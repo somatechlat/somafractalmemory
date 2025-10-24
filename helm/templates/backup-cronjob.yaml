@@ -1,0 +1,23 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: {{ .Values.backup.image | quote }}
+              imagePullPolicy: IfNotPresent
+              command: ["python", "scripts/backup_restore.py", "--backup", "--dest", {{ .Values.backup.backupDir | quote }}]
+              env:
+                - name: SOMA_BACKUP_DIR
+                  value: {{ .Values.backup.backupDir | quote }}
+                - name: SOMA_MEMORY_DATA_DIR
+                  value: {{ .Values.backup.dataDir | quote }}
+          restartPolicy: OnFailure
+{{- end }}
