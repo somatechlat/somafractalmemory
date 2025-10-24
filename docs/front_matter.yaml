@@ -1,3 +1,15 @@
+project: "somafractalmemory"
+version: "0.1.0"
+maintainers:
+  - name: "SomaTech Lat Docs"
+    email: "docs+owner@somatech.lat"
+standards:
+  - name: "ISO-9001"
+    version: "2015"
+  - name: "ISO-27001"
+    version: "2013"
+generated_by: "docs/tools/validate_traceability.py"
+generated_on: "2025-10-24"
 title: "SomaFractalMemory Documentation"
 version: "1.0.0"
 last_updated: "2025-10-24"
