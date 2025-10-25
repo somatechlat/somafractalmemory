@@ -24,3 +24,7 @@ Stats
 Notes
 - The docker-compose file pins SOMA_API_TOKEN to "devtoken" for reliable local testing.
 - If you change the token, update your client headers accordingly.
+
+Secrets and environments
+- See `docs/technical-manual/security-secrets.md` for dev vs prod guidance and how to override with `.env`.
+- Use `.env.example` as a starting point. Do not commit real secrets.

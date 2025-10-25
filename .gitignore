@@ -7,6 +7,7 @@ ENV/
 .env.*
 *.env
 !.env.template
+!.env.example
 .python-version
 
 # --- Python bytecode and caches ---
