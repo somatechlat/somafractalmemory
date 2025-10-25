@@ -8,7 +8,8 @@ client = TestClient(app)
 
 
 def test_malformed_coord_returns_400():
-    token = os.getenv("SOMA_API_TOKEN", "dev-89661821bba49bb033a26c0b")
+    # Use the pinned dev token by default to match local compose configuration
+    token = os.getenv("SOMA_API_TOKEN", "devtoken")
     headers = {"Authorization": f"Bearer {token}"}
     payload = {
         "coord": "target-learnbench-3c6c5e16-282e3f50",
