@@ -2,7 +2,6 @@
 namespace: "default"
 vector_dim: 768
 api_port: 9595
-grpc_port: 50053
 
 # Infrastructure endpoints
 infra:
