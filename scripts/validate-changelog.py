@@ -48,9 +48,7 @@ def validate_changelog():
     # Validate version matches git tag
     git_tag = get_latest_git_tag()
     if git_tag and git_tag.lstrip("v") != latest_version:
-        print(
-            f"Error: Latest changelog version {latest_version} " f"doesn't match git tag {git_tag}"
-        )
+        print(f"Error: Latest changelog version {latest_version} doesn't match git tag {git_tag}")
         return False
 
     # Validate date format and recency

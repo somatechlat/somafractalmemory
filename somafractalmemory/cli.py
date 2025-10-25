@@ -1,4 +1,5 @@
 import argparse
+import argparse as _argparse
 import asyncio
 import json
 import os
@@ -73,7 +74,7 @@ def get_mode(mode_str: str) -> MemoryMode:
     return MemoryMode.EVENTED_ENTERPRISE
 
 
-async def _run_command_async(args) -> None:
+async def _run_command_async(args: _argparse.Namespace) -> None:
     # Run the synchronous memory system functions in a thread to avoid blocking
     # the async loop while keeping compatibility with current store/recall APIs.
     # Ensure deterministic, quiet embeddings in CLI flows

@@ -298,7 +298,7 @@ def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
 
 def _log_startup_config(memory_mode, namespace_default, config, redis_cfg):
     q = config.get("qdrant", {})
-    q_loc = q.get("url") or f"{q.get('host','')}:{q.get('port','')}"
+    q_loc = q.get("url") or f"{q.get('host', '')}:{q.get('port', '')}"
     logger.info(
         "api startup",
         mode=memory_mode.value,
