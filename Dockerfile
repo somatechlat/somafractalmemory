@@ -67,7 +67,7 @@ USER appuser
 
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# Expose HTTP API and gRPC ports (sync gRPC 50053, async gRPC 50054)
-EXPOSE 9595 8001 50053 50054
+# Expose only the HTTP API port
+EXPOSE 9595
 
 CMD ["/app/scripts/docker-entrypoint.sh"]
