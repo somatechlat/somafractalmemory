@@ -62,7 +62,8 @@ services:
     command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "${SOMA_API_PORT:-9595}"]
     # Port 9595 is the PUBLIC API ENTRY POINT (externally accessible)
     environment:
-      SOMA_API_TOKEN: ${SOMA_API_TOKEN:-devtoken}
+      # Pin a predictable development token so e2e tests work consistently
+      SOMA_API_TOKEN: "devtoken"
       CONFIG_FILE: /app/config.yaml
       SOMA_FORCE_HASH_EMBEDDINGS: "1"
     depends_on:
