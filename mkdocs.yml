@@ -5,54 +5,15 @@ repo_url: https://github.com/somatechlat/somafractalmemory
 repo_name: somatechlat/somafractalmemory
 
 nav:
-  - Home: user-manual/index.md
-  - User Manual:
-    - Overview: user-manual/index.md
-    - Installation: user-manual/installation.md
-    - Quick Start: user-manual/quick-start-tutorial.md
-    - Features:
-      - Memory Storage: user-manual/features/memory-storage.md
-      - Memory Search: user-manual/features/memory-search.md
-    - FAQ: user-manual/faq.md
+  - Home: README.md
   - Technical Manual:
     - Overview: technical-manual/index.md
-    - Architecture: technical-manual/architecture.md
-    - Deployment: technical-manual/deployment.md
-    - Monitoring: technical-manual/monitoring.md
-    - Backup and Recovery: technical-manual/backup-and-recovery.md
-    - Security:
-      - RBAC Matrix: technical-manual/security/rbac-matrix.md
-      - Secrets Policy: technical-manual/security/secrets-policy.md
-    - Runbooks:
-      - API Service: technical-manual/runbooks/api-service.md
-      - Vector Store: technical-manual/runbooks/vector-store.md
+    - Security and Secrets: technical-manual/security-secrets.md
+    - Deployment (Docker): technical-manual/deployment-docker.md
+    - Configuration Reference: technical-manual/config-reference.md
+    - Endpoint Catalog: technical-manual/endpoints.md
   - Development Manual:
-    - Overview: development-manual/index.md
-    - Local Setup: development-manual/local-setup.md
-    - Coding Standards: development-manual/coding-standards.md
-    - Contribution Process: development-manual/contribution-process.md
-    - Testing Guidelines: development-manual/testing-guidelines.md
-    - API Reference: development-manual/api-reference.md
-  - Onboarding Manual:
-    - Overview: onboarding-manual/index.md
-    - Project Context: onboarding-manual/project-context.md
-    - Codebase Walkthrough: onboarding-manual/codebase-walkthrough.md
-    - Environment Setup: onboarding-manual/environment-setup.md
-    - First Contribution: onboarding-manual/first-contribution.md
-    - Team Collaboration: onboarding-manual/team-collaboration.md
-    - Domain Knowledge: onboarding-manual/domain-knowledge.md
-    - Resources:
-      - Useful Links: onboarding-manual/resources/useful-links.md
-      - Troubleshooting: onboarding-manual/resources/troubleshooting.md
-      - Glossary: onboarding-manual/resources/glossary.md
-    - Checklists:
-      - Setup Checklist: onboarding-manual/checklists/setup-checklist.md
-      - Pre-Commit Checklist: onboarding-manual/checklists/pre-commit-checklist.md
-      - PR Checklist: onboarding-manual/checklists/pr-checklist.md
-  - Reference:
-    - Glossary: glossary.md
-    - Style Guide: style-guide.md
-    - Changelog: changelog.md
+    - Developer Environment (VS Code): development-manual/local-setup.md
 
 theme:
   name: material
@@ -99,8 +60,8 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.details
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       use_pygments: true
       linenums: true
@@ -127,11 +88,3 @@ extra:
       link: https://hub.docker.com/r/somatechlat/somafractalmemory
   version:
     provider: mike
-
-extra_css:
-  - stylesheets/extra.css
-
-extra_javascript:
-  - javascripts/mathjax.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

@@ -74,9 +74,8 @@ class SMFSettings(SomaBaseSettings):
     namespace: str = Field(default="default")
     model_name: str = Field(default="microsoft/codebert-base")
     vector_dim: int = Field(default=768)
-    # Canonical ports for the service interfaces
+    # Canonical port for the HTTP service interface
     api_port: int = Field(default=9595, description="FastAPI HTTP port")
-    grpc_port: int = Field(default=50053, description="gRPC service port")
     postgres_url: str = Field(
         default="postgresql://soma:soma@postgres:5432/somamemory",
         description="DSN used by the Postgres-backed key-value store",
@@ -87,6 +86,56 @@ class SMFSettings(SomaBaseSettings):
     )
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+
+    # Math/scoring knobs (kept optional; defaults preserve current behavior)
+    similarity_metric: str = Field(
+        default="cosine",
+        description="Similarity metric for vector search (cosine only at present)",
+    )
+    similarity_allow_negative: bool = Field(
+        default=False,
+        description="If true, do not clamp negative cosine similarities to 0.",
+    )
+    hybrid_boost: float = Field(
+        default=2.0,
+        description="Default keyword boost added per matched term in hybrid scoring.",
+    )
+
+    # Hybrid/vector search fine-tuning
+    hybrid_candidate_multiplier: float = Field(
+        default=4.0,
+        description="Multiply top_k by this factor to fetch more vector candidates before re-ranking.",
+    )
+
+    # Fast-core slab parameters
+    fast_core_initial_capacity: int = Field(
+        default=1024,
+        description="Initial capacity for fast-core contiguous slabs.",
+    )
+
+    # Importance normalization parameters
+    importance_reservoir_max: int = Field(default=512, description="Max samples in reservoir")
+    importance_recompute_stride: int = Field(
+        default=64, description="Recompute quantiles every N inserts"
+    )
+    importance_winsor_delta: float = Field(
+        default=0.25,
+        description="Winsorization delta as a fraction of core spread (q90-q10)",
+    )
+    importance_logistic_target_ratio: float = Field(
+        default=9.0,
+        description="Target odds ratio for logistic slope (k = ln(target)/spread)",
+    )
+    importance_logistic_k_max: float = Field(
+        default=25.0, description="Maximum logistic slope to avoid overflow"
+    )
+
+    # Decay heuristic weights and threshold
+    decay_age_hours_weight: float = Field(default=1.0)
+    decay_recency_hours_weight: float = Field(default=1.0)
+    decay_access_weight: float = Field(default=0.5)
+    decay_importance_weight: float = Field(default=2.0)
+    decay_threshold: float = Field(default=2.0)
 
     # JWT authentication config
     jwt_enabled: bool = Field(default=False, description="Enable JWT authentication")

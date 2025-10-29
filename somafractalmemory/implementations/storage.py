@@ -102,7 +102,9 @@ class InMemoryVectorStore(IVectorStore):
         for rec in self._points.values():
             # Dot product (both normalized) gives cosine
             sim = sum(a * b for a, b in zip(rec.vector, q, strict=True))
-            if sim < 0:
+            # Respect optional allow-negative toggle when set by caller
+            allow_negative = getattr(self, "_allow_negative", False)
+            if not allow_negative and sim < 0:
                 sim = 0.0  # clamp negative similarity
             imp = rec.payload.get("importance_norm")
             if isinstance(imp, int | float):
@@ -525,8 +527,12 @@ class QdrantVectorStore(IVectorStore):
         )
 
     def scroll(self) -> Iterator[Any]:
+        try:
+            _lim = int(os.getenv("SOMA_QDRANT_SCROLL_LIMIT", "100"))
+        except Exception:
+            _lim = 100
         records, next_page_offset = self.client.scroll(
-            collection_name=self.collection_name, limit=100, with_payload=True
+            collection_name=self.collection_name, limit=_lim, with_payload=True
         )
         while records:
             yield from records
@@ -534,7 +540,7 @@ class QdrantVectorStore(IVectorStore):
                 break
             records, next_page_offset = self.client.scroll(
                 collection_name=self.collection_name,
-                limit=100,
+                limit=_lim,
                 with_payload=True,
                 offset=next_page_offset,
             )

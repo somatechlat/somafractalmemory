@@ -221,6 +221,71 @@ class SomaFractalMemoryEnterprise:
         # Load centralized settings via Pydantic-based loader from common/
         config = load_settings(config_file=config_file)
 
+        # Math/scoring knobs (configurable; defaults preserve current behavior)
+        try:
+            self._allow_negative = bool(getattr(config, "similarity_allow_negative", False))
+        except Exception:
+            self._allow_negative = False
+        try:
+            self._hybrid_boost = float(getattr(config, "hybrid_boost", 2.0))
+        except Exception:
+            self._hybrid_boost = 2.0
+
+        # Additional tunables (defaults preserve behavior when unset)
+        try:
+            self._hybrid_candidate_multiplier = float(
+                getattr(config, "hybrid_candidate_multiplier", 4.0)
+            )
+        except Exception:
+            self._hybrid_candidate_multiplier = 4.0
+
+        # Importance normalization parameters
+        try:
+            self._imp_reservoir_max = int(getattr(config, "importance_reservoir_max", 512))
+        except Exception:
+            self._imp_reservoir_max = 512
+        try:
+            self._imp_stride = int(getattr(config, "importance_recompute_stride", 64))
+        except Exception:
+            self._imp_stride = 64
+        try:
+            self._imp_winsor_delta = float(getattr(config, "importance_winsor_delta", 0.25))
+        except Exception:
+            self._imp_winsor_delta = 0.25
+        try:
+            self._imp_logit_target_ratio = float(
+                getattr(config, "importance_logistic_target_ratio", 9.0)
+            )
+        except Exception:
+            self._imp_logit_target_ratio = 9.0
+        try:
+            self._imp_logit_k_max = float(getattr(config, "importance_logistic_k_max", 25.0))
+        except Exception:
+            self._imp_logit_k_max = 25.0
+
+        # Decay heuristic weights and threshold
+        self._decay_w_age = float(getattr(config, "decay_age_hours_weight", 1.0))
+        self._decay_w_recency = float(getattr(config, "decay_recency_hours_weight", 1.0))
+        self._decay_w_access = float(getattr(config, "decay_access_weight", 0.5))
+        self._decay_w_importance = float(getattr(config, "decay_importance_weight", 2.0))
+        self._decay_threshold = float(getattr(config, "decay_threshold", 2.0))
+
+        # Fast-core initial capacity, if enabled
+        if self.fast_core_enabled and hasattr(self, "_fast_capacity"):
+            try:
+                init_cap = int(getattr(config, "fast_core_initial_capacity", self._fast_capacity))
+            except Exception:
+                init_cap = self._fast_capacity
+            if init_cap != self._fast_capacity:
+                self._fast_capacity = max(1, init_cap)
+                self._fast_size = 0
+                self._fast_vectors = np.zeros(
+                    (self._fast_capacity, self.vector_dim), dtype="float32"
+                )
+                self._fast_importance = np.zeros(self._fast_capacity, dtype="float32")
+                self._fast_timestamps = np.zeros(self._fast_capacity, dtype="float64")
+                self._fast_payloads = [None] * self._fast_capacity
+
         # Allow forcing hash-only embeddings (fast, deterministic) for tests/dev
         force_hash = os.getenv("SOMA_FORCE_HASH_EMBEDDINGS", "0").lower() in (
             "1",
@@ -285,6 +350,11 @@ class SomaFractalMemoryEnterprise:
         self.langfuse = None
 
         self.vector_store.setup(vector_dim=self.vector_dim, namespace=self.namespace)
+        # Propagate allow_negative preference to in-memory vector store when available
+        try:
+            setattr(self.vector_store, "_allow_negative", self._allow_negative)
+        except Exception:
+            pass
         self._sync_graph_from_memories()
 
         # Start memory decay thread if enabled
@@ -558,10 +628,19 @@ class SomaFractalMemoryEnterprise:
                     continue
                 access_count = memory_item.get("access_count", 0)
                 importance = memory_item.get("importance", 0)
+                # Configurable decay scoring using weights; defaults preserve legacy behavior
+                w_age = float(getattr(self, "_decay_w_age", 1.0))
+                w_rec = float(getattr(self, "_decay_w_recency", 1.0))
+                w_acc = float(getattr(self, "_decay_w_access", 0.5))
+                w_imp = float(getattr(self, "_decay_w_importance", 2.0))
+                threshold = float(getattr(self, "_decay_threshold", 2.0))
                 decay_score = (
-                    (age / 3600) + (recency / 3600) - (0.5 * access_count) - (2 * importance)
+                    (w_age * (age / 3600))
+                    + (w_rec * (recency / 3600))
+                    - (w_acc * access_count)
+                    - (w_imp * importance)
                 )
-                if decay_score > 2 and importance <= 1:
+                if decay_score > threshold and importance <= 1:
                     keys_to_remove = set(memory_item.keys()) - {
                         "memory_type",
                         "timestamp",
@@ -1076,7 +1155,7 @@ class SomaFractalMemoryEnterprise:
         query: str,
         *,
         terms: Optional[List[str]] = None,
-        boost: float = 2.0,
+        boost: float | None = None,
         top_k: int = 5,
         memory_type: Optional[MemoryType] = None,
         exact: bool = True,
@@ -1117,9 +1196,17 @@ class SomaFractalMemoryEnterprise:
             except Exception:
                 terms = []
 
+        # Default boost from settings if not provided
+        if boost is None:
+            boost = getattr(self, "_hybrid_boost", 2.0)
+
         # Step 1: vector candidates (fetch more to allow post-filtering and boosting)
         qv = self.embed_text(query)
-        search_k = top_k * 4
+        try:
+            mult = float(getattr(self, "_hybrid_candidate_multiplier", 4.0))
+        except Exception:
+            mult = 4.0
+        search_k = max(int(top_k), int(math.ceil(top_k * mult)))
         vec_hits = []
         try:
             vec_hits = self.vector_store.search(qv.flatten().tolist(), top_k=search_k)
@@ -1166,7 +1253,7 @@ class SomaFractalMemoryEnterprise:
             if memory_type and payload.get("memory_type") != memory_type.value:
                 continue
             base = float(getattr(h, "score", 0.0) or 0.0)
-            b = boost * term_match_count(payload)
+            b = float(boost) * term_match_count(payload)
             key = coord_key(payload)
             cur = combined.get(key)
             score = base + b
@@ -1186,7 +1273,7 @@ class SomaFractalMemoryEnterprise:
                         base = float(np.dot(pv.flatten(), qv.flatten()))
                     except Exception:
                         base = 0.0
-                    score = base + boost * term_match_count(payload)
+                    score = base + float(boost) * term_match_count(payload)
                     key = coord_key(payload)
                     cur = combined.get(key)
                     if not cur or score > float(cur.get("score", -1e9)):
@@ -1338,7 +1425,9 @@ class SomaFractalMemoryEnterprise:
         else:
             q = qv
         sims = self._fast_vectors[: self._fast_size] @ q
-        np.maximum(sims, 0.0, out=sims)
+        # Optionally clamp negative similarities to zero (default behavior)
+        if not getattr(self, "_allow_negative", False):
+            np.maximum(sims, 0.0, out=sims)
         sims *= self._fast_importance[: self._fast_size]
         k = min(top_k, self._fast_size)
         if k <= 0:
@@ -1377,7 +1466,7 @@ class SomaFractalMemoryEnterprise:
         """
         # Reservoir update
         self._imp_reservoir.append(raw)
-        if len(self._imp_reservoir) > self._imp_reservoir_max:
+        if len(self._imp_reservoir) > int(getattr(self, "_imp_reservoir_max", 512)):
             self._imp_reservoir.pop(0)
 
         n = len(self._imp_reservoir)
@@ -1387,12 +1476,13 @@ class SomaFractalMemoryEnterprise:
         if self._importance_max is None or raw > self._importance_max:
             self._importance_max = raw
 
-        if n < 64:
+        stride = int(getattr(self, "_imp_stride", 64))
+        if n < stride:
             span = (self._importance_max - self._importance_min) or 1.0
             return ((raw - self._importance_min) / span, "minmax")
 
-        # Periodic recompute (every 64 inserts) or if quantiles unset
-        if (n - self._imp_last_recompute) >= 64 or self._imp_q10 is None:
+        # Periodic recompute (every stride inserts) or if quantiles unset
+        if (n - self._imp_last_recompute) >= stride or self._imp_q10 is None:
             arr = np.array(self._imp_reservoir, dtype="float64")
             self._imp_q10, self._imp_q50, self._imp_q90, self._imp_q99 = np.percentile(
                 arr, [10, 50, 90, 99]
@@ -1419,7 +1509,7 @@ class SomaFractalMemoryEnterprise:
         elif R_tail_max <= 15 and R_tail_ext <= 8:
             # Winsorized min-max
             spread = (q90 - q10) or 1.0
-            delta = 0.25 * spread
+            delta = float(getattr(self, "_imp_winsor_delta", 0.25)) * spread
             L = max(self._importance_min, q10 - delta)
             U = min(self._importance_max, q90 + delta)
             if U - L < eps:
@@ -1431,11 +1521,13 @@ class SomaFractalMemoryEnterprise:
             spread = q90 - q10
             if spread < eps:
                 return (0.5, "logistic")
-            k = math.log(9.0) / spread
+            target = float(getattr(self, "_imp_logit_target_ratio", 9.0))
+            k = math.log(target) / spread
             c = q50
             # Avoid overflow: clamp k
-            if k > 25:
-                k = 25
+            k_max = float(getattr(self, "_imp_logit_k_max", 25.0))
+            if k > k_max:
+                k = k_max
             try:
                 norm = 1.0 / (1.0 + math.exp(-k * (raw - c)))
             except OverflowError:

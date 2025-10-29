@@ -20,14 +20,18 @@ This document explains how secrets are handled for local development versus prod
 You can override the default token and other settings without editing compose by using an `.env` file or shell env vars.
 
 Options (precedence: shell > .env > compose defaults):
-- Shell: export SOMA_API_TOKEN=your-token && docker compose --profile core up -d
+- Shell: `export SOMA_API_TOKEN=your-token && docker compose --profile core up -d`
 - .env file at repo root (see `.env.example`), then `docker compose --profile core up -d`.
 
 Common variables:
 - SOMA_API_TOKEN: Bearer token for API access (string)
+- SOMA_API_TOKEN_FILE: Path to a file containing the token (string)
+- JWT_ENABLED (optional): Enable JWT auth mode (bool-like)
+- JWT_SECRET (optional): HMAC secret if JWT (HS256) is used (string)
+- JWT_PUBLIC_KEY (optional): RSA public key if JWT (RS256) is used (PEM)
+- JWT_ISSUER/JWT_AUDIENCE (optional): Validate iss/aud claims
 - POSTGRES_PASSWORD: Postgres password (string)
 - SOMA_API_PORT: API port inside container (int; default 9595)
-- JWT_SECRET (optional): HMAC secret if JWT auth is used (string)
 
 ## Production guidance
 

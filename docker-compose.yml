@@ -19,6 +19,13 @@ services:
       retries: 5
     profiles:
       - core
+    networks:
+      smfnet:
+        aliases:
+          - postgres
+          - somabrain_postgres
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   redis:
     image: redis:7
@@ -35,6 +42,13 @@ services:
       retries: 5
     profiles:
       - core
+    networks:
+      smfnet:
+        aliases:
+          - redis
+          - somabrain_redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -51,6 +65,13 @@ services:
       retries: 5
     profiles:
       - core
+    networks:
+      smfnet:
+        aliases:
+          - qdrant
+          - somabrain_qdrant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   api:
     build:
@@ -64,12 +85,18 @@ services:
     environment:
       # Pin a predictable development token so e2e tests work consistently
       SOMA_API_TOKEN: "devtoken"
+      # Disable rate limiting in development to allow high-throughput seeding
+      SOMA_RATE_LIMIT_MAX: "0"
+      SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"
       CONFIG_FILE: /app/config.yaml
       SOMA_FORCE_HASH_EMBEDDINGS: "1"
     depends_on:
-      - postgres
-      - redis
-      - qdrant
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     volumes:
       - ./:/app:delegated
     healthcheck:
@@ -80,6 +107,13 @@ services:
     restart: always
     profiles:
       - core
+    networks:
+      smfnet:
+        aliases:
+          - api
+          - somabrain_api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   pgdata:
@@ -88,3 +122,8 @@ volumes:
     driver: local
   qdrantdata:
     driver: local
+
+networks:
+  smfnet:
+    name: somafractalmemory_net
+    driver: bridge
