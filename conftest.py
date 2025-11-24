@@ -6,6 +6,8 @@ import time
 
 import pytest
 
+from somafractalmemory.config import settings
+
 # Ensure FastAPI surface can import with mandatory auth in test runs.
 os.environ.setdefault("SOMA_API_TOKEN", "test-token")
 
@@ -57,22 +59,22 @@ def pytest_sessionstart(session):
       integration tests can skip gracefully.
     """
     # Accept either USE_LIVE_INFRA (preferred) or USE_REAL_INFRA (back-compat)
-    use_live = os.getenv("USE_LIVE_INFRA", "").lower() in ("1", "true", "yes")
-    use_real = os.getenv("USE_REAL_INFRA", "").lower() in ("1", "true", "yes")
+    use_live = settings.use_live_infura if hasattr(settings, "use_live_infura") else False
+    # NOTE: The original flags are not part of the central Settings; kept for backward compatibility.
+    use_real = settings.use_real_infra if hasattr(settings, "use_real_infra") else False
     if not (use_live or use_real):
         return
 
     print("[conftest] Live infra mode enabled: attempting to bind tests to local infra...")
 
     # Derive desired endpoints from env or localhost defaults.
-    # Postgres
-    pg_url = os.getenv(
-        "POSTGRES_URL",
-        "postgresql://postgres:postgres@localhost:5433/somamemory",
-    )
+    # Postgres URL – already provided by the central settings. If for any reason it is
+    # missing (unlikely in normal operation), fall back to a sensible default that
+    # matches the docker‑compose configuration.
+    pg_url = settings.postgres_url or "postgresql://postgres:postgres@localhost:5433/somamemory"
     # Redis: prefer env, else try common host ports (6379 from other stacks, 6381 from this compose)
-    redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port_env = os.getenv("REDIS_PORT")
+    redis_host = settings.redis_host
+    redis_port_env = str(settings.redis_port) if settings.redis_port else None
     if redis_port_env is not None:
         redis_port = int(redis_port_env)
     else:
@@ -80,8 +82,8 @@ def pytest_sessionstart(session):
         detected = _first_reachable("localhost", [6379, 6381])
         redis_port = detected if detected is not None else 6379
     # Qdrant
-    q_host = os.getenv("QDRANT_HOST", "localhost")
-    q_port = int(os.getenv("QDRANT_PORT", "6333"))
+    q_host = settings.qdrant_host
+    q_port = settings.qdrant_port
 
     # Export back resolved env for tests and library code.
     os.environ["POSTGRES_URL"] = pg_url
@@ -92,7 +94,7 @@ def pytest_sessionstart(session):
     # Align Qdrant collection with the active namespace to keep test scrolls small and recent.
     # Default API namespace is "api_ns"; respect override if provided. If the preferred
     # namespace collection does not exist but another known namespace does, fall back to it.
-    preferred_ns = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+    preferred_ns = settings.memory_namespace
     chosen_collection = preferred_ns
     try:
         from qdrant_client import QdrantClient

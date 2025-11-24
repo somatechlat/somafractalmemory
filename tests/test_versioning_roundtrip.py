@@ -8,7 +8,8 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True},
+        # Use the real Redis container (host port 40022) instead of the fakeredis shim.
+        "redis": {"host": "localhost", "port": 40022},
     }
     return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "persistence_ns", config=config)
 

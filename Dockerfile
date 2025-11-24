@@ -16,6 +16,7 @@ RUN apt-get update \
         curl \
         netcat-openbsd \
         procps \
+        bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv once and place it on PATH
@@ -58,6 +59,8 @@ COPY docs/ ./docs/
 COPY mkdocs.yml README.md CHANGELOG.md LICENSE ./
 
 RUN chmod +x /app/scripts/docker-entrypoint.sh
+# Ensure the new bootstrap script is executable
+RUN chmod +x /app/scripts/bootstrap.sh
 
 # Create non-root user for runtime
 RUN useradd --create-home --uid 1000 appuser && \
@@ -70,4 +73,9 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # Expose only the HTTP API port
 EXPOSE 9595
 
-CMD ["/app/scripts/docker-entrypoint.sh"]
+# Use the new bootstrap script to start the full stack, run migrations, health checks,
+# and finally launch the API. The script prints progress to the container logs.
+# Use bash to invoke the bootstrap script to avoid permission issues when the
+# script is mounted as a bind‑mount volume (the exec bit can be lost). Bash is
+# installed in the image (see apt‑get line above).
+CMD ["bash", "/app/scripts/bootstrap.sh"]

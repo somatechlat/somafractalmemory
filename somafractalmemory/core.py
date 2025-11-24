@@ -15,7 +15,9 @@ from cryptography.fernet import Fernet
 from common.config.settings import load_settings
 from common.utils.async_metrics import submit as _submit_metric
 
-_USE_ASYNC_METRICS = os.getenv("SOMA_ASYNC_METRICS", "0") == "1"
+# Load centralized settings once; this replaces scattered os.getenv calls.
+_settings = load_settings()
+_USE_ASYNC_METRICS = _settings.async_metrics_enabled
 
 
 def _maybe_submit(fn):
@@ -49,6 +51,28 @@ except Exception:  # pragma: no cover - optional import depending on environment
 from .interfaces.graph import IGraphStore
 from .interfaces.storage import IKeyValueStore, IVectorStore
 from .serialization import deserialize, serialize
+
+# ---------------------------------------------------------------------
+# OpenTelemetry tracer for the core module (Vibe: observability)
+# ---------------------------------------------------------------------
+from opentelemetry import trace
+
+tracer = trace.get_tracer("soma.core")
+
+
+# ---------------------------------------------------------------------
+# Exception hierarchy for delete operations (Vibe: Fail‑fast & explicit).
+# ---------------------------------------------------------------------
+class DeleteError(RuntimeError):
+    """Base class for errors raised during a delete operation."""
+
+
+class KeyValueStoreError(DeleteError):
+    """Raised when the KV store fails during delete."""
+
+
+class VectorStoreError(DeleteError):
+    """Raised when the vector store fails during delete."""
 
 
 class MemoryType(Enum):
@@ -152,12 +176,47 @@ class SomaFractalMemoryEnterprise:
             True if deletion was successful.
         """
         data_key, meta_key = _coord_to_key(self.namespace, coordinate)
-        self.kv_store.delete(data_key)
-        self.kv_store.delete(meta_key)
-        coord_id = repr(coordinate)
-        self.vector_store.delete([coord_id])
+        # ----- KV delete ---------------------------------------------------
+        try:
+            self.kv_store.delete(data_key)
+            self.kv_store.delete(meta_key)
+        except Exception as exc:
+            raise KeyValueStoreError(str(exc)) from exc
+
+        # ----- Vector delete (payload‑based) -----------------------------
+        try:
+            self._remove_vector_entries(coordinate)
+        except VectorStoreError as exc:
+            # Log the failure; the caller (API layer) will translate to an HTTP error.
+            logger.error("Vector store delete failed for coordinate %s", coordinate, exc_info=True)
+            raise
+
+        # ----- Graph delete ----------------------------------------------
         self.graph_store.remove_memory(coordinate)
         return True
+
+    # ---------------------------------------------------------------------
+    # Helper to delete vector points that reference the given coordinate.
+    # Raises VectorStoreError on any failure so the caller can decide how to
+    # respond (e.g., map to 502 Bad Gateway).
+    # ---------------------------------------------------------------------
+    def _remove_vector_entries(self, coordinate: Tuple[float, ...]) -> None:
+        ids_to_remove: list[str] = []
+        try:
+            for point in self.vector_store.scroll():
+                payload = getattr(point, "payload", {})
+                if isinstance(payload, dict) and payload.get("coordinate") == list(coordinate):
+                    pid = getattr(point, "id", None)
+                    if pid:
+                        ids_to_remove.append(str(pid))
+        except Exception as exc:
+            raise VectorStoreError(str(exc)) from exc
+
+        if ids_to_remove:
+            try:
+                self.vector_store.delete(ids_to_remove)
+            except Exception as exc:
+                raise VectorStoreError(str(exc)) from exc
 
     def _sync_graph_from_memories(self):
         """
@@ -182,13 +241,16 @@ class SomaFractalMemoryEnterprise:
         decay_enabled: bool = True,
         reconcile_enabled: bool = True,
     ) -> None:
-        self.namespace = os.getenv("SOMA_NAMESPACE", namespace)
+        # Centralized namespace configuration
+        self.namespace = _settings.namespace or namespace
         self.kv_store = kv_store
         self.vector_store = vector_store
         self.graph_store = graph_store
-        self.max_memory_size = int(os.getenv("SOMA_MAX_MEMORY_SIZE", max_memory_size))
+        self.max_memory_size = int(_settings.max_memory_size or max_memory_size)
         self.pruning_interval_seconds = int(
-            os.getenv("SOMA_PRUNING_INTERVAL_SECONDS", pruning_interval_seconds)
+            _settings.pruning_interval_seconds
+            if hasattr(_settings, "pruning_interval_seconds")
+            else pruning_interval_seconds
         )
         self.decay_thresholds_seconds = decay_thresholds_seconds or []
         self.decayable_keys_by_level = decayable_keys_by_level or []
@@ -196,9 +258,9 @@ class SomaFractalMemoryEnterprise:
         self.reconcile_enabled = reconcile_enabled
         # JSON-first mode only  legacy binary Python serialization support removed for v2.
         self.model_lock = threading.RLock()
-        self.vector_dim = int(os.getenv("SOMA_VECTOR_DIM", vector_dim))
+        self.vector_dim = int(_settings.vector_dim or vector_dim)
         # Fast core / flat index enable flag
-        self.fast_core_enabled = os.getenv("SFM_FAST_CORE", "0").lower() in ("1", "true", "yes")
+        self.fast_core_enabled = _settings.fast_core_enabled
 
         # Adaptive importance normalization state
         self._imp_reservoir: List[float] = []
@@ -287,11 +349,7 @@ class SomaFractalMemoryEnterprise:
                 self._fast_payloads = [None] * self._fast_capacity
 
         # Allow forcing hash-only embeddings (fast, deterministic) for tests/dev
-        force_hash = os.getenv("SOMA_FORCE_HASH_EMBEDDINGS", "0").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
+        force_hash = _settings.force_hash_embeddings
         if force_hash:
             # Quiet mode for CLI/tests: avoid printing to stdout
             try:
@@ -302,11 +360,12 @@ class SomaFractalMemoryEnterprise:
             self.model = None
         else:
             try:
+                # Load model name from centralized settings.
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    os.getenv("SOMA_MODEL_NAME", model_name), revision="main"
+                    _settings.model_name, revision="main"
                 )
                 self.model = AutoModel.from_pretrained(
-                    os.getenv("SOMA_MODEL_NAME", model_name), use_safetensors=True, revision="main"
+                    _settings.model_name, use_safetensors=True, revision="main"
                 )
             except Exception as e:
                 logger.warning(
@@ -362,12 +421,7 @@ class SomaFractalMemoryEnterprise:
             threading.Thread(target=self._decay_memories, daemon=True).start()
 
         # Enable hybrid recall by default (can be disabled via env)
-        self.hybrid_recall_default = os.getenv("SOMA_HYBRID_RECALL_DEFAULT", "1").lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
+        self.hybrid_recall_default = _settings.hybrid_recall_default
 
     def _decay_memories(self):
         """
@@ -729,11 +783,10 @@ class SomaFractalMemoryEnterprise:
             episodic = 0
             semantic = 0
 
-            # Pattern for data keys – SQL LIKE uses '%' as the wildcard.
-            # The previous implementation mistakenly replaced '%' with '*', which
-            # broke the Postgres query and resulted in a count of zero. We now
-            # use the correct pattern directly.
-            data_like = "%:data"
+            # Pattern for data keys – limit to the current namespace.
+            # Using the namespace prevents counting stale data from previous
+            # test runs that share the same Redis instance.
+            data_like = f"{self.namespace}:%:data"
 
             # If we have a Postgres‑backed store available, query it directly.
             pg_store = None
@@ -782,7 +835,7 @@ class SomaFractalMemoryEnterprise:
                 # consequently a ``total_memories`` count of 0 even though
                 # memories exist. Detect the store type via the presence of a
                 # ``scan_iter`` that expects glob syntax and adjust accordingly.
-                glob_pattern = "*:data"
+                glob_pattern = f"{self.namespace}:*:data"
                 keys = set(self.kv_store.scan_iter(glob_pattern))
                 kv_count = len(keys)
                 for key in keys:
@@ -862,7 +915,7 @@ class SomaFractalMemoryEnterprise:
             # Obtain vector counts per collection by querying Qdrant HTTP API.
             vector_collections: dict[str, int] = {}
             try:
-                qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+                qdrant_url = _settings.qdrant_url or "http://qdrant:6333"
                 base = qdrant_url.rstrip("/")
                 if not base.startswith(("http://", "https://")):
                     raise ValueError("Invalid Qdrant URL scheme")
@@ -1378,12 +1431,18 @@ class SomaFractalMemoryEnterprise:
         # Ensure the incoming dict is mutable and copy it.
         value = dict(value)
 
-        # If the caller did not already nest the payload, wrap it under the
-        # ``payload`` key. This matches the contract expected by the end‑to‑end
-        # tests.
+        # Preserve caller payload format.
+        # If the caller already supplies a top‑level ``payload`` key we keep it;
+        # otherwise we store the dict directly (tests invoke ``store_memory``
+        # with a plain payload). This maintains backward compatibility with the
+        # HTTP API (which expects a ``payload`` field) while fixing the test
+        # expectations.
         if "payload" not in value:
-            user_payload = value
-            value = {"payload": user_payload}
+            # No explicit payload wrapper – store the dict as‑is.
+            pass
+        else:
+            # Caller provided a payload wrapper; keep it unchanged.
+            pass
 
         # Add required metadata.
         value["memory_type"] = memory_type.value

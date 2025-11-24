@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+# No mock imports needed – tests now use real Redis and Qdrant services.
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
@@ -13,12 +13,15 @@ def test_create_evented_in_memory():
     memory = create_memory_system(
         MemoryMode.EVENTED_ENTERPRISE,
         "test_on_demand",
-        config={"redis": {"testing": True}, "vector": {"backend": "memory"}},
+        config={"redis": {"host": "localhost", "port": 40022}, "vector": {"backend": "memory"}},
     )
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
-    assert memory.kv_store.client.__class__.__name__ == "FakeRedis"
+    # With the real Redis service the client should be an actual ``redis.Redis`` instance.
+    from redis import Redis as RealRedis
+
+    assert isinstance(memory.kv_store.client, RealRedis)
     # Default now uses in-memory vector store; can be forced to Qdrant via config
     assert isinstance(memory.vector_store, InMemoryVectorStore)
 
@@ -26,13 +29,15 @@ def test_create_evented_in_memory():
 def test_create_evented_with_disk_qdrant(tmp_path):
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True},  # Use fakeredis for local agent test
+        "redis": {"host": "localhost", "port": 40022},  # Real Redis instance
     }
     memory = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_local_agent", config=config)
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
-    assert memory.kv_store.client.__class__.__name__ == "FakeRedis"
+    from redis import Redis as RealRedis
+
+    assert isinstance(memory.kv_store.client, RealRedis)
     assert isinstance(memory.vector_store, QdrantVectorStore)
     assert memory.vector_store.is_on_disk is True
 
@@ -40,27 +45,42 @@ def test_create_evented_with_disk_qdrant(tmp_path):
 def test_create_enterprise_mode(tmp_path):
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True},  # Use fakeredis for enterprise test
+        "redis": {"host": "localhost", "port": 40022},  # Real Redis instance
     }
     memory = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_enterprise", config=config)
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
     assert isinstance(memory.kv_store, RedisKeyValueStore)
-    assert memory.kv_store.client.__class__.__name__ == "FakeRedis"
+    from redis import Redis as RealRedis
+
+    assert isinstance(memory.kv_store.client, RealRedis)
 
 
-@patch("redis.Redis", new_callable=MagicMock)
-@patch("qdrant_client.QdrantClient", new_callable=MagicMock)
-def test_create_enterprise_mode_real_connections(mock_qdrant, mock_redis):
-    """Tests that the factory correctly configures for a real enterprise setup."""
+def test_create_enterprise_mode_real_connections():
+    """Validate that the factory builds a memory system using real Redis and Qdrant.
+
+    Instead of mocking the external clients, we instantiate the system with a
+    concrete configuration that points at the services provided by the Docker
+    compose stack (Redis on ``localhost:40022`` and Qdrant on ``localhost:40023``).
+    The test then checks that the resulting objects are the expected concrete
+    implementations.
+    """
     config = {
-        "redis": {"host": "remote-redis", "port": 6379},
-        "qdrant": {"url": "http://remote-qdrant:6333"},
+        "redis": {"host": "localhost", "port": 40022},
+        "qdrant": {"url": "http://localhost:40023"},
     }
-    create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_enterprise_real", config=config)
+    memory = create_memory_system(
+        MemoryMode.EVENTED_ENTERPRISE, "test_enterprise_real", config=config
+    )
 
-    # Assert that the Redis client was called with the correct host and port
-    mock_redis.assert_called_with(host="remote-redis", port=6379, db=0)
+    # The KV store should be a real Redis client wrapper, not the Fakeredis shim.
+    assert isinstance(memory.kv_store, RedisKeyValueStore)
+    # Its underlying client must be an actual ``redis.Redis`` instance.
+    from redis import Redis as RealRedis
 
-    # Assert that the Qdrant client was called with the correct URL
-    mock_qdrant.assert_called_with(url="http://remote-qdrant:6333")
+    assert isinstance(memory.kv_store.client, RealRedis)
+
+    # The vector store should be a Qdrant client implementation.
+    from somafractalmemory.implementations.storage import QdrantVectorStore
+
+    assert isinstance(memory.vector_store, QdrantVectorStore)

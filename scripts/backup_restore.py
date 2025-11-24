@@ -16,7 +16,6 @@ Strict VIBE Coding Rules: robust error handling, logging, config-driven.
 
 import argparse
 import logging
-import os
 import shutil
 import sys
 import time
@@ -27,9 +26,13 @@ try:
 except ImportError:
     boto3 = None
 
-BACKUP_DIR = os.getenv("SOMA_BACKUP_DIR", "./backups")
-MEMORY_DATA_DIR = os.getenv("SOMA_MEMORY_DATA_DIR", "./data")
-S3_BUCKET = os.getenv("SOMA_S3_BUCKET", "")
+# Centralised configuration for backup/restore paths and bucket.
+from common.config.settings import load_settings
+
+_settings = load_settings()
+BACKUP_DIR = str(_settings.backup_dir)
+MEMORY_DATA_DIR = str(_settings.memory_data_dir)
+S3_BUCKET = _settings.s3_bucket
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("backup_restore")

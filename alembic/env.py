@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+
+# Load settings to obtain the Postgres DSN. This import was missing, causing a NameError
+# during alembic execution in the container startup.
+from common.config.settings import load_settings
 
 # Alembic Config object provides access to configuration values.
 config = context.config
@@ -18,7 +21,9 @@ target_metadata = None
 
 
 def _get_database_url() -> str:
-    env_url = os.getenv("POSTGRES_URL")
+    # Use centralized configuration for the Postgres DSN.
+    _settings = load_settings()
+    env_url = _settings.postgres_url
     if env_url:
         return env_url
     return config.get_main_option("sqlalchemy.url")

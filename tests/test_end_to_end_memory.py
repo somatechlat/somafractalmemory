@@ -12,34 +12,24 @@ The API requires a bearer token. The token is read from the environment variable
 ``.env`` file at the repository root.  No secrets are hard‑coded.
 """
 
-import os
-
 import pytest
 import requests
+
+from somafractalmemory.config.settings import settings
 
 BASE_URL = "http://127.0.0.1:9595"
 
 
 def _load_token() -> str:
-    """Return the API token.
+    """Return the API token from the central settings.
 
-    Preference order:
-    1. ``SOMA_API_TOKEN`` environment variable.
-    2. ``.env`` file in the repository root.
+    The ``settings`` singleton reads from the ``.env`` file and environment
+    variables, providing a single source of truth for configuration.
     """
-    token = os.getenv("SOMA_API_TOKEN")
+    token = settings.api_token
     if token:
         return token
-    # Fallback to .env file
-    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-    try:
-        with open(env_path, encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("SOMA_API_TOKEN"):
-                    return line.strip().split("=", 1)[1]
-    except Exception:
-        pass
-    raise RuntimeError("SOMA_API_TOKEN not found in environment or .env file")
+    raise RuntimeError("SOMA_API_TOKEN not configured in settings")
 
 
 @pytest.fixture(scope="module")

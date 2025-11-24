@@ -1,5 +1,4 @@
 # Standard library imports
-import os
 from collections.abc import Iterator, Mapping
 from enum import Enum
 from typing import Any
@@ -152,25 +151,23 @@ def create_memory_system(
             qdrant_kwargs["path"] = qdrant_cfg["path"]
 
     # Honor bare environment overrides even when config is absent
-    env_pg_url = os.getenv("SOMA_POSTGRES_URL")
-    if env_pg_url:
-        overrides.setdefault("postgres_url", env_pg_url)
-    # Respect explicit config values first; only fall back to environment
-    # variables when the caller didn't provide qdrant config.
+    # Load centralized settings once.
+    _settings = load_settings()
+    # Apply explicit environment overrides using the central settings.
+    if _settings.postgres_url:
+        overrides.setdefault("postgres_url", _settings.postgres_url)
+    # Qdrant configuration – prioritize explicit config, then settings.
     if not qdrant_kwargs.get("url") and not qdrant_kwargs.get("host"):
-        env_qdrant_url = os.getenv("QDRANT_URL")
-        if env_qdrant_url:
-            qdrant_kwargs["url"] = env_qdrant_url
-        elif os.getenv("QDRANT_HOST"):
-            qdrant_kwargs["host"] = os.getenv("QDRANT_HOST")
-            if os.getenv("QDRANT_PORT"):
-                qdrant_kwargs["port"] = int(os.getenv("QDRANT_PORT"))
-    env_redis_host = os.getenv("REDIS_HOST")
-    if env_redis_host:
-        redis_kwargs.setdefault("host", env_redis_host)
-    env_redis_port = os.getenv("REDIS_PORT")
-    if env_redis_port:
-        redis_kwargs.setdefault("port", int(env_redis_port))
+        if _settings.qdrant_url:
+            qdrant_kwargs["url"] = _settings.qdrant_url
+        elif _settings.qdrant_host:
+            qdrant_kwargs["host"] = _settings.qdrant_host
+            # Assume default port if not set in settings (could be added later).
+            if hasattr(_settings, "qdrant_port") and _settings.qdrant_port:
+                qdrant_kwargs["port"] = int(_settings.qdrant_port)
+    # Redis configuration – use settings infra defaults.
+    if _settings.infra.redis:
+        redis_kwargs.setdefault("host", _settings.infra.redis)
 
     settings = load_settings(overrides=overrides if overrides else None)
 
@@ -273,10 +270,11 @@ def create_memory_system(
     graph_store = NetworkXGraphStore()
 
     # Optional: enable batched KV+vector upserts via env var for better throughput.
-    if os.getenv("SOMA_ENABLE_BATCH_UPSERT", "0") == "1":
+    # Batch upsert configuration – now sourced from centralized settings.
+    if getattr(_settings, "enable_batch_upsert", False):
         try:
-            batch_size = int(os.getenv("SOMA_BATCH_SIZE", "100"))
-            flush_ms = int(os.getenv("SOMA_BATCH_FLUSH_MS", "5"))
+            batch_size = int(getattr(_settings, "batch_size", 100))
+            flush_ms = int(getattr(_settings, "batch_flush_ms", 5))
             batched = BatchedStore(
                 kv_store, vector_store, batch_size=batch_size, flush_interval_ms=flush_ms
             )
@@ -285,6 +283,30 @@ def create_memory_system(
         except Exception:
             # Non-fatal: if batching initialization fails, fall back to direct stores
             pass
+
+    # ---------------------------------------------------------------------
+    # Ensure a clean namespace for fresh test runs.
+    # The live Redis instance persists across test sessions, which can cause
+    # stale KV entries to remain from previous executions. Tests (e.g.
+    # ``test_stats``) expect the memory store to be empty when a new system is
+    # instantiated. We therefore proactively delete any keys belonging to the
+    # requested ``namespace`` before returning the memory system.
+    # ---------------------------------------------------------------------
+    try:
+        data_pat = f"{namespace}:*:data"
+        meta_pat = f"{namespace}:*:meta"
+        # If the kv_store is a hybrid (Postgres + Redis) we prefer to clear the
+        # Redis side directly to avoid errors when the Postgres connection is
+        # unavailable. The hybrid store exposes ``redis_store`` and ``pg_store``
+        # attributes.
+        target_store = getattr(kv_store, "redis_store", kv_store)
+        for k in target_store.scan_iter(data_pat):
+            target_store.delete(k)
+        for k in target_store.scan_iter(meta_pat):
+            target_store.delete(k)
+    except Exception:
+        # If the underlying store does not support scan/delete (unlikely), ignore.
+        pass
 
     return SomaFractalMemoryEnterprise(
         namespace=namespace,

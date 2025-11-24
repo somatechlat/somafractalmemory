@@ -6,9 +6,10 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
+    # Use the real Redis container (exposed on host port 40022) instead of the fakeredis testing shim.
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True},
+        "redis": {"host": "localhost", "port": 40022},
     }
     return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "stats_ns", config=config)
 

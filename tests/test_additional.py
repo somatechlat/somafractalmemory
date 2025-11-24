@@ -6,9 +6,10 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
+    # Use real Redis service (provided by Docker compose) and on‑disk Qdrant.
     config = {
         "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"testing": True},
+        "redis": {"host": "redis", "port": 6379},
     }
     return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "additional_ns", config=config)
 

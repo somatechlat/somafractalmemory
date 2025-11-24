@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 from typing import Any
+
+from common.config.settings import load_settings as _load_settings
 
 try:
     import numpy as np
@@ -25,8 +26,9 @@ def serialize(obj: Any) -> bytes:
     is not JSON-serializable, callers should pre-convert distributed types to JSON
     friendly structures before calling.
     """
-    # Optional MessagePack path (opt-in via env var SOMA_SERIALIZER=msgpack).
-    if os.getenv("SOMA_SERIALIZER", "json").lower() == "msgpack":
+    # Optional MessagePack path (opt-in via config serializer setting).
+    _settings = _load_settings()
+    if _settings.serializer.lower() == "msgpack":
         try:
             import msgpack
 
@@ -49,8 +51,9 @@ def deserialize(raw: bytes) -> Any:
     except Exception:
         text = None
 
-    # If serializer is msgpack, attempt to unpack first
-    if os.getenv("SOMA_SERIALIZER", "json").lower() == "msgpack":
+    # If serializer is msgpack, attempt to unpack first using centralized setting
+    _settings = _load_settings()
+    if _settings.serializer.lower() == "msgpack":
         try:
             import msgpack
 

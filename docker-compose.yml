@@ -80,7 +80,9 @@ services:
     container_name: somafractalmemory_api
     ports:
       - "${API_PORT:-9595}:${SOMA_API_PORT:-9595}"
-    command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "${SOMA_API_PORT:-9595}"]
+    # The Dockerfile CMD now runs the bootstrap script which ultimately starts uvicorn.
+    # Removing the explicit command here allows the bootstrap process (migrations, health checks)
+    # to execute before the API server starts.
     # Port 9595 is the PUBLIC API ENTRY POINT (externally accessible)
     environment:
       # Use the token defined in the .env file for consistency with tests.

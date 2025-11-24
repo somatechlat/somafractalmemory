@@ -87,6 +87,53 @@ class SMFSettings(SomaBaseSettings):
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 
+    # Additional environment‑driven flags that were previously accessed via
+    # ``os.getenv`` throughout the codebase. They are now centralised here so
+    # that all configuration is sourced from a single Pydantic model.
+    async_metrics_enabled: bool = Field(
+        default=False,
+        description="Enable asynchronous metric submission (formerly SOMA_ASYNC_METRICS)",
+    )
+    fast_core_enabled: bool = Field(
+        default=False,
+        alias="SFM_FAST_CORE",
+        description="Enable fast‑core in‑memory slab (formerly SFM_FAST_CORE env var)",
+    )
+    force_hash_embeddings: bool = Field(
+        default=False,
+        alias="SOMA_FORCE_HASH_EMBEDDINGS",
+        description="Force hash‑based embeddings instead of transformer model",
+    )
+    model_name: str = Field(
+        default="microsoft/codebert-base",
+        alias="SOMA_MODEL_NAME",
+        description="Transformer model name for embeddings (formerly SOMA_MODEL_NAME)",
+    )
+    qdrant_url: str = Field(
+        default="http://qdrant:6333",
+        alias="QDRANT_URL",
+        description="Full URL for Qdrant service (formerly QDRANT_URL env var)",
+    )
+    hybrid_recall_default: bool = Field(
+        default=True,
+        alias="SOMA_HYBRID_RECALL_DEFAULT",
+        description="Enable hybrid recall by default (formerly SOMA_HYBRID_RECALL_DEFAULT)",
+    )
+
+    # ---------------------------------------------------------------------
+    # Core runtime limits (mirroring values previously accessed via env vars)
+    # ---------------------------------------------------------------------
+    max_memory_size: int = Field(
+        default=100_000,
+        validation_alias="SOMA_MAX_MEMORY_SIZE",
+        description="Maximum number of memories the system will retain.",
+    )
+    pruning_interval_seconds: int = Field(
+        default=600,
+        validation_alias="SOMA_PRUNING_INTERVAL_SECONDS",
+        description="Interval in seconds between background pruning runs.",
+    )
+
     # Math/scoring knobs (kept optional; defaults preserve current behavior)
     similarity_metric: str = Field(
         default="cosine",
@@ -112,6 +159,44 @@ class SMFSettings(SomaBaseSettings):
         default=1024,
         description="Initial capacity for fast-core contiguous slabs.",
     )
+
+    # ---------------------------------------------------------------------
+    # Additional runtime and API configuration (mirrors environment vars used
+    # throughout the codebase). These fields allow the HTTP API and other
+    # components to obtain configuration from a single source.
+    # ---------------------------------------------------------------------
+    log_level: str = Field(default="INFO", description="Logging level for the service")
+    cors_origins: str = Field(
+        default="", description="Comma‑separated list of allowed CORS origins"
+    )
+    rate_limit_max: int = Field(
+        default=60, description="Maximum requests per rate‑limit window (0 disables)"
+    )
+    rate_limit_window: float = Field(
+        default=60.0, description="Rate‑limit window length in seconds"
+    )
+    memory_namespace: str = Field(
+        default="api_ns", description="Namespace for memory operations used by the HTTP API."
+    )
+    memory_mode: str = Field(
+        default="evented_enterprise", description="Memory mode identifier used by the API."
+    )
+    max_request_body_mb: float = Field(default=5.0, description="Maximum request body size in MB.")
+    # Redis connection defaults (mirroring typical local dev values)
+    redis_port: int = Field(default=6379, description="Redis port (overrides infra if set)")
+    redis_db: int = Field(default=0, description="Redis DB index")
+    # Qdrant connection defaults (used when qdrant_url is not a full URL)
+    qdrant_port: int = Field(default=6333, description="Qdrant port when host is used")
+
+    # Postgres TLS/SSL options (optional)
+    postgres_ssl_mode: str | None = Field(
+        default=None, description="Postgres SSL mode (e.g., require)"
+    )
+    postgres_ssl_root_cert: str | None = Field(
+        default=None, description="Path to root CA cert for Postgres TLS"
+    )
+    postgres_ssl_cert: str | None = Field(default=None, description="Client cert for Postgres TLS")
+    postgres_ssl_key: str | None = Field(default=None, description="Client key for Postgres TLS")
 
     # Importance normalization parameters
     importance_reservoir_max: int = Field(default=512, description="Max samples in reservoir")
@@ -166,6 +251,50 @@ class SMFSettings(SomaBaseSettings):
                 errors.append("JWT audience required")
         if errors:
             raise ValueError(f"Config validation failed: {errors}")
+
+    # ---------------------------------------------------------------------
+    # Additional operational flags and paths previously scattered via
+    # ``os.getenv`` in various modules. Centralising them here ensures a single
+    # source of truth for configuration.
+    # ---------------------------------------------------------------------
+    # Backup / data directories
+    backup_dir: Path = Field(default=Path("./backups"), description="Backup directory path")
+    memory_data_dir: Path = Field(default=Path("./data"), description="Memory data directory path")
+    s3_bucket: str = Field(default="", description="S3 bucket name for backups")
+
+    # Serialization format (json or msgpack)
+    serializer: str = Field(default="json", description="Serializer format for memory data")
+
+    # API authentication token (used by end‑to‑end tests and external callers)
+    api_token: str | None = Field(default=None, description="Bearer token for API access")
+
+    # Batch upsert controls (formerly SOMA_ENABLE_BATCH_UPSERT etc.)
+    enable_batch_upsert: bool = Field(default=False, description="Enable batched KV/vector upserts")
+    batch_size: int = Field(default=100, description="Batch size for upserts")
+    batch_flush_ms: int = Field(default=5, description="Batch flush interval in milliseconds")
+
+    # Qdrant TLS configuration
+    qdrant_tls: bool = Field(default=False, description="Enable TLS for Qdrant connection")
+    qdrant_tls_cert: Path | None = Field(default=None, description="Path to Qdrant TLS certificate")
+    qdrant_scroll_limit: int = Field(default=100, description="Scroll pagination limit for Qdrant")
+
+    # ---------------------------------------------------------------------
+    # Logging / API runtime configuration
+    # ---------------------------------------------------------------------
+    log_level: str = Field(default="INFO", description="Logging level for the service")
+    cors_origins: str = Field(
+        default="", description="Comma‑separated list of allowed CORS origins"
+    )
+
+    # ---------------------------------------------------------------------
+    # Rate limiting defaults (mirrors existing env vars)
+    # ---------------------------------------------------------------------
+    rate_limit_max: int = Field(
+        default=60, description="Maximum requests per rate‑limit window (0 disables)"
+    )
+    rate_limit_window: float = Field(
+        default=60.0, description="Rate‑limit window length in seconds"
+    )
 
 
 def _load_file_data(config_file: Path | None) -> dict[str, Any]:
@@ -224,6 +353,12 @@ def load_settings(
     file_data = _load_file_data(path)
     payload = {**file_data, **(overrides or {})}
     return SMFSettings(**payload)
+
+
+# Export a singleton instance for convenient imports throughout the project.
+# This mirrors the pattern used in `somafractalmemory/config/settings.py` and
+# satisfies test modules that import ``settings`` directly from this module.
+settings = SMFSettings()
 
 
 __all__ = [

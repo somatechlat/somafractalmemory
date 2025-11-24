@@ -5,7 +5,6 @@ Storage implementations for SomaFractalMemory.
 # Standard library imports
 import inspect
 import json
-import os
 import threading
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
@@ -389,8 +388,12 @@ class QdrantVectorStore(IVectorStore):
     def __init__(self, collection_name: str, **kwargs):
         self._init_kwargs = kwargs
         # TLS/SSL configuration – optional env vars
-        self._use_tls = os.getenv("QDRANT_TLS", "false").lower() == "true"
-        self._cert_path = os.getenv("QDRANT_TLS_CERT")
+        # Centralised TLS configuration for Qdrant.
+        from common.config.settings import load_settings
+
+        _settings = load_settings()
+        self._use_tls = _settings.qdrant_tls
+        self._cert_path = _settings.qdrant_tls_cert
         # If TLS is requested, ensure the client uses https scheme
         if self._use_tls:
             url = self._init_kwargs.get("url")
@@ -527,10 +530,11 @@ class QdrantVectorStore(IVectorStore):
         )
 
     def scroll(self) -> Iterator[Any]:
-        try:
-            _lim = int(os.getenv("SOMA_QDRANT_SCROLL_LIMIT", "100"))
-        except Exception:
-            _lim = 100
+        # Use centralized configuration for Qdrant pagination limit.
+        from common.config.settings import load_settings
+
+        _settings = load_settings()
+        _lim = int(_settings.qdrant_scroll_limit)
         records, next_page_offset = self.client.scroll(
             collection_name=self.collection_name, limit=_lim, with_payload=True
         )
@@ -740,18 +744,23 @@ class PostgresKeyValueStore(IKeyValueStore):
     _TABLE_NAME = "kv_store"
 
     def __init__(self, url: str | None = None):
-        # testcontainers may provide a SQLAlchemy‑style URL like
-        # ``postgresql+psycopg2://user:pass@host:port/db`` which psycopg2 does not
-        # understand. Convert it to the libpq format (``postgresql://``) before
-        # passing it to ``psycopg2.connect``.
-        raw_url = url or os.getenv("POSTGRES_URL", "postgresql://soma:soma@localhost:5432/soma")
+        # Centralised configuration for Postgres connection.
+        from common.config.settings import load_settings
+
+        _settings = load_settings()
+        # Prefer explicit URL argument, then settings, then default fallback.
+        raw_url = (
+            url
+            or getattr(_settings, "postgres_url", None)
+            or "postgresql://soma:soma@localhost:5432/soma"
+        )
         # Strip the ``+psycopg2`` dialect suffix if present.
         self._url = raw_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-        # TLS/SSL configuration – optional env vars
-        self._sslmode = os.getenv("POSTGRES_SSL_MODE")  # e.g. "require"
-        self._sslrootcert = os.getenv("POSTGRES_SSL_ROOT_CERT")
-        self._sslcert = os.getenv("POSTGRES_SSL_CERT")
-        self._sslkey = os.getenv("POSTGRES_SSL_KEY")
+        # TLS/SSL configuration – optional settings fields.
+        self._sslmode = getattr(_settings, "postgres_ssl_mode", None)
+        self._sslrootcert = getattr(_settings, "postgres_ssl_root_cert", None)
+        self._sslcert = getattr(_settings, "postgres_ssl_cert", None)
+        self._sslkey = getattr(_settings, "postgres_ssl_key", None)
         self._conn = None
         self._lock = threading.RLock()
         self._ensure_connection()

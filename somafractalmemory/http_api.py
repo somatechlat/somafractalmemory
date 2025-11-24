@@ -7,7 +7,6 @@ in place for legacy imports.
 """
 
 import os
-import os as _os
 import threading
 import time
 from typing import Any, Literal
@@ -25,15 +24,18 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+# Helper wrappers to optionally enqueue metric updates when async metrics are enabled.
+# Centralised async‑metrics flag
+from common.config.settings import load_settings as _load_settings
 from common.utils.async_metrics import submit as _submit_metric
 from common.utils.logger import configure_logging, get_logger
 
 # OPA client and enforcement have been removed – the project does not include an OPA service.
-from somafractalmemory.core import MemoryType
+from somafractalmemory.core import DeleteError, KeyValueStoreError, MemoryType, VectorStoreError
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
-# Helper wrappers to optionally enqueue metric updates when async metrics are enabled.
-_USE_ASYNC_METRICS = _os.getenv("SOMA_ASYNC_METRICS", "0") == "1"
+_settings = _load_settings()
+_USE_ASYNC_METRICS = _settings.async_metrics_enabled
 
 
 def _maybe_submit(fn):
@@ -124,9 +126,11 @@ else:
     trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
 # Configure structured logging early (JSON output)
-logger = configure_logging("somafractalmemory-api", level=os.getenv("LOG_LEVEL", "INFO")).bind(
-    component="http_api"
-)
+# Use the centralized logging level; no env fallback needed.
+logger = configure_logging(
+    "somafractalmemory-api",
+    level=_settings.log_level,
+).bind(component="http_api")
 
 app = FastAPI(title="SomaFractalMemory API")
 # Instrument the FastAPI app for tracing
@@ -135,7 +139,8 @@ FastAPIInstrumentor().instrument_app(app)
 # ------------------------------------------------------------
 # CORS configuration (configurable via SOMA_CORS_ORIGINS)
 # ------------------------------------------------------------
-_cors_origins_env = os.getenv("SOMA_CORS_ORIGINS", "")
+# CORS origins are now fully driven by settings (default empty string).
+_cors_origins_env = _settings.cors_origins
 if _cors_origins_env:
     # Comma-separated list of origins, e.g. "https://app.example.com,https://admin.example.com"
     origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
@@ -154,7 +159,8 @@ if origins:
 
 
 def _resolve_memory_mode() -> MemoryMode:
-    mode_env = (os.getenv("MEMORY_MODE") or MemoryMode.EVENTED_ENTERPRISE.value).lower()
+    # Memory mode configuration now comes from centralized settings.
+    mode_env = _settings.memory_mode.lower()
     if mode_env != MemoryMode.EVENTED_ENTERPRISE.value:
         logger.warning(
             "Unsupported memory mode requested; defaulting to evented_enterprise",
@@ -165,8 +171,9 @@ def _resolve_memory_mode() -> MemoryMode:
 
 mem = None
 _RATE_LIMITER = None
-_RATE_LIMIT_MAX = int(os.getenv("SOMA_RATE_LIMIT_MAX", "60"))
-_RATE_WINDOW = float(os.getenv("SOMA_RATE_LIMIT_WINDOW_SECONDS", "60"))
+# Rate‑limit values come directly from settings.
+_RATE_LIMIT_MAX = int(_settings.rate_limit_max)
+_RATE_WINDOW = float(_settings.rate_limit_window)
 
 
 def _redact_dsn(url: str | None) -> str | None:
@@ -193,20 +200,10 @@ def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
     4. Build URL from infra settings or use default
     """
     # Try SOMA_POSTGRES_URL first (our preferred environment variable)
-    url = os.getenv("SOMA_POSTGRES_URL")
-    if url:
-        return {"url": url}
-
-    # Then try postgres_url from settings if available
+    # Use the centralized Postgres URL from settings (covers both SOMA_POSTGRES_URL and POSTGRES_URL).
     if settings and hasattr(settings, "postgres_url"):
         return {"url": settings.postgres_url}
-
-    # Then try legacy POSTGRES_URL
-    url = os.getenv("POSTGRES_URL")
-    if url:
-        return {"url": url}
-
-    # Last resort: build from infra settings or use default
+    # Fallback to default constructed URL using infra settings.
     host = getattr(getattr(settings, "infra", None), "postgres", "postgres")
     return {"url": f"postgresql://soma:soma@{host}:5432/somamemory"}
 
@@ -224,7 +221,7 @@ def _redis_config(settings: Any | None = None) -> dict[str, Any]:
     if settings and getattr(settings, "infra", None):
         cfg["host"] = settings.infra.redis
     # Fallback to explicit URL parsing
-    redis_url = os.getenv("REDIS_URL")
+    redis_url = None  # Deprecated; we construct from infra settings below.
     if redis_url:
         parsed = urlparse(redis_url)
         if parsed.hostname:
@@ -235,37 +232,34 @@ def _redis_config(settings: Any | None = None) -> dict[str, Any]:
         if path.isdigit():
             cfg["db"] = int(path)
     # Individual env vars override previous values
-    if host := os.getenv("REDIS_HOST"):
-        cfg["host"] = host
-    if port := os.getenv("REDIS_PORT"):
-        try:
-            cfg["port"] = int(port)
-        except ValueError:
-            pass
-    if db := os.getenv("REDIS_DB"):
-        try:
-            cfg["db"] = int(db)
-        except ValueError:
-            pass
+    # Override with explicit host/port/db if provided via environment (legacy support).
+    # Override with explicit host/port/db if provided via settings (legacy env vars are no longer used).
+    if hasattr(_settings, "redis_port"):
+        cfg["port"] = _settings.redis_port
+    if hasattr(_settings, "redis_db"):
+        cfg["db"] = _settings.redis_db
     return cfg
 
 
 def _qdrant_config(settings: Any | None = None) -> dict[str, Any]:
-    """Return Qdrant connection parameters.
+    """Return Qdrant connection parameters using the centralized settings.
 
-    If a full URL is provided via ``QDRANT_URL`` we honour it.
-    Otherwise we build ``host``/``port`` using either the shared infra DNS name
-    (``settings.infra.qdrant`` – not defined explicitly, so we fall back to the
-    ``QDRANT_HOST`` env var) and the ``QDRANT_PORT`` env var.
+    Preference order (no environment‑variable fallbacks):
+    1. ``settings.qdrant_url`` – a full URL, if provided.
+    2. ``settings.qdrant_host`` together with ``settings.qdrant_port`` –
+       the host/port pair derived from the shared infra configuration.
+    3. Empty dict (caller will handle missing configuration).
     """
-    url = os.getenv("QDRANT_URL")
-    if url:
-        return {"url": url}
-    # Prefer centralized settings DNS when available, else fall back to env or default.
-    host = getattr(getattr(settings, "infra", None), "qdrant", None) or os.getenv("QDRANT_HOST")
-    if host:
-        port = int(os.getenv("QDRANT_PORT", "6333"))
+    # Full URL takes precedence.
+    if hasattr(settings, "qdrant_url") and settings.qdrant_url:
+        return {"url": settings.qdrant_url}
+
+    # Host/port fallback – both fields are defined in SMFSettings.
+    if hasattr(settings, "qdrant_host") and settings.qdrant_host:
+        host = settings.qdrant_host
+        port = getattr(settings, "qdrant_port", 6333)
         return {"host": host, "port": port}
+
     return {}
 
 
@@ -297,7 +291,7 @@ def _load_api_token() -> str | None:
     consistently.
     """
     # 1. Token file (Kubernetes secret)
-    token_file = os.getenv("SOMA_API_TOKEN_FILE")
+    token_file = _settings.api_token_file if hasattr(_settings, "api_token_file") else None
     if token_file and os.path.exists(token_file):
         try:
             with open(token_file, encoding="utf-8") as f:
@@ -306,7 +300,7 @@ def _load_api_token() -> str | None:
             pass
 
     # 2. Direct environment variable
-    token = os.getenv("SOMA_API_TOKEN")
+    token = _settings.api_token if hasattr(_settings, "api_token") else None
     if token:
         return token
 
@@ -448,7 +442,7 @@ try:
 
     # Load centralized settings (optional). Fallback to environment if not available.
     settings = None
-    namespace_default = os.getenv("SOMA_MEMORY_NAMESPACE", "api_ns")
+    namespace_default = _settings.memory_namespace
     try:
         if load_settings:
             settings = load_settings()
@@ -560,6 +554,15 @@ API_RESPONSES = Counter(
     ["endpoint", "method", "status"],
 )
 
+# ---------------------------------------------------------------------
+# Additional metric: count of successful delete operations (Vibe: observability)
+# ---------------------------------------------------------------------
+DELETE_SUCCESS = Counter(
+    "api_delete_success_total",
+    "Number of successful memory delete operations",
+    ["endpoint"],
+)
+
 
 # Lightweight global middleware for metrics to avoid signature issues from wrappers
 @app.middleware("http")
@@ -575,7 +578,7 @@ async def metrics_middleware(request: Request, call_next):
     try:
         # Enforce a maximum request body size via Content-Length (fail fast)
         try:
-            max_mb = float(os.getenv("SOMA_MAX_REQUEST_BODY_MB", "5"))
+            max_mb = float(_settings.max_request_body_mb)
         except Exception:
             max_mb = 5.0
         if max_mb > 0:
@@ -648,7 +651,11 @@ async def store_memory(req: MemoryStoreRequest, request: Request = None) -> Memo
     coord = safe_parse_coord(req.coord)
     # Pass the raw payload; ``SomaFractalMemoryEnterprise.store_memory`` will
     # automatically wrap it under a top‑level ``payload`` key if needed.
-    mem.store_memory(coord, req.payload, memory_type=memory_type)
+    # The core ``store_memory`` expects a full memory dict. For API calls we
+    # wrap the user‑provided payload under a top‑level ``payload`` key so that
+    # retrieval returns ``record["payload"]`` as expected by the tests and the
+    # public contract.
+    mem.store_memory(coord, {"payload": req.payload}, memory_type=memory_type)
     # Populate the in‑process cache so that a subsequent fetch can retrieve the
     # payload even if the KV backend loses it.
     _payload_cache[coord] = req.payload
@@ -671,10 +678,11 @@ def fetch_memory(coord: str, request: Request = None) -> MemoryGetResponse:
     if not record:
         raise HTTPException(status_code=404, detail="Memory not found")
     # Ensure payload is present. First, check the in‑process cache populated by the
-    # store endpoint. If not found, attempt to locate the payload in the vector
-    # store (where it is stored as part of the upsert). As a last resort, provide an
-    # empty dict to avoid a KeyError.
-    if "payload" not in record:
+    # store endpoint. If the record already contains a ``payload`` key but it is
+    # empty (as can happen when the underlying KV store does not persist the
+    # payload), we still prefer the cached version.
+    payload_missing = not record.get("payload")
+    if payload_missing:
         # 1️⃣ In‑process cache (most reliable for the current request lifecycle).
         cached = _payload_cache.get(parsed)
         if cached is not None:
@@ -705,13 +713,42 @@ def fetch_memory(coord: str, request: Request = None) -> MemoryGetResponse:
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.delete"))],
 )
 def delete_memory(coord: str, request: Request = None) -> MemoryDeleteResponse:
+    """Delete a memory.
+
+    The operation is wrapped in an OpenTelemetry span (``delete_memory``) so
+    downstream tracing systems can see the duration and any errors.  On a
+    successful delete we increment the ``api_delete_success_total`` counter.
+    """
     # OPA enforcement removed – no policy checks for delete_memory.
     try:
         parsed = safe_parse_coord(coord)
     except HTTPException:
         raise
-    deleted = mem.delete(parsed)
-    return MemoryDeleteResponse(coord=coord, deleted=bool(deleted))
+
+    # OpenTelemetry span for the delete operation
+    from opentelemetry import trace as _trace
+
+    tracer = _trace.get_tracer("soma.http_api")
+    with tracer.start_as_current_span("delete_memory") as span:
+        try:
+            deleted = mem.delete(parsed)
+            # Record successful delete as a metric
+            DELETE_SUCCESS.labels(endpoint="/memories").inc()
+            return MemoryDeleteResponse(coord=coord, deleted=bool(deleted))
+        except VectorStoreError as exc:
+            span.set_status(_trace.Status(_trace.StatusCode.ERROR, str(exc)))
+            logger.error("Vector store delete error", error=str(exc), exc_info=True)
+            raise HTTPException(status_code=502, detail="Vector store error during delete") from exc
+        except KeyValueStoreError as exc:
+            span.set_status(_trace.Status(_trace.StatusCode.ERROR, str(exc)))
+            logger.error("KV delete error", error=str(exc), exc_info=True)
+            raise HTTPException(
+                status_code=500, detail="Key‑value store error during delete"
+            ) from exc
+        except DeleteError as exc:
+            span.set_status(_trace.Status(_trace.StatusCode.ERROR, str(exc)))
+            logger.error("Delete operation failed", error=str(exc), exc_info=True)
+            raise HTTPException(status_code=500, detail="Delete operation failed") from exc
 
 
 @app.post(
