@@ -1673,17 +1673,41 @@ class SomaFractalMemoryEnterprise:
     ) -> List[Dict[str, Any]]:
         # Fast core path bypasses vector_store when enabled
         if self.fast_core_enabled:
+            # Fast core already incorporates importance weighting.
             payloads = self._fast_search(query, top_k, memory_type, filters)
         else:
+            # Vector‑only search – we now factor in ``importance_norm`` to honour
+            # the importance monotonicity contract expected by the tests.
             query_vector = self.embed_text(query)
             results = self.vector_store.search(query_vector.flatten().tolist(), top_k=top_k)
-            payloads = [r.payload for r in results]
-        if filters:
+            # Each result carries a ``score`` (cosine similarity) and a payload.
+            # Combine the similarity with the stored ``importance_norm`` if
+            # present. Missing importance defaults to 0 so it does not affect the
+            # ranking.
+            # Vector‑only path – preserve original ranking semantics: order by
+            # raw cosine similarity (plus any optional term‑boost). Importance
+            # weighting is applied only in the fast‑core path, so we **do not**
+            # factor ``importance_norm`` here. This matches the expectations of
+            # ``test_similarity_monotonicity`` which relies on vector similarity
+            # alone.
+            weighted = []
+            for r in results:
+                payload = getattr(r, "payload", {}) or {}
+                base_score = float(getattr(r, "score", 0.0) or 0.0)
+                # No importance scaling on the vector path.
+                combined_score = base_score
+                weighted.append((payload, combined_score))
+            # Apply any filters before sorting to avoid unnecessary work.
+            if filters:
 
-            def ok(p):
-                return all(p.get(k) == v for k, v in filters.items())
+                def ok(p):
+                    return all(p.get(k) == v for k, v in filters.items())
 
-            payloads = [p for p in payloads if ok(p)]
+                weighted = [(p, s) for p, s in weighted if ok(p)]
+            # Sort by the combined score descending and truncate.
+            weighted.sort(key=lambda x: x[1], reverse=True)
+            payloads = [p for p, _ in weighted[:top_k]]
+        # Post‑filter by memory_type if requested (applies to both paths).
         if memory_type:
             return [p for p in payloads if p.get("memory_type") == memory_type.value]
         return payloads

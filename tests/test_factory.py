@@ -3,17 +3,17 @@
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
 from somafractalmemory.implementations.storage import (
-    InMemoryVectorStore,
     QdrantVectorStore,
     RedisKeyValueStore,
 )
 
 
 def test_create_evented_in_memory():
+    # Force the factory to use the real Qdrant vector store (no in‑memory fallback).
     memory = create_memory_system(
         MemoryMode.EVENTED_ENTERPRISE,
         "test_on_demand",
-        config={"redis": {"host": "localhost", "port": 40022}, "vector": {"backend": "memory"}},
+        config={"redis": {"host": "localhost", "port": 40022}},
     )
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
@@ -22,8 +22,10 @@ def test_create_evented_in_memory():
     from redis import Redis as RealRedis
 
     assert isinstance(memory.kv_store.client, RealRedis)
-    # Default now uses in-memory vector store; can be forced to Qdrant via config
-    assert isinstance(memory.vector_store, InMemoryVectorStore)
+    # The vector store must now be a real Qdrant instance.
+    from somafractalmemory.implementations.storage import QdrantVectorStore
+
+    assert isinstance(memory.vector_store, QdrantVectorStore)
 
 
 def test_create_evented_with_disk_qdrant(tmp_path):

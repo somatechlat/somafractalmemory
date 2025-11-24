@@ -2,8 +2,8 @@ import math
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.storage import (
-    InMemoryKeyValueStore,
-    InMemoryVectorStore,
+    QdrantVectorStore,
+    RedisKeyValueStore,
 )
 from somafractalmemory.interfaces.graph import IGraphStore
 
@@ -38,10 +38,30 @@ class _NullGraph(IGraphStore):  # Minimal stub for tests (truth: unused operatio
 
 
 def _make_memory_system():
+    """Create a memory system backed by real Redis and a temporary on‑disk Qdrant.
+
+    The test suite runs on a developer machine where Docker‑compose provides a
+    Redis instance on ``localhost:40022``. For the vector store we create a
+    Qdrant client that stores its data under a temporary directory created via
+    ``tempfile.mkdtemp`` – this guarantees isolation between test runs without
+    needing the pytest ``tmp_path`` fixture.
+    """
+    import tempfile
+    from pathlib import Path
+
+    # Real KV store – Redis running from Docker‑compose.
+    kv_store = RedisKeyValueStore(host="localhost", port=40022)
+
+    # Temporary on‑disk Qdrant instance.
+    qdrant_dir = Path(tempfile.mkdtemp())
+    vector_store = QdrantVectorStore(
+        collection_name="fast_core_test", path=str(qdrant_dir / "qdrant.db")
+    )
+
     return SomaFractalMemoryEnterprise(
         namespace="test",
-        kv_store=InMemoryKeyValueStore(),
-        vector_store=InMemoryVectorStore(),
+        kv_store=kv_store,
+        vector_store=vector_store,
         graph_store=_NullGraph(),
         vector_dim=32,
         decay_enabled=False,
@@ -57,7 +77,9 @@ def test_norm_invariant_on_insert():
     vs = m.vector_store
     norms = []
     for rec in vs.scroll():
-        vec = getattr(rec, "vector", None) or rec.vector  # support InMemoryVectorStore._Record
+        # QdrantVectorStore returns records that always expose a ``vector`` attribute.
+        # The previous fallback for the removed ``InMemoryVectorStore`` is no longer needed.
+        vec = rec.vector
         n = math.sqrt(sum(x * x for x in vec))
         norms.append(n)
     assert max(abs(n - 1.0) for n in norms) < 1e-4

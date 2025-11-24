@@ -6,10 +6,8 @@ Storage implementations for SomaFractalMemory.
 import inspect
 import json
 import threading
-from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
 from typing import Any, Optional
 
 # Third‑party imports (alphabetical)
@@ -19,10 +17,6 @@ import redis
 from psycopg2 import OperationalError
 from psycopg2 import errors as psycopg_errors
 
-try:  # optional test dependency
-    import fakeredis  # type: ignore
-except Exception:  # pragma: no cover - optional dependency path
-    fakeredis = None  # type: ignore
 try:
     # Optional OpenTelemetry instrumentation; safe no-op when package missing
     from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor  # type: ignore
@@ -54,199 +48,42 @@ if Psycopg2Instrumentor is not None:  # pragma: no cover - optional dependency p
         pass
 
 
-# Minimal InMemoryVectorStore for testing
-class InMemoryVectorStore(IVectorStore):
-    """A simple in-memory vector store for unit tests and ON_DEMAND mode."""
-
-    @dataclass
-    class _Record:
-        id: str
-        vector: list[float]
-        payload: dict
-
-    @dataclass
-    class _Hit:
-        id: str
-        score: float | None
-        payload: dict
-
-    def __init__(self):
-        self._points: dict[str, InMemoryVectorStore._Record] = {}
-        self.collection_name: str = ""
-        self._vector_dim: int = 0
-
-    def setup(self, vector_dim: int, namespace: str):
-        self._vector_dim = int(vector_dim)
-        self.collection_name = namespace
-
-    def upsert(self, points: list[dict]):
-        for p in points:
-            vec = p["vector"]
-            # Ensure vector dimensionality & normalization (L2) – defensive; skip heavy ops if already unit.
-            if self._vector_dim and len(vec) == self._vector_dim:
-                import math
-
-                norm = math.sqrt(sum(x * x for x in vec)) or 1.0
-                vec = [x / norm for x in vec]
-            rec = InMemoryVectorStore._Record(id=p["id"], vector=vec, payload=p.get("payload", {}))
-            self._points[p["id"]] = rec
-
-    def search(self, vector: list[float], top_k: int) -> list:
-        # Real cosine similarity (vectors assumed normalized; normalize query defensively)
-        import math
-
-        q_norm = math.sqrt(sum(x * x for x in vector)) or 1.0
-        q = [x / q_norm for x in vector]
-        hits: list[InMemoryVectorStore._Hit] = []
-        for rec in self._points.values():
-            # Dot product (both normalized) gives cosine
-            sim = sum(a * b for a, b in zip(rec.vector, q, strict=True))
-            # Respect optional allow-negative toggle when set by caller
-            allow_negative = getattr(self, "_allow_negative", False)
-            if not allow_negative and sim < 0:
-                sim = 0.0  # clamp negative similarity
-            imp = rec.payload.get("importance_norm")
-            if isinstance(imp, int | float):
-                sim *= float(imp)
-            hits.append(InMemoryVectorStore._Hit(id=rec.id, score=sim, payload=rec.payload))
-        # Partial selection for small in-memory test set: full sort acceptable
-        hits.sort(key=lambda h: (h.score if h.score is not None else -1.0), reverse=True)
-        return hits[:top_k]
-
-    def delete(self, ids: list[str]):
-        for i in ids:
-            self._points.pop(i, None)
-
-    def scroll(self):
-        yield from self._points.values()
-
-    def health_check(self) -> bool:
-        return True
-
-
-class InMemoryKeyValueStore(IKeyValueStore):
-    """An in-memory implementation of the key-value store for testing and ON_DEMAND mode."""
-
-    def __init__(self):
-        self._data = {}
-        self._lock = threading.Lock()
-
-    def set(self, key: str, value: bytes):
-        self._data[key] = value
-
-    def get(self, key: str) -> bytes | None:
-        return self._data.get(key)
-
-    def delete(self, key: str):
-        if key in self._data:
-            del self._data[key]
-
-    def scan_iter(self, pattern: str) -> Iterator[str]:
-        # A simple pattern matcher for in-memory store
-        import re
-
-        # Escape regex specials, then allow '*' wildcard
-        pat = re.escape(pattern).replace(r"\*", ".*")
-        regex = re.compile(f"^{pat}$")
-        return (key for key in self._data if regex.match(key))
-
-    def hgetall(self, key: str) -> dict[bytes, bytes]:
-        # This is a simplified implementation for non-hash types
-        value = self.get(key)
-        return {b"data": value} if value else {}
-
-    def hset(self, key: str, mapping: Mapping[bytes, bytes]):
-        # This is a simplified implementation for non-hash types
-        # It will store the mapping as a single value using the project's
-        # JSON-first serializer to avoid writing binary Python serialized objects to disk.
-        from somafractalmemory.serialization import serialize
-
-        try:
-            self.set(key, serialize(mapping))
-        except Exception:
-            # Last-resort fallback to plain str bytes
-            self.set(key, str(mapping).encode("utf-8"))
-
-    def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
-        return self._lock
-
-    def health_check(self) -> bool:
-        return True
+# NOTE: In‑memory KV and Vector stores have been **removed** to enforce the
+# “real‑infrastructure‑only” policy. The production code now relies exclusively
+# on `RedisKeyValueStore`, `PostgresRedisHybridStore`, and `QdrantVectorStore`.
 
 
 class RedisKeyValueStore(IKeyValueStore):
+    """Redis implementation of the key‑value store interface.
+
+    All testing‑related branches and in‑process fallbacks have been removed per
+    the Vibe Coding Rules. The store now always operates against a real Redis
+    instance created via a shared connection pool.
+    """
+
     def lock(self, name: str, timeout: int = 10) -> AbstractContextManager:
-        if self._testing:
-            # Provide a simple in-process reentrant lock for tests
-            lock = self._inproc_locks[name]
-
-            class _LockCtx:
-                def __enter__(self_nonlocal):  # noqa: N805
-                    lock.acquire()
-                    return lock
-
-                def __exit__(self_nonlocal, exc_type, exc, tb):  # noqa: N805
-                    try:
-                        lock.release()
-                    except Exception:
-                        pass
-                    return False
-
-            return _LockCtx()
+        # Directly delegate to the Redis client lock implementation.
         return self.client.lock(name, timeout=timeout)
 
     def health_check(self) -> bool:
-        if self._testing:
-            return True
         try:
             return bool(self.client.ping())
         except ConnectionError:
             return False
 
-    """Redis implementation of the key-value store interface."""
-
-    def __init__(
-        self, host: str = "localhost", port: int = 6379, db: int = 0, testing: bool = False
-    ):
-        self._testing = testing
-        # Always prepare an in-proc lock map for tests and fakeredis
-        self._inproc_locks: dict[str, threading.RLock] = defaultdict(lambda: threading.RLock())
-        if testing:
-            # Built-in in-memory backend for tests (avoids external fakeredis dependency)
-            class FakeRedis:
-                pass
-
-            self.client = FakeRedis()
-            self._mem_kv: dict[str, bytes] = {}
-            self._mem_hash: dict[str, dict[bytes, bytes]] = {}
-        else:
-            # Use a shared ConnectionPool per host/port/db tuple so multiple
-            # RedisKeyValueStore instances reuse connections instead of
-            # creating new pools/clients. This reduces connection churn.
-            # When the test-suite patches `redis.Redis` with a MagicMock we
-            # should preserve the expected call signature (host/port/db) so
-            # tests that assert the client was created with those args keep
-            # working. Detect that case by checking for a common Mock method.
-            if hasattr(redis.Redis, "assert_called_with"):
-                # Test mode: keep the original instantiation signature
-                self.client = redis.Redis(host=host, port=port, db=db)
-            else:
-                pool_key = (str(host), int(port), int(db))
-                pool = _redis_connection_pools.get(pool_key)
-                if pool is None:
-                    pool = redis.ConnectionPool(host=host, port=port, db=db)
-                    _redis_connection_pools[pool_key] = pool
-                self.client = redis.Redis(connection_pool=pool)
+    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
+        # Create (or reuse) a connection pool for the given host/port/db.
+        pool_key = (str(host), int(port), int(db))
+        pool = _redis_connection_pools.get(pool_key)
+        if pool is None:
+            pool = redis.ConnectionPool(host=host, port=port, db=db)
+            _redis_connection_pools[pool_key] = pool
+        self.client = redis.Redis(connection_pool=pool)
 
     def set(self, key: str, value: bytes):
-        if self._testing:
-            self._mem_kv[key] = value
-            return
         self.client.set(key, value)
 
     def get(self, key: str) -> bytes | None:
-        if self._testing:
-            return self._mem_kv.get(key)
         result = self.client.get(key)
         if inspect.isawaitable(result):
             import asyncio
@@ -257,24 +94,9 @@ class RedisKeyValueStore(IKeyValueStore):
         return None
 
     def delete(self, key: str):
-        if self._testing:
-            self._mem_kv.pop(key, None)
-            self._mem_hash.pop(key, None)
-            return
         self.client.delete(key)
 
     def scan_iter(self, pattern: str) -> Iterator[str]:
-        if self._testing:
-            import re
-
-            pat = re.escape(pattern).replace(r"\*", ".*")
-            regex = re.compile(f"^{pat}$")
-            seen: set[str] = set()
-            for key in list(self._mem_kv.keys()) + list(self._mem_hash.keys()):
-                if key not in seen and regex.match(key):
-                    seen.add(key)
-                    yield key
-            return
         for key in self.client.scan_iter(pattern):
             if isinstance(key, bytes | bytearray):
                 yield key.decode("utf-8")
@@ -282,8 +104,6 @@ class RedisKeyValueStore(IKeyValueStore):
                 yield str(key)
 
     def hgetall(self, key: str) -> dict[bytes, bytes]:
-        if self._testing:
-            return dict(self._mem_hash.get(key, {}))
         result = self.client.hgetall(key)
         if inspect.isawaitable(result):
             import asyncio
@@ -296,14 +116,6 @@ class RedisKeyValueStore(IKeyValueStore):
         return {}
 
     def hset(self, key: str, mapping: Mapping[bytes, bytes]):
-        if self._testing:
-            cur = self._mem_hash.setdefault(key, {})
-            for k, v in mapping.items():
-                if isinstance(k, bytes | bytearray) and isinstance(v, bytes | bytearray):
-                    cur[bytes(k)] = bytes(v)
-                else:
-                    cur[str(k).encode("utf-8")] = str(v).encode("utf-8")
-            return
         self.client.hset(key, mapping=dict(mapping))
 
 
@@ -535,8 +347,17 @@ class QdrantVectorStore(IVectorStore):
 
         _settings = load_settings()
         _lim = int(_settings.qdrant_scroll_limit)
+        # Request both payload and the stored vector so callers can inspect the
+        # embedding (e.g., the norm‑invariant test). Older Qdrant versions return
+        # vectors only when ``with_vector=True`` is supplied.
+        # The Qdrant client uses the flag ``with_vectors`` (plural) to include the
+        # stored embedding in the returned points. Supplying it ensures the test
+        # that validates vector norm can access ``point.vector``.
         records, next_page_offset = self.client.scroll(
-            collection_name=self.collection_name, limit=_lim, with_payload=True
+            collection_name=self.collection_name,
+            limit=_lim,
+            with_payload=True,
+            with_vectors=True,
         )
         while records:
             yield from records

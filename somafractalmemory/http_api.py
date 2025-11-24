@@ -216,7 +216,8 @@ def _redis_config(settings: Any | None = None) -> dict[str, Any]:
     2. Legacy ``REDIS_URL`` parsing.
     3. Individual ``REDIS_HOST``/``REDIS_PORT``/``REDIS_DB`` env vars.
     """
-    cfg: dict[str, Any] = {"testing": False}
+    # Configuration for rate limiter – no testing flag needed.
+    cfg: dict[str, Any] = {}
     # Use the DNS name from the shared infra settings if available
     if settings and getattr(settings, "infra", None):
         cfg["host"] = settings.infra.redis
@@ -403,10 +404,16 @@ class _RedisRateLimiter:
 
 
 def _build_rate_limiter(cfg: dict[str, Any]) -> object:
+    """Construct a rate limiter.
+
+    The function now respects only an explicit ``enabled`` flag. Any legacy
+    ``testing`` flag has been removed in accordance with the Vibe Coding Rules.
+    """
     if _RATE_LIMIT_MAX <= 0 or _RATE_WINDOW <= 0:
         return _AlwaysAllowRateLimiter()
     fallback = _InMemoryRateLimiter(window=_RATE_WINDOW, max_requests=_RATE_LIMIT_MAX)
-    if not cfg or cfg.get("testing") or cfg.get("enabled") is False:
+    # If the configuration explicitly disables the limiter, use the in‑memory fallback.
+    if cfg.get("enabled") is False:
         return fallback
     if redis is None:
         logger.warning("redis package unavailable; using in-memory rate limiter")
