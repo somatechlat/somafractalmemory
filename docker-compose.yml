@@ -83,8 +83,9 @@ services:
     command: ["uvicorn", "somafractalmemory.http_api:app", "--host", "0.0.0.0", "--port", "${SOMA_API_PORT:-9595}"]
     # Port 9595 is the PUBLIC API ENTRY POINT (externally accessible)
     environment:
-      # Pin a predictable development token so e2e tests work consistently
-      SOMA_API_TOKEN: "devtoken"
+      # Use the token defined in the .env file for consistency with tests.
+      # This mirrors the fallback logic in http_api._load_api_token.
+      SOMA_API_TOKEN: "dev-032f8d463c84e7ef0d834c3a"
       # Disable rate limiting in development to allow high-throughput seeding
       SOMA_RATE_LIMIT_MAX: "0"
       SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"

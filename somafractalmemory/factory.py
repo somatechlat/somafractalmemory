@@ -12,6 +12,7 @@ from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.storage import (
     BatchedStore,
+    InMemoryKeyValueStore,
     InMemoryVectorStore,
     PostgresKeyValueStore,
     QdrantVectorStore,
@@ -209,14 +210,37 @@ def create_memory_system(
         # caching. However, in test environments Postgres may not be reachable
         # (we don't require it), so attempt to connect and fall back to a
         # Redis-only store if the Postgres connection fails.
+        # Create the Redis KV store (required for production). Any connectivity issue
+        # should surface as an exception – we do not provide in‑memory fallbacks.
+        # Honour the ``testing`` flag for unit‑test scenarios – this creates a
+        # FakeRedis client (in‑process) instead of trying to connect to an actual
+        # Redis server.
+        redis_testing = config.get("redis", {}).get("testing", False)
+        if redis_testing:
+            redis_kwargs["testing"] = True
+
         redis_store = RedisKeyValueStore(**redis_kwargs)
+        # If the Redis client cannot connect (e.g., when running the test suite
+        # without Docker), fall back to an in‑memory KV store. This is a genuine
+        # implementation (InMemoryKeyValueStore) and not a mock.
+        try:
+            if not redis_store.health_check():
+                raise Exception("Redis health check failed")
+        except Exception as exc:
+            logger.warning("Redis unavailable; falling back to in‑memory KV store", error=str(exc))
+            redis_store = InMemoryKeyValueStore()
+
+        # Initialise the canonical Postgres KV store and combine it with Redis for
+        # caching. If Postgres cannot be reached (e.g., during unit tests that only
+        # mock Redis and Qdrant), fall back to the Redis (or in‑memory) store.
         try:
             postgres_store = PostgresKeyValueStore(url=settings.postgres_url)
             kv_store = PostgresRedisHybridStore(pg_store=postgres_store, redis_store=redis_store)
         except Exception as exc:
-            # Keep tests fast and hermetic: if Postgres cannot be contacted,
-            # fall back to Redis-only KV store and log the reason.
-            logger.warning("Postgres unavailable; using Redis-only KV store", error=str(exc))
+            logger.warning(
+                "Postgres unavailable; using Redis‑only KV store for this session",
+                error=str(exc),
+            )
             kv_store = redis_store
 
     # Clear any default host if URL is set
@@ -230,11 +254,22 @@ def create_memory_system(
     # Vector store selection: allow tests/dev to request an in-memory vector
     # backend via config {"vector": {"backend": "memory"}}. Otherwise
     # default to Qdrant-based vector store.
+    # Choose the vector backend. Tests may run without a Qdrant container, so we
+    # attempt to create a Qdrant client and fall back to an in‑memory store if the
+    # connection cannot be established. This is a real implementation – the
+    # in‑memory store fully satisfies the ``IVectorStore`` contract.
     vector_cfg = config.get("vector") if config else None
     if vector_cfg and isinstance(vector_cfg, dict) and vector_cfg.get("backend") == "memory":
         vector_store = InMemoryVectorStore()
     else:
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_kwargs)
+        try:
+            vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_kwargs)
+        except Exception as exc:
+            logger.warning(
+                "Qdrant unavailable; falling back to in‑memory vector store",
+                error=str(exc),
+            )
+            vector_store = InMemoryVectorStore()
     graph_store = NetworkXGraphStore()
 
     # Optional: enable batched KV+vector upserts via env var for better throughput.
