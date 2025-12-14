@@ -753,9 +753,6 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-
-
-
 @app.post(
     "/memories",
     response_model=MemoryStoreResponse,
@@ -809,7 +806,13 @@ def search_memories_get(
     This endpoint must be defined *before* the ``/memories/{coord}`` route so
     that FastAPI matches the static ``/memories/search`` path instead of treating
     ``search`` as a coordinate value.
+
+    TENANT ISOLATION (D1): Results are filtered to only include memories
+    belonging to the requesting tenant.
     """
+    # TENANT ISOLATION: Extract requesting tenant
+    requesting_tenant = _get_tenant_from_request(request) if request else "default"
+
     parsed_filters: dict[str, Any] | None = None
     if filters:
         try:
@@ -820,11 +823,23 @@ def search_memories_get(
                 parsed_filters = parsed_candidate
         except Exception:
             parsed_filters = None
+
     if parsed_filters:
         results = mem.find_hybrid_by_type(query, top_k=top_k, filters=parsed_filters)
     else:
         results = mem.recall(query, top_k=top_k)
-    return MemorySearchResponse(memories=results)
+
+    # TENANT ISOLATION: Filter results to only include memories for this tenant
+    # This ensures tenant A's recall does NOT return tenant B's memories (D1.1)
+    filtered_results = []
+    for result in results:
+        stored_tenant = result.get("_tenant", "default")
+        if stored_tenant == requesting_tenant:
+            # Remove internal tenant field from response
+            clean_result = {k: v for k, v in result.items() if not k.startswith("_")}
+            filtered_results.append(clean_result)
+
+    return MemorySearchResponse(memories=filtered_results)
 
 
 @app.get(

@@ -117,7 +117,6 @@ class RedisKeyValueStore(IKeyValueStore):
         self.client.hset(key, mapping=dict(mapping))
 
 
-
 class PostgresRedisHybridStore(IKeyValueStore):
     """Combine a PostgresKeyValueStore (canonical) with a RedisKeyValueStore.
 
