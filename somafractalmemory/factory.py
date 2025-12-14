@@ -11,8 +11,8 @@ from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
 from somafractalmemory.implementations.storage import (
     BatchedStore,
+    MilvusVectorStore,
     PostgresKeyValueStore,
-    QdrantVectorStore,
     RedisKeyValueStore,
 )
 from somafractalmemory.interfaces.storage import IKeyValueStore
@@ -124,7 +124,7 @@ def create_memory_system(
 
     overrides: dict[str, Any] = {}
     redis_kwargs: dict[str, Any] = {}
-    qdrant_kwargs: dict[str, Any] = {}
+    milvus_kwargs: dict[str, Any] = {}
 
     if config:
         postgres_cfg = config.get("postgres")
@@ -137,16 +137,12 @@ def create_memory_system(
         if redis_cfg.get("port") is not None:
             redis_kwargs["port"] = int(redis_cfg["port"])
 
-        qdrant_cfg = config.get("qdrant") or {}
-        if qdrant_cfg.get("url"):
-            qdrant_kwargs["url"] = qdrant_cfg["url"]
-        elif qdrant_cfg.get("host"):
-            qdrant_kwargs["host"] = qdrant_cfg["host"]
-            if qdrant_cfg.get("port") is not None:
-                qdrant_kwargs["port"] = int(qdrant_cfg["port"])
-        # Support local on-disk qdrant used by tests (path => on-disk client)
-        if qdrant_cfg.get("path"):
-            qdrant_kwargs["path"] = qdrant_cfg["path"]
+        # Milvus configuration from config dict
+        milvus_cfg = config.get("milvus") or {}
+        if milvus_cfg.get("host"):
+            milvus_kwargs["host"] = milvus_cfg["host"]
+        if milvus_cfg.get("port") is not None:
+            milvus_kwargs["port"] = int(milvus_cfg["port"])
 
     # Honor bare environment overrides even when config is absent
     # Load centralized settings once.
@@ -154,42 +150,37 @@ def create_memory_system(
     # Apply explicit environment overrides using the central settings.
     if _settings.postgres_url:
         overrides.setdefault("postgres_url", _settings.postgres_url)
-    # Qdrant configuration – prioritize explicit config, then settings.
-    if not qdrant_kwargs.get("url") and not qdrant_kwargs.get("host"):
-        if _settings.qdrant_url:
-            qdrant_kwargs["url"] = _settings.qdrant_url
-        elif _settings.qdrant_host:
-            qdrant_kwargs["host"] = _settings.qdrant_host
-            # Assume default port if not set in settings (could be added later).
-            if hasattr(_settings, "qdrant_port") and _settings.qdrant_port:
-                qdrant_kwargs["port"] = int(_settings.qdrant_port)
+    # Milvus configuration – use settings if not already set from config.
+    if not milvus_kwargs.get("host"):
+        milvus_kwargs["host"] = getattr(_settings, "milvus_host", "milvus")
+    if not milvus_kwargs.get("port"):
+        milvus_kwargs["port"] = int(getattr(_settings, "milvus_port", 19530))
     # Redis configuration – use settings infra defaults.
     if _settings.infra.redis:
         redis_kwargs.setdefault("host", _settings.infra.redis)
 
     settings = load_settings(overrides=overrides if overrides else None)
 
-    # If the caller explicitly provided a local qdrant path via config (tests),
-    # prefer that unconditionally to avoid attempting network connections to
-    # a remote qdrant host from within unit tests.
-    if config and isinstance(config.get("qdrant"), dict) and config.get("qdrant", {}).get("path"):
-        qdrant_kwargs = {"path": config.get("qdrant", {}).get("path")}
-
     # Log the settings being used
     logger.info(f"Postgres URL: {settings.postgres_url}")
     logger.info(f"Redis host: {settings.infra.redis}")
-    logger.info(f"Qdrant config: {qdrant_kwargs}")
+    logger.info(f"Milvus config: {milvus_kwargs}")
 
     redis_kwargs.setdefault("host", settings.infra.redis)
 
     # ---------------------------------------------------------------------
     # Production‑only configuration – **no testing fallbacks**.
+    # VIBE CODING RULES: FAIL FAST – no mocks, no placeholders, no fallbacks.
     # ---------------------------------------------------------------------
-    # Create the Redis KV store. Any connectivity problem should raise an
-    # exception – we no longer silently fall back to an in‑memory store.
+    # Create the Redis KV store. Any connectivity problem raises an exception.
     redis_store = RedisKeyValueStore(**redis_kwargs)
     if not redis_store.health_check():
-        raise RuntimeError("Unable to connect to Redis at the configured host/port")
+        raise RuntimeError(
+            "Redis health check failed – real infrastructure required. "
+            "Ensure Redis is running and accessible at "
+            f"{redis_kwargs.get('host', 'localhost')}:{redis_kwargs.get('port', 6379)}. "
+            "Run: docker compose --profile core up -d"
+        )
 
     # Initialise the canonical Postgres KV store. If Postgres cannot be reached,
     # we raise an error instead of silently degrading to a Redis‑only store.
@@ -207,25 +198,21 @@ def create_memory_system(
         )
         kv_store = redis_store
 
-    # Clear any default host if URL is set
-    if "url" in qdrant_kwargs and "host" in qdrant_kwargs:
-        del qdrant_kwargs["host"]
-        if "port" in qdrant_kwargs:
-            del qdrant_kwargs["port"]
-    elif not qdrant_kwargs:
-        qdrant_kwargs["host"] = settings.qdrant_host
-
-    # Vector store selection – always use the real Qdrant store.
-    # The previous implementation allowed a "memory" backend for unit‑test speed.
-    # For a production‑like environment (and per the request to eliminate any
-    # in‑memory bypass), we now *force* the QdrantVectorStore. If Qdrant cannot be
-    # reached an exception will be raised – this mirrors real‑world failure
-    # handling and ensures tests run against the actual vector store.
+    # -----------------------------------------------------------------
+    # Vector store selection – Milvus ONLY (Qdrant removed per architecture decision)
+    # -----------------------------------------------------------------
+    # SomaBrain hardcodes Milvus; SomaFractalMemory now standardizes on Milvus
+    # for consistency across the entire stack. This eliminates code complexity
+    # and ensures a single vector backend to maintain.
     try:
-        vector_store = QdrantVectorStore(collection_name=namespace, **qdrant_kwargs)
+        vector_store = MilvusVectorStore(
+            collection_name=namespace,
+            host=milvus_kwargs.get("host", "milvus"),
+            port=milvus_kwargs.get("port", 19530),
+        )
     except Exception as exc:
         logger.error(
-            "Failed to initialise Qdrant vector store – real infra required.",
+            "Failed to initialise Milvus vector store – real infra required.",
             error=str(exc),
         )
         raise

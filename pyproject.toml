@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
   "numpy",
   "redis>=4.0.0",
-  "qdrant-client",
+  "pymilvus>=2.3.0",
   "scikit-learn",
   "cryptography",
   "PyJWT",

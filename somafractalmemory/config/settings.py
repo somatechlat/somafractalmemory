@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import AnyUrl, Field, PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn
 
 # BaseSettings has been moved to the separate `pydantic-settings` package in
 # Pydantic v2. Import it from there while keeping the other types from the main
@@ -67,11 +67,6 @@ class Settings(BaseSettings):
         validation_alias="SOMA_VECTOR_DIM",
         description="Embedding vector dimension.",
     )
-    qdrant_scroll_limit: int = Field(
-        100,
-        validation_alias="SOMA_QDRANT_SCROLL_LIMIT",
-        description="Qdrant scroll pagination limit.",
-    )
 
     # ---------------------------------------------------------------------
     # Service URLs / DSNs
@@ -89,20 +84,11 @@ class Settings(BaseSettings):
         validation_alias="REDIS_URL",
         description="Redis DSN.",
     )
-    qdrant_url: AnyUrl | None = Field(
-        None,
-        validation_alias="QDRANT_URL",
-        description="Qdrant URL.",
-    )
 
     # Host/port components (kept for backward compatibility)
     redis_host: str = Field("localhost", validation_alias="REDIS_HOST")
     redis_port: int = Field(6379, validation_alias="REDIS_PORT")
     redis_db: int = Field(0, validation_alias="REDIS_DB")
-    qdrant_host: str = Field("localhost", validation_alias="QDRANT_HOST")
-    qdrant_port: int = Field(6333, validation_alias="QDRANT_PORT")
-    qdrant_tls: bool = Field(False, validation_alias="QDRANT_TLS")
-    qdrant_tls_cert: Path | None = Field(None, validation_alias="QDRANT_TLS_CERT")
 
     # ---------------------------------------------------------------------
     # API & security
@@ -152,9 +138,34 @@ class Settings(BaseSettings):
     s3_bucket: str = Field("", validation_alias="SOMA_S3_BUCKET")
     serializer: str = Field("json", validation_alias="SOMA_SERIALIZER")
     memory_namespace: str = Field("api_ns", validation_alias="SOMA_MEMORY_NAMESPACE")
+    # Namespace used exclusively for test‑only memories. Separate stats can be
+    # retrieved via the `/test-stats` endpoint. Defaults to "test_ns" but can be
+    # overridden with the environment variable ``SOMA_TEST_MEMORY_NAMESPACE``.
+    test_memory_namespace: str = Field("test_ns", validation_alias="SOMA_TEST_MEMORY_NAMESPACE")
     model_name: str = Field(
         "sentence-transformers/all-MiniLM-L6-v2",
         validation_alias="SOMA_MODEL_NAME",
+    )
+    # ---------------------------------------------------------------------
+    # Vector store backend (Milvus only - Qdrant removed)
+    # ---------------------------------------------------------------------
+    # NOTE: Qdrant support has been removed. SomaBrain hardcodes Milvus,
+    # and SomaFractalMemory now standardizes on Milvus for consistency.
+    # Milvus connection settings – used only when vector_backend == "milvus"
+    milvus_host: str = Field(
+        "milvus",
+        validation_alias="SOMA_MILVUS_HOST",
+        description="Milvus service host (Docker network alias)",
+    )
+    milvus_port: int = Field(
+        19530,
+        validation_alias="SOMA_MILVUS_PORT",
+        description="Milvus gRPC port",
+    )
+    milvus_collection: str = Field(
+        "memories",
+        validation_alias="SOMA_MILVUS_COLLECTION",
+        description="Milvus collection name for stored vectors",
     )
     hybrid_recall_default: bool = Field(True, validation_alias="SOMA_HYBRID_RECALL_DEFAULT")
     max_request_body_mb: float = Field(5.0, validation_alias="SOMA_MAX_REQUEST_BODY_MB")

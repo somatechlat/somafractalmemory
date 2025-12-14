@@ -53,7 +53,7 @@ class InfraEndpoints(BaseModel):
     prometheus: str = Field(default="prometheus")
     jaeger: str = Field(default="jaeger")
     # Additional services used by SMF
-    qdrant: str = Field(default="qdrant")
+    milvus: str = Field(default="milvus")
     postgres: str = Field(default="postgres")
 
 
@@ -80,10 +80,7 @@ class SMFSettings(SomaBaseSettings):
         default="postgresql://soma:soma@postgres:5432/somamemory",
         description="DSN used by the Postgres-backed key-value store",
     )
-    qdrant_host: str = Field(
-        default="qdrant",
-        description="Hostname for the Qdrant vector database",
-    )
+
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 
@@ -109,11 +106,7 @@ class SMFSettings(SomaBaseSettings):
         alias="SOMA_MODEL_NAME",
         description="Transformer model name for embeddings (formerly SOMA_MODEL_NAME)",
     )
-    qdrant_url: str = Field(
-        default="http://qdrant:6333",
-        alias="QDRANT_URL",
-        description="Full URL for Qdrant service (formerly QDRANT_URL env var)",
-    )
+
     hybrid_recall_default: bool = Field(
         default=True,
         alias="SOMA_HYBRID_RECALL_DEFAULT",
@@ -273,10 +266,9 @@ class SMFSettings(SomaBaseSettings):
     batch_size: int = Field(default=100, description="Batch size for upserts")
     batch_flush_ms: int = Field(default=5, description="Batch flush interval in milliseconds")
 
-    # Qdrant TLS configuration
-    qdrant_tls: bool = Field(default=False, description="Enable TLS for Qdrant connection")
-    qdrant_tls_cert: Path | None = Field(default=None, description="Path to Qdrant TLS certificate")
-    qdrant_scroll_limit: int = Field(default=100, description="Scroll pagination limit for Qdrant")
+    # Milvus configuration (Qdrant removed - standardized on Milvus)
+    milvus_host: str = Field(default="milvus", description="Milvus service host")
+    milvus_port: int = Field(default=19530, description="Milvus gRPC port")
 
     # ---------------------------------------------------------------------
     # Logging / API runtime configuration

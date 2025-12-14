@@ -81,44 +81,20 @@ def pytest_sessionstart(session):
         # Probe for a reachable Redis on localhost
         detected = _first_reachable("localhost", [6379, 6381])
         redis_port = detected if detected is not None else 6379
-    # Qdrant
-    q_host = settings.qdrant_host
-    q_port = settings.qdrant_port
+    # Milvus (Qdrant removed - standardized on Milvus)
+    milvus_host = getattr(settings, "milvus_host", "milvus")
+    milvus_port = getattr(settings, "milvus_port", 19530)
 
     # Export back resolved env for tests and library code.
     os.environ["POSTGRES_URL"] = pg_url
     os.environ["REDIS_HOST"] = redis_host
     os.environ["REDIS_PORT"] = str(redis_port)
-    os.environ["QDRANT_HOST"] = q_host
-    os.environ["QDRANT_PORT"] = str(q_port)
-    # Align Qdrant collection with the active namespace to keep test scrolls small and recent.
-    # Default API namespace is "api_ns"; respect override if provided. If the preferred
-    # namespace collection does not exist but another known namespace does, fall back to it.
-    preferred_ns = settings.memory_namespace
-    chosen_collection = preferred_ns
-    try:
-        from qdrant_client import QdrantClient
-
-        qc = QdrantClient(host=q_host, port=q_port)
-        cols = {c.name for c in qc.get_collections().collections}
-        # Prefer the preferred namespace if present, else a common default used by the API settings,
-        # else fall back to the legacy memory_vectors for compatibility.
-        if preferred_ns in cols:
-            chosen_collection = preferred_ns
-        elif "somabrain_ns:public" in cols:
-            chosen_collection = "somabrain_ns:public"
-        elif "api_ns" in cols:
-            chosen_collection = "api_ns"
-        elif "memory_vectors" in cols:
-            chosen_collection = "memory_vectors"
-    except Exception:
-        # If Qdrant probe fails, keep the preferred default; tests will still run.
-        chosen_collection = preferred_ns
-    os.environ["QDRANT_COLLECTION"] = chosen_collection
+    os.environ["SOMA_MILVUS_HOST"] = milvus_host
+    os.environ["SOMA_MILVUS_PORT"] = str(milvus_port)
 
     # Connectivity check with small retry if needed.
     deadline = time.time() + 10
-    ok_pg = ok_redis = ok_q = False
+    ok_pg = ok_redis = ok_milvus = False
     while time.time() < deadline:
         # Parse pg host/port from URL for reachability
         try:
@@ -132,25 +108,25 @@ def pytest_sessionstart(session):
 
         ok_pg = _tcp_open(pg_host, pg_port)
         ok_redis = _tcp_open(redis_host, redis_port)
-        ok_q = _tcp_open(q_host, q_port)
-        if ok_pg and ok_redis and ok_q:
+        ok_milvus = _tcp_open(milvus_host, milvus_port)
+        if ok_pg and ok_redis and ok_milvus:
             break
         time.sleep(0.5)
 
-    if not (ok_pg and ok_redis and ok_q):
+    if not (ok_pg and ok_redis and ok_milvus):
         # Best-effort to start compose services if nothing reachable on localhost
-        _start_compose_services(["redis", "postgres", "qdrant"])
+        _start_compose_services(["redis", "postgres", "milvus"])
         # Wait up to another 20s
         deadline = time.time() + 20
-        while time.time() < deadline and not (ok_pg and ok_redis and ok_q):
+        while time.time() < deadline and not (ok_pg and ok_redis and ok_milvus):
             ok_pg = _tcp_open(pg_host, pg_port)
             ok_redis = _tcp_open(redis_host, redis_port)
-            ok_q = _tcp_open(q_host, q_port)
-            if ok_pg and ok_redis and ok_q:
+            ok_milvus = _tcp_open(milvus_host, milvus_port)
+            if ok_pg and ok_redis and ok_milvus:
                 break
             time.sleep(1.0)
 
-    if ok_pg and ok_redis and ok_q:
+    if ok_pg and ok_redis and ok_milvus:
         print("[conftest] All required infra reachable.")
         os.environ["SOMA_INFRA_AVAILABLE"] = "1"
     else:
@@ -159,8 +135,8 @@ def pytest_sessionstart(session):
             missing.append("Redis")
         if not ok_pg:
             missing.append("Postgres")
-        if not ok_q:
-            missing.append("Qdrant")
+        if not ok_milvus:
+            missing.append("Milvus")
         print(
             f"[conftest] Required infra not reachable: {', '.join(missing)}. "
             "Integration tests may skip."

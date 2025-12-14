@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 """HTTP API service for SomaFractalMemory.
 
 This is the canonical FastAPI surface used for local runs, OpenAPI generation,
@@ -9,10 +13,16 @@ in place for legacy imports.
 import os
 import threading
 import time
+import warnings
 from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+
+# Suppress FastAPI deprecation warnings (e.g., on_event) that are not relevant to
+# test execution. This keeps the test suite clean and aligns with the VIBE rule
+# that code should not emit unnecessary noise.
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,7 +30,13 @@ from opentelemetry import trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Histogram,
+    generate_latest,
+)
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -29,6 +45,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from common.config.settings import load_settings as _load_settings
 from common.utils.async_metrics import submit as _submit_metric
 from common.utils.logger import configure_logging, get_logger
+
+# Import optional tracer configuration helper. This was previously referenced
+# without an import, causing a NameError at runtime and preventing the API
+# from starting.
+from common.utils.trace import configure_tracer
 
 # OPA client and enforcement have been removed – the project does not include an OPA service.
 from somafractalmemory.core import DeleteError, KeyValueStoreError, MemoryType, VectorStoreError
@@ -58,52 +79,38 @@ logger = get_logger(__name__)
 logger.info("Loading somafractalmemory.http_api")
 
 
+# ---------------------------------------------------------------------
+# Helper: safe coordinate parsing for API input
+# ---------------------------------------------------------------------
+def safe_parse_coord(coord: str) -> tuple[float, ...]:
+    """Parse a comma‑separated coordinate string into a tuple of floats.
+
+    The CLI provides ``parse_coord`` which raises generic ``ValueError`` on
+    malformed input. The HTTP API should instead return a *400 Bad Request*
+    with a clear error message. This helper mirrors the CLI logic but wraps any
+    parsing error in a ``fastapi.HTTPException``.
+    """
+    try:
+        parts = [p.strip() for p in coord.split(",") if p.strip()]
+        if not parts:
+            raise ValueError
+        return tuple(float(p) for p in parts)
+    except Exception:
+        # FastAPI will translate this into a JSON error response.
+        raise HTTPException(status_code=400, detail=f"Invalid coord: {coord}")
+
+
 class HealthResponse(BaseModel):
+    """Health check response model.
+
+    The API exposes ``/healthz`` and ``/readyz`` endpoints that return a JSON
+    object indicating the status of the key‑value store, vector store, and graph
+    store.  Only these three boolean fields are required.
+    """
+
     kv_store: bool
     vector_store: bool
     graph_store: bool
-
-
-try:  # pragma: no cover - optional dependency import path
-    import redis
-    from redis.exceptions import RedisError
-except Exception:  # pragma: no cover - redis is optional in some environments
-    redis = None  # type: ignore
-    RedisError = Exception  # type: ignore[misc]
-
-try:
-    # Centralised settings and shared tracing (optional in CI environments)
-    from common.config.settings import load_settings
-    from common.utils.trace import configure_tracer
-except Exception:  # pragma: no cover - optional in some environments
-    load_settings = None  # type: ignore
-    configure_tracer = None  # type: ignore
-
-
-# OPA integration has been removed. All authorization is now unrestricted.
-# The ``opa_enforce`` function below is retained as a no‑op for compatibility.
-
-# OPA enforcement has been removed from the codebase. All endpoints operate
-# without policy checks. The previous `opa_enforce` function and its calls have
-# been eliminated.
-
-
-def parse_coord(text: str) -> tuple[float, ...]:
-    parts = [p.strip() for p in text.split(",") if p.strip()]
-    return tuple(float(p) for p in parts)
-
-
-def safe_parse_coord(text: str) -> tuple[float, ...]:
-    """Parse coordinate string and raise HTTP 400 on invalid input.
-
-    Returns a tuple of floats for valid input. This wrapper ensures we return
-    a client-friendly HTTP 400 when the payload contains malformed coords
-    instead of bubbling ValueError and producing a 500.
-    """
-    try:
-        return parse_coord(text)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid coord: {text}") from exc
 
 
 def _resolve_memory_type(value: str | None) -> MemoryType:
@@ -483,15 +490,37 @@ except Exception as e:
 
 # Authentication dependency
 def auth_dep(request: Request):
-    """Simplified authentication dependency.
+    """Authentication dependency.
 
-    The original implementation supported JWT validation and a static token
-    fallback. For the purposes of this repository (and the test suite) we
-    bypass all authentication checks entirely – any request is allowed.
-    This eliminates 401/403 responses caused by missing or mismatched tokens
-    while preserving the dependency signature expected by FastAPI.
+    Enforces the API token configured via ``SMFSettings.api_token`` (exposed as
+    ``_settings.api_token``). The original code disabled authentication entirely,
+    which conflicted with the VIBE rule *"no lies, no placeholders, no fake
+    implementations"* and made the service insecure.
+
+    The dependency now:
+    1. Extracts the ``Authorization`` header expecting the ``Bearer <token>``
+       format.
+    2. Compares the provided token with the configured token.
+    3. Raises ``HTTPException(status_code=401)`` on mismatch or missing token.
+    4. Logs a warning when a request is unauthenticated – useful in dev mode
+       where the token may be intentionally omitted.
     """
-    # No authentication performed – always allow the request.
+    expected = getattr(_settings, "api_token", None)
+    # If no token is configured (should not happen – import already guards),
+    # allow all requests but log a notice.
+    if not expected:
+        logger.warning("API token not configured – authentication disabled")
+        return None
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        logger.info("Missing Authorization header")
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    provided = auth_header.split(" ", 1)[1]
+    if provided != expected:
+        logger.info("Invalid API token provided")
+        raise HTTPException(status_code=401, detail="Invalid API token")
+    # Token valid – allow request.
     return None
 
 
@@ -502,6 +531,56 @@ def rate_limit_dep(path: str):
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     return _enforce
+
+
+# ---------------------------------------------------------------------
+# TENANT ISOLATION (CRITICAL - SECURITY)
+# Per VIBE CODING RULES and Requirements D1.1-D1.5
+# ---------------------------------------------------------------------
+def _get_tenant_from_request(request: Request) -> str:
+    """Extract tenant from request headers (REQUIRED for isolation).
+
+    Tenant can be provided via:
+    1. X-Soma-Tenant header (preferred)
+    2. X-Soma-Namespace header (extract tenant from namespace:tenant format)
+
+    If no tenant is provided, returns "default" to prevent cross-tenant leakage.
+    All memory operations MUST be scoped by this tenant value.
+    """
+    tenant = request.headers.get("X-Soma-Tenant")
+    if tenant:
+        return tenant.strip()
+
+    # Fallback: extract from namespace header
+    namespace = request.headers.get("X-Soma-Namespace", "")
+    if ":" in namespace:
+        tenant = namespace.split(":")[-1].strip()
+        if tenant:
+            return tenant
+
+    # Default tenant - ensures isolation even when header is missing
+    return "default"
+
+
+def _get_tenant_scoped_namespace(request: Request, base_namespace: str | None = None) -> str:
+    """Get a tenant-scoped namespace for memory operations.
+
+    This ensures complete tenant isolation by prefixing all namespaces
+    with the tenant ID. Format: {tenant}:{namespace}
+
+    Args:
+        request: The HTTP request containing tenant headers
+        base_namespace: Optional base namespace (defaults to mem.namespace)
+
+    Returns:
+        Tenant-scoped namespace string
+    """
+    tenant = _get_tenant_from_request(request)
+    ns = base_namespace or getattr(mem, "namespace", "default")
+    # If namespace already contains tenant prefix, don't double-prefix
+    if ns.startswith(f"{tenant}:"):
+        return ns
+    return f"{tenant}:{ns}"
 
 
 class MemoryStoreRequest(BaseModel):
@@ -544,31 +623,63 @@ class StatsResponse(BaseModel):
     vector_collections: dict[str, int] | None = None
 
 
-# Prometheus metrics for API operations
-API_REQUESTS = Counter(
-    "api_requests_total",
-    "Total number of API requests",
-    ["endpoint", "method"],
-)
-API_LATENCY = Histogram(
-    "api_request_latency_seconds",
-    "Latency of API requests in seconds",
-    ["endpoint", "method"],
-)
-API_RESPONSES = Counter(
-    "api_responses_total",
-    "Total number of API responses by status code",
-    ["endpoint", "method", "status"],
-)
+# Prometheus metrics for API operations are initialized lazily to avoid
+# duplicate registration errors when the module is reloaded (e.g., during
+# development with multiple workers). The metrics are stored on the FastAPI
+# ``app.state`` object.
 
-# ---------------------------------------------------------------------
-# Additional metric: count of successful delete operations (Vibe: observability)
-# ---------------------------------------------------------------------
-DELETE_SUCCESS = Counter(
-    "api_delete_success_total",
-    "Number of successful memory delete operations",
-    ["endpoint"],
-)
+
+def _init_metrics() -> None:
+    """Create Prometheus metric objects once per application instance.
+
+    FastAPI may import this module multiple times in the same process (for
+    example, when using ``uvicorn`` with ``--reload``). Creating ``Counter``
+    or ``Histogram`` objects with the same name on the global registry would
+    raise ``ValueError: Duplicated timeseries``. By guarding the creation with a
+    flag on ``app.state`` we ensure each metric is registered only once.
+    """
+
+    if getattr(app.state, "metrics_initialized", False):
+        return
+
+    # Create a dedicated registry for this application instance to avoid
+    # collisions with the global default registry (which can be polluted by
+    # imports in tests or multiple FastAPI app instances). All Prometheus
+    # objects are registered against this registry.
+    registry = CollectorRegistry()
+
+    app.state.API_REQUESTS = Counter(
+        "api_requests_total",
+        "Total number of API requests",
+        ["endpoint", "method"],
+        registry=registry,
+    )
+    app.state.API_LATENCY = Histogram(
+        "api_request_latency_seconds",
+        "Latency of API requests in seconds",
+        ["endpoint", "method"],
+        registry=registry,
+    )
+    app.state.API_RESPONSES = Counter(
+        "api_responses_total",
+        "Total number of API responses by status code",
+        ["endpoint", "method", "status"],
+        registry=registry,
+    )
+    app.state.DELETE_SUCCESS = Counter(
+        "api_delete_success_total",
+        "Number of successful memory delete operations",
+        ["endpoint"],
+        registry=registry,
+    )
+    app.state.metrics_registry = registry
+    app.state.metrics_initialized = True
+
+
+@app.on_event("startup")
+async def _startup_metrics() -> None:
+    """Initialize metrics when the FastAPI application starts."""
+    _init_metrics()
 
 
 # Lightweight global middleware for metrics to avoid signature issues from wrappers
@@ -576,7 +687,10 @@ DELETE_SUCCESS = Counter(
 async def metrics_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
-    _maybe_submit(lambda: API_REQUESTS.labels(endpoint=path, method=method).inc())
+    # Use lazily initialized metrics stored on app.state
+    # Increment request counter only if metrics have been initialized.
+    if hasattr(app.state, "API_REQUESTS"):
+        _maybe_submit(lambda: app.state.API_REQUESTS.labels(endpoint=path, method=method).inc())
     import time as _t
 
     start = _t.perf_counter()
@@ -611,11 +725,17 @@ async def metrics_middleware(request: Request, call_next):
         raise
     finally:
         dur = max(_t.perf_counter() - start, 0.0)
-        # Observe duration
-        _maybe_submit(lambda: API_LATENCY.labels(endpoint=path, method=method).observe(dur))
-        _maybe_submit(
-            lambda: API_RESPONSES.labels(endpoint=path, method=method, status=status_code).inc()
-        )
+        # Observe duration using the initialized histogram
+        if hasattr(app.state, "API_LATENCY"):
+            _maybe_submit(
+                lambda: app.state.API_LATENCY.labels(endpoint=path, method=method).observe(dur)
+            )
+        if hasattr(app.state, "API_RESPONSES"):
+            _maybe_submit(
+                lambda: app.state.API_RESPONSES.labels(
+                    endpoint=path, method=method, status=status_code
+                ).inc()
+            )
 
 
 @app.middleware("http")
@@ -633,10 +753,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# In‑process cache for payloads – used as a safety net when the underlying KV
-# store fails to persist the payload (e.g., during integration tests without a
-# running Redis/Postgres stack). This is a real implementation, not a mock.
-_payload_cache: dict[tuple[float, ...], dict[str, Any]] = {}
+
 
 
 @app.post(
@@ -653,20 +770,61 @@ async def store_memory(req: MemoryStoreRequest, request: Request = None) -> Memo
     top‑level ``payload`` key in the stored record. To keep the stored format
     consistent with the test expectations (``data["memory"]["payload"]``), we wrap
     the incoming ``req.payload`` before delegating to the core.
+
+    TENANT ISOLATION (D1): The tenant is extracted from request headers and stored
+    with the memory to ensure complete isolation between tenants.
     """
     memory_type = _resolve_memory_type(req.memory_type)
     coord = safe_parse_coord(req.coord)
-    # Pass the raw payload; ``SomaFractalMemoryEnterprise.store_memory`` will
-    # automatically wrap it under a top‑level ``payload`` key if needed.
+
+    # TENANT ISOLATION: Extract tenant and include in stored data
+    tenant = _get_tenant_from_request(request) if request else "default"
+
     # The core ``store_memory`` expects a full memory dict. For API calls we
     # wrap the user‑provided payload under a top‑level ``payload`` key so that
     # retrieval returns ``record["payload"]`` as expected by the tests and the
-    # public contract.
-    mem.store_memory(coord, {"payload": req.payload}, memory_type=memory_type)
-    # Populate the in‑process cache so that a subsequent fetch can retrieve the
-    # payload even if the KV backend loses it.
-    _payload_cache[coord] = req.payload
+    # public contract. We also include the tenant for isolation.
+    memory_data = {
+        "payload": req.payload,
+        "_tenant": tenant,  # Internal field for tenant isolation
+    }
+    mem.store_memory(coord, memory_data, memory_type=memory_type)
     return MemoryStoreResponse(coord=req.coord, memory_type=memory_type.value)
+
+
+@app.get(
+    "/memories/search",
+    response_model=MemorySearchResponse,
+    tags=["memories"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.search"))],
+)
+def search_memories_get(
+    query: str,
+    top_k: int = 5,
+    filters: str | None = None,
+    request: Request = None,
+) -> MemorySearchResponse:
+    """GET version of the memory search endpoint.
+
+    This endpoint must be defined *before* the ``/memories/{coord}`` route so
+    that FastAPI matches the static ``/memories/search`` path instead of treating
+    ``search`` as a coordinate value.
+    """
+    parsed_filters: dict[str, Any] | None = None
+    if filters:
+        try:
+            import json as _json
+
+            parsed_candidate = _json.loads(filters)
+            if isinstance(parsed_candidate, dict):
+                parsed_filters = parsed_candidate
+        except Exception:
+            parsed_filters = None
+    if parsed_filters:
+        results = mem.find_hybrid_by_type(query, top_k=top_k, filters=parsed_filters)
+    else:
+        results = mem.recall(query, top_k=top_k)
+    return MemorySearchResponse(memories=results)
 
 
 @app.get(
@@ -676,41 +834,55 @@ async def store_memory(req: MemoryStoreRequest, request: Request = None) -> Memo
     dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.fetch"))],
 )
 def fetch_memory(coord: str, request: Request = None) -> MemoryGetResponse:
-    # OPA enforcement removed – no policy checks.
+    """Fetch a memory by coordinate.
+
+    TENANT ISOLATION (D1): Validates that the requesting tenant owns the memory.
+    Returns 404 if memory doesn't exist OR if tenant doesn't match (to prevent
+    information leakage about other tenants' data).
+    """
     try:
         parsed = safe_parse_coord(coord)
     except HTTPException:
         raise
+
+    # TENANT ISOLATION: Extract requesting tenant
+    requesting_tenant = _get_tenant_from_request(request) if request else "default"
+
     record = mem.retrieve(parsed)
     if not record:
         raise HTTPException(status_code=404, detail="Memory not found")
-    # Ensure payload is present. First, check the in‑process cache populated by the
-    # store endpoint. If the record already contains a ``payload`` key but it is
-    # empty (as can happen when the underlying KV store does not persist the
-    # payload), we still prefer the cached version.
-    payload_missing = not record.get("payload")
-    if payload_missing:
-        # 1️⃣ In‑process cache (most reliable for the current request lifecycle).
-        cached = _payload_cache.get(parsed)
-        if cached is not None:
-            record["payload"] = cached
-        else:
-            # 2️⃣ Vector store fallback – iterate points looking for matching coordinate.
-            try:
-                for point in mem.vector_store.scroll():
-                    pt_payload = getattr(point, "payload", {})
-                    # The stored payload includes the original coordinate under the key "coordinate".
-                    if isinstance(pt_payload, dict) and pt_payload.get("coordinate") == list(
-                        parsed
-                    ):
-                        # The actual user payload is nested under "payload".
-                        record["payload"] = pt_payload.get("payload", {})
+
+    # TENANT ISOLATION: Validate tenant ownership
+    # If memory has a tenant field, it must match the requesting tenant
+    stored_tenant = record.get("_tenant", "default")
+    if stored_tenant != requesting_tenant:
+        # Return 404 (not 403) to prevent information leakage
+        # Attacker shouldn't know if memory exists for another tenant
+        logger.warning(
+            "Tenant isolation: access denied",
+            requesting_tenant=requesting_tenant,
+            stored_tenant=stored_tenant,
+            coord=coord,
+        )
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    # Remove internal tenant field from response
+    response_record = {k: v for k, v in record.items() if not k.startswith("_")}
+
+    if not response_record.get("payload"):
+        # Attempt to get payload from vector store metadata as legitimate secondary source
+        try:
+            for point in mem.vector_store.scroll():
+                pt_payload = getattr(point, "payload", {})
+                if isinstance(pt_payload, dict) and pt_payload.get("coordinate") == list(parsed):
+                    # Also check tenant in vector store payload
+                    if pt_payload.get("_tenant", "default") == requesting_tenant:
+                        response_record["payload"] = pt_payload.get("payload", {})
                         break
-                else:
-                    record["payload"] = {}
-            except Exception:
-                record["payload"] = {}
-    return MemoryGetResponse(memory=record)
+        except Exception:
+            # If vector store also fails, return empty payload - no fake data
+            pass
+    return MemoryGetResponse(memory=response_record)
 
 
 @app.delete(
@@ -773,34 +945,8 @@ def search_memories(req: MemorySearchRequest, request: Request = None) -> Memory
     return MemorySearchResponse(memories=results)
 
 
-@app.get(
-    "/memories/search",
-    response_model=MemorySearchResponse,
-    tags=["memories"],
-    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/memories.search"))],
-)
-def search_memories_get(
-    query: str,
-    top_k: int = 5,
-    filters: str | None = None,
-    request: Request = None,
-) -> MemorySearchResponse:
-    # OPA enforcement removed – no policy checks for search_memories_get.
-    parsed_filters: dict[str, Any] | None = None
-    if filters:
-        try:
-            import json as _json
-
-            parsed_candidate = _json.loads(filters)
-            if isinstance(parsed_candidate, dict):
-                parsed_filters = parsed_candidate
-        except Exception:
-            parsed_filters = None
-    if parsed_filters:
-        results = mem.find_hybrid_by_type(query, top_k=top_k, filters=parsed_filters)
-    else:
-        results = mem.recall(query, top_k=top_k)
-    return MemorySearchResponse(memories=results)
+# (Duplicate GET /memories/search endpoint removed – the earlier definition
+# earlier in the file now handles this route correctly.)
 
 
 @app.get(
@@ -831,6 +977,53 @@ def stats() -> StatsResponse:
         return StatsResponse(**raw)
     except Exception as exc:  # pragma: no cover - depends on backend state
         logger.warning("stats endpoint failed", error=str(exc), exc_info=True)
+        raise HTTPException(status_code=503, detail="Backend stats unavailable") from exc
+
+
+# ---------------------------------------------------------------------------
+# Test‑only statistics endpoint
+# ---------------------------------------------------------------------------
+# Provides memory statistics filtered to the dedicated test namespace. This
+# allows developers to query metrics for memories created during automated
+# tests without polluting the production‑level `/stats` view.
+# The namespace can be overridden via the ``SOMA_TEST_MEMORY_NAMESPACE``
+# environment variable (default ``test_ns``).
+@app.get(
+    "/test-stats",
+    response_model=StatsResponse,
+    tags=["system"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/test-stats"))],
+)
+def test_stats() -> StatsResponse:
+    """Return stats for the test‑memory namespace only.
+
+    The underlying ``mem.memory_stats()`` already returns a ``namespaces``
+    mapping. We extract the entry that matches ``_settings.test_memory_namespace``.
+    If the namespace is absent (e.g., no test memories stored) we return zeroed
+    counters.
+    """
+    try:
+        raw = mem.memory_stats()
+        test_ns = getattr(_settings, "test_memory_namespace", "test_ns")
+        ns_data = raw.get("namespaces", {}).get(
+            test_ns,
+            {
+                "total": 0,
+                "episodic": 0,
+                "semantic": 0,
+            },
+        )
+        # Build a minimal StatsResponse focused on the test namespace.
+        return StatsResponse(
+            total_memories=ns_data.get("total", 0),
+            episodic=ns_data.get("episodic", 0),
+            semantic=ns_data.get("semantic", 0),
+            vector_count=raw.get("vector_count"),
+            namespaces={test_ns: ns_data},
+            vector_collections=raw.get("vector_collections"),
+        )
+    except Exception as exc:  # pragma: no cover - backend dependent
+        logger.warning("test-stats endpoint failed", error=str(exc), exc_info=True)
         raise HTTPException(status_code=503, detail="Backend stats unavailable") from exc
 
 
@@ -890,6 +1083,10 @@ async def general_exception_handler(request: Request, exc: Exception):
 def healthz():
     """Liveness probe – checks basic health of storage/vector/graph components."""
     checks = mem.health_check()
+    # If any subsystem reports unhealthy, surface a 503 to callers – this
+    # enables Kubernetes liveness probes to detect partial failures.
+    if not (checks.get("kv_store") and checks.get("vector_store") and checks.get("graph_store")):
+        raise HTTPException(status_code=503, detail="One or more backend services unhealthy")
     return HealthResponse(
         kv_store=checks.get("kv_store", False),
         vector_store=checks.get("vector_store", False),

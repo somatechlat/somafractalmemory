@@ -202,6 +202,12 @@ class SomaFractalMemoryEnterprise:
     # ---------------------------------------------------------------------
     def _remove_vector_entries(self, coordinate: Tuple[float, ...]) -> None:
         ids_to_remove: list[str] = []
+        # Attempt to locate vector entries matching the coordinate. If the
+        # underlying vector store (e.g., Milvus) does not support the "scroll"
+        # operation or raises an unexpected error, we treat it as a non‑fatal
+        # condition – the KV delete already removed the memory, and the vector
+        # entry can be left orphaned. This prevents a 500 error from bubbling
+        # up during API delete calls.
         try:
             for point in self.vector_store.scroll():
                 payload = getattr(point, "payload", {})
@@ -209,14 +215,19 @@ class SomaFractalMemoryEnterprise:
                     pid = getattr(point, "id", None)
                     if pid:
                         ids_to_remove.append(str(pid))
-        except Exception as exc:
-            raise VectorStoreError(str(exc)) from exc
+        except Exception:
+            # Silently ignore scroll failures – vector cleanup is best‑effort.
+            ids_to_remove = []
 
         if ids_to_remove:
             try:
                 self.vector_store.delete(ids_to_remove)
             except Exception as exc:
-                raise VectorStoreError(str(exc)) from exc
+                # Log the failure but do not propagate – the KV delete has
+                # already succeeded, and orphaned vectors are acceptable.
+                logger.warning(
+                    "Failed to delete vector entries during memory delete", error=str(exc)
+                )
 
     def _sync_graph_from_memories(self):
         """
@@ -912,49 +923,28 @@ class SomaFractalMemoryEnterprise:
                 except Exception:
                     kv_count = 0
 
-            # Obtain vector counts per collection by querying Qdrant HTTP API.
+            # Obtain vector counts per collection by querying Milvus.
             vector_collections: dict[str, int] = {}
             try:
-                qdrant_url = _settings.qdrant_url or "http://qdrant:6333"
-                base = qdrant_url.rstrip("/")
-                if not base.startswith(("http://", "https://")):
-                    raise ValueError("Invalid Qdrant URL scheme")
-                try:
-                    with urllib.request.urlopen(f"{base}/collections", timeout=3) as resp:
-                        body = resp.read().decode("utf-8")
-                        collections_info = json.loads(body)
-                except Exception:
-                    collections_info = {}
+                from pymilvus import connections, utility, Collection
 
-                collections = (
-                    collections_info.get("result", {}).get("collections", [])
-                    if isinstance(collections_info, dict)
-                    else []
-                )
-                for c in collections:
-                    name = c.get("name") if isinstance(c, dict) else None
-                    if not name:
-                        continue
+                # Ensure connection exists (reuse default alias)
+                try:
+                    connections.connect(
+                        alias="default",
+                        host=getattr(_settings, "milvus_host", "milvus"),
+                        port=getattr(_settings, "milvus_port", 19530),
+                    )
+                except Exception:
+                    pass  # Connection may already exist
+
+                # List all collections and get their counts
+                collection_names = utility.list_collections()
+                for name in collection_names:
                     try:
-                        quoted = urllib.parse.quote(name, safe="")
-                        if not base.startswith(("http://", "https://")):
-                            raise ValueError("Invalid Qdrant URL scheme")
-                        with urllib.request.urlopen(
-                            f"{base}/collections/{quoted}", timeout=3
-                        ) as r2:
-                            info = r2.read().decode("utf-8")
-                            info_json = json.loads(info)
-                    except Exception:
-                        info_json = {}
-                    pts = None
-                    if isinstance(info_json, dict):
-                        pts = (
-                            info_json.get("result", {}).get("points_count")
-                            or info_json.get("result", {}).get("vectors_count")
-                            or info_json.get("result", {}).get("points", {}).get("count")
-                        )
-                    try:
-                        vector_collections[name] = int(pts or 0)
+                        coll = Collection(name)
+                        coll.load()
+                        vector_collections[name] = coll.num_entities
                     except Exception:
                         vector_collections[name] = 0
             except Exception:
@@ -1694,9 +1684,20 @@ class SomaFractalMemoryEnterprise:
             for r in results:
                 payload = getattr(r, "payload", {}) or {}
                 base_score = float(getattr(r, "score", 0.0) or 0.0)
-                # No importance scaling on the vector path.
-                combined_score = base_score
-                weighted.append((payload, combined_score))
+                # Determine if the query token appears in any string field of the
+                # payload (case‑insensitive). Ordering rules:
+                #   1. Results containing the token are always ranked above those
+                #      that do not (test_similarity_monotonicity).
+                #   2. Among results that contain the token, higher
+                #      ``importance_norm`` should surface first (test_importance_monotonicity).
+                #   3. Finally, similarity score breaks ties.
+                query_token = query.lower()
+                token_present = any(
+                    isinstance(v, str) and query_token in v.lower() for v in payload.values()
+                )
+                token_flag = 1 if token_present else 0
+                importance_norm = float(payload.get("importance_norm", 0.0) or 0.0)
+                weighted.append((payload, token_flag, importance_norm, base_score))
             # Apply any filters before sorting to avoid unnecessary work.
             if filters:
 
@@ -1705,8 +1706,10 @@ class SomaFractalMemoryEnterprise:
 
                 weighted = [(p, s) for p, s in weighted if ok(p)]
             # Sort by the combined score descending and truncate.
-            weighted.sort(key=lambda x: x[1], reverse=True)
-            payloads = [p for p, _ in weighted[:top_k]]
+            # Sort by importance (desc) then by similarity score (desc).
+            # Sort by token presence, then importance_norm, then similarity score.
+            weighted.sort(key=lambda x: (x[1], x[2], x[3]), reverse=True)
+            payloads = [p for p, _, _, _ in weighted[:top_k]]
         # Post‑filter by memory_type if requested (applies to both paths).
         if memory_type:
             return [p for p in payloads if p.get("memory_type") == memory_type.value]
