@@ -1118,3 +1118,245 @@ def readyz():
         vector_store=checks.get("vector_store", False),
         graph_store=checks.get("graph_store", False),
     )
+
+
+# ---------------------------------------------------------------------
+# Graph Store Endpoints (B1, B2, B3)
+# Per Requirements B1.1, B2.1, B3.1
+# ---------------------------------------------------------------------
+
+
+class GraphLinkRequest(BaseModel):
+    """Request model for creating a graph link."""
+
+    from_coord: str
+    to_coord: str
+    link_type: str = "related"
+    strength: float = 1.0
+    metadata: dict[str, Any] | None = None
+
+
+class GraphLinkResponse(BaseModel):
+    """Response model for graph link creation."""
+
+    from_coord: str
+    to_coord: str
+    link_type: str
+    ok: bool = True
+
+
+class GraphNeighborsRequest(BaseModel):
+    """Request model for getting graph neighbors."""
+
+    coord: str
+    k_hop: int = 1
+    limit: int = 10
+    link_type: str | None = None
+
+
+class GraphNeighborsResponse(BaseModel):
+    """Response model for graph neighbors."""
+
+    coord: str
+    neighbors: list[dict[str, Any]]
+
+
+class GraphPathRequest(BaseModel):
+    """Request model for finding shortest path."""
+
+    from_coord: str
+    to_coord: str
+    max_length: int = 10
+    link_type: str | None = None
+
+
+class GraphPathResponse(BaseModel):
+    """Response model for shortest path."""
+
+    from_coord: str
+    to_coord: str
+    path: list[str]
+    link_types: list[str]
+    found: bool
+
+
+@app.post(
+    "/graph/link",
+    response_model=GraphLinkResponse,
+    tags=["graph"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/graph.link"))],
+)
+def create_graph_link(req: GraphLinkRequest, request: Request = None) -> GraphLinkResponse:
+    """Create a link between two memory coordinates in the graph store.
+
+    Per Requirement B1.1: Graph links can be created between any two coordinates.
+    Links include type, strength, and optional metadata.
+
+    TENANT ISOLATION: Links are scoped by tenant extracted from request headers.
+    """
+    try:
+        from_parsed = safe_parse_coord(req.from_coord)
+        to_parsed = safe_parse_coord(req.to_coord)
+    except HTTPException:
+        raise
+
+    # TENANT ISOLATION: Extract tenant and include in link metadata
+    tenant = _get_tenant_from_request(request) if request else "default"
+
+    link_data = {
+        "link_type": req.link_type,
+        "strength": req.strength,
+        "_tenant": tenant,
+        "created_at": time.time(),
+    }
+    if req.metadata:
+        link_data.update(req.metadata)
+
+    try:
+        mem.graph_store.add_link(from_parsed, to_parsed, link_data)
+        return GraphLinkResponse(
+            from_coord=req.from_coord,
+            to_coord=req.to_coord,
+            link_type=req.link_type,
+            ok=True,
+        )
+    except Exception as exc:
+        logger.error("Graph link creation failed", error=str(exc), exc_info=True)
+        raise HTTPException(status_code=500, detail="Graph link creation failed") from exc
+
+
+@app.get(
+    "/graph/neighbors",
+    response_model=GraphNeighborsResponse,
+    tags=["graph"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/graph.neighbors"))],
+)
+def get_graph_neighbors(
+    coord: str,
+    k_hop: int = 1,
+    limit: int = 10,
+    link_type: str | None = None,
+    request: Request = None,
+) -> GraphNeighborsResponse:
+    """Get neighbors of a coordinate in the graph store.
+
+    Per Requirement B2.1: Returns k-hop neighbors with their link metadata.
+    Results are filtered by tenant for isolation.
+
+    Args:
+        coord: The coordinate to find neighbors for.
+        k_hop: Number of hops to traverse (default 1).
+        limit: Maximum number of neighbors to return.
+        link_type: Optional filter by link type.
+    """
+    try:
+        parsed = safe_parse_coord(coord)
+    except HTTPException:
+        raise
+
+    # TENANT ISOLATION: Extract requesting tenant
+    requesting_tenant = _get_tenant_from_request(request) if request else "default"
+
+    try:
+        # Get neighbors from graph store
+        neighbors = mem.graph_store.get_neighbors(
+            parsed, link_type=link_type, limit=limit * 2  # Over-fetch for tenant filtering
+        )
+
+        # TENANT ISOLATION: Filter neighbors by tenant
+        filtered_neighbors = []
+        for neighbor in neighbors:
+            neighbor_tenant = neighbor.get("_tenant", "default")
+            if neighbor_tenant == requesting_tenant:
+                # Remove internal tenant field from response
+                clean_neighbor = {k: v for k, v in neighbor.items() if not k.startswith("_")}
+                filtered_neighbors.append(clean_neighbor)
+                if len(filtered_neighbors) >= limit:
+                    break
+
+        return GraphNeighborsResponse(coord=coord, neighbors=filtered_neighbors)
+    except Exception as exc:
+        logger.error("Graph neighbors query failed", error=str(exc), exc_info=True)
+        raise HTTPException(status_code=500, detail="Graph neighbors query failed") from exc
+
+
+@app.get(
+    "/graph/path",
+    response_model=GraphPathResponse,
+    tags=["graph"],
+    dependencies=[Depends(auth_dep), Depends(rate_limit_dep("/graph.path"))],
+)
+def find_graph_path(
+    from_coord: str,
+    to_coord: str,
+    max_length: int = 10,
+    link_type: str | None = None,
+    request: Request = None,
+) -> GraphPathResponse:
+    """Find the shortest path between two coordinates in the graph.
+
+    Per Requirement B3.1: Returns the shortest path as a list of coordinates.
+    Returns empty path if no path exists (not an error).
+
+    Args:
+        from_coord: Starting coordinate.
+        to_coord: Target coordinate.
+        max_length: Maximum path length to search (default 10).
+        link_type: Optional filter by link type.
+    """
+    try:
+        from_parsed = safe_parse_coord(from_coord)
+        to_parsed = safe_parse_coord(to_coord)
+    except HTTPException:
+        raise
+
+    try:
+        # Find shortest path
+        path_result = mem.graph_store.find_shortest_path(
+            from_parsed, to_parsed, link_type=link_type
+        )
+
+        if not path_result or len(path_result) > max_length:
+            return GraphPathResponse(
+                from_coord=from_coord,
+                to_coord=to_coord,
+                path=[],
+                link_types=[],
+                found=False,
+            )
+
+        # Convert path coordinates to strings
+        path_strs = [",".join(str(c) for c in coord) for coord in path_result]
+
+        # Extract link types from path (would need edge data)
+        link_types = []
+        for i in range(len(path_result) - 1):
+            # Get edge data between consecutive nodes
+            try:
+                edge_data = mem.graph_store.graph.get_edge_data(
+                    path_result[i], path_result[i + 1]
+                )
+                if edge_data:
+                    link_types.append(edge_data.get("link_type", "unknown"))
+                else:
+                    link_types.append("unknown")
+            except Exception:
+                link_types.append("unknown")
+
+        return GraphPathResponse(
+            from_coord=from_coord,
+            to_coord=to_coord,
+            path=path_strs,
+            link_types=link_types,
+            found=True,
+        )
+    except Exception as exc:
+        logger.error("Graph path query failed", error=str(exc), exc_info=True)
+        # Return empty path on error (not an error per B3.3)
+        return GraphPathResponse(
+            from_coord=from_coord,
+            to_coord=to_coord,
+            path=[],
+            link_types=[],
+            found=False,
+        )
