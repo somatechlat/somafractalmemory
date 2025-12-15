@@ -9,6 +9,7 @@ from common.utils.logger import get_logger
 # Local application imports (alphabetical)
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.graph import NetworkXGraphStore
+from somafractalmemory.implementations.postgres_graph import PostgresGraphStore
 from somafractalmemory.implementations.storage import (
     BatchedStore,
     MilvusVectorStore,
@@ -216,7 +217,21 @@ def create_memory_system(
             error=str(exc),
         )
         raise
-    graph_store = NetworkXGraphStore()
+    # Graph store: Use PostgresGraphStore for persistence (V2.6)
+    # Falls back to NetworkXGraphStore if Postgres is unavailable
+    try:
+        graph_store = PostgresGraphStore(url=settings.postgres_url)
+        if not graph_store.health_check():
+            logger.warning(
+                "PostgresGraphStore health check failed, falling back to NetworkXGraphStore"
+            )
+            graph_store = NetworkXGraphStore()
+    except Exception as exc:
+        logger.warning(
+            "Failed to initialize PostgresGraphStore, falling back to NetworkXGraphStore",
+            error=str(exc),
+        )
+        graph_store = NetworkXGraphStore()
 
     # Optional: enable batched KV+vector upserts via env var for better throughput.
     # Batch upsert configuration – now sourced from centralized settings.

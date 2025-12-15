@@ -1,88 +1,132 @@
-# No mock imports needed – tests now use real Redis and Qdrant services.
+# No mock imports needed – tests now use real Redis and Milvus services.
+"""
+Factory tests for SomaFractalMemory.
+
+These tests verify that the factory correctly creates memory systems
+using real infrastructure (Redis, Postgres, Milvus).
+
+VIBE CODING RULES: NO mocks, NO stubs, NO placeholders.
+All tests require real infrastructure via docker compose --profile core up -d
+"""
+
+import os
+
+import pytest
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
 from somafractalmemory.implementations.storage import (
-    QdrantVectorStore,
+    MilvusVectorStore,
     RedisKeyValueStore,
 )
 
+# Test configuration for localhost connections (tests run on host, not in Docker)
+TEST_CONFIG = {
+    "redis_host": os.environ.get("REDIS_HOST", "localhost"),
+    "redis_port": int(os.environ.get("REDIS_PORT", "40022")),
+    "postgres_url": os.environ.get(
+        "POSTGRES_URL", "postgresql://soma:soma@localhost:40021/somamemory"
+    ),
+    "milvus_host": os.environ.get("MILVUS_HOST", "localhost"),
+    "milvus_port": int(os.environ.get("MILVUS_PORT", "19530")),
+}
 
-def test_create_evented_in_memory():
-    # Force the factory to use the real Qdrant vector store (no in‑memory fallback).
+
+@pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure (Redis, Postgres, Milvus)",
+)
+def test_create_evented_enterprise():
+    """Test factory creates enterprise memory system with real infrastructure."""
     memory = create_memory_system(
         MemoryMode.EVENTED_ENTERPRISE,
-        "test_on_demand",
-        config={"redis": {"host": "localhost", "port": 40022}},
+        "test_factory_enterprise",
+        config=TEST_CONFIG,
     )
     assert isinstance(memory, SomaFractalMemoryEnterprise)
     assert not hasattr(memory, "prediction_provider")
-    assert isinstance(memory.kv_store, RedisKeyValueStore)
-    # With the real Redis service the client should be an actual ``redis.Redis`` instance.
-    from redis import Redis as RealRedis
-
-    assert isinstance(memory.kv_store.client, RealRedis)
-    # The vector store must now be a real Qdrant instance.
-    from somafractalmemory.implementations.storage import QdrantVectorStore
-
-    assert isinstance(memory.vector_store, QdrantVectorStore)
-
-
-def test_create_evented_with_disk_qdrant(tmp_path):
-    config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"host": "localhost", "port": 40022},  # Real Redis instance
-    }
-    memory = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_local_agent", config=config)
-    assert isinstance(memory, SomaFractalMemoryEnterprise)
-    assert not hasattr(memory, "prediction_provider")
-    assert isinstance(memory.kv_store, RedisKeyValueStore)
-    from redis import Redis as RealRedis
-
-    assert isinstance(memory.kv_store.client, RealRedis)
-    assert isinstance(memory.vector_store, QdrantVectorStore)
-    assert memory.vector_store.is_on_disk is True
+    # KV store should be Redis-backed (or hybrid with Postgres)
+    kv = memory.kv_store
+    # Check if it's a hybrid store or direct Redis
+    if hasattr(kv, "redis_store"):
+        assert isinstance(kv.redis_store, RedisKeyValueStore)
+    else:
+        assert isinstance(kv, RedisKeyValueStore)
+    # Vector store must be Milvus (exclusive backend)
+    assert isinstance(memory.vector_store, MilvusVectorStore)
 
 
-def test_create_enterprise_mode(tmp_path):
-    config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"host": "localhost", "port": 40022},  # Real Redis instance
-    }
-    memory = create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "test_enterprise", config=config)
-    assert isinstance(memory, SomaFractalMemoryEnterprise)
-    assert not hasattr(memory, "prediction_provider")
-    assert isinstance(memory.kv_store, RedisKeyValueStore)
-    from redis import Redis as RealRedis
-
-    assert isinstance(memory.kv_store.client, RealRedis)
-
-
+@pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure (Redis, Postgres, Milvus)",
+)
 def test_create_enterprise_mode_real_connections():
-    """Validate that the factory builds a memory system using real Redis and Qdrant.
+    """Validate that the factory builds a memory system using real Redis and Milvus.
 
     Instead of mocking the external clients, we instantiate the system with a
     concrete configuration that points at the services provided by the Docker
-    compose stack (Redis on ``localhost:40022`` and Qdrant on ``localhost:40023``).
-    The test then checks that the resulting objects are the expected concrete
-    implementations.
+    compose stack. The test then checks that the resulting objects are the
+    expected concrete implementations.
     """
-    config = {
-        "redis": {"host": "localhost", "port": 40022},
-        "qdrant": {"url": "http://localhost:40023"},
-    }
     memory = create_memory_system(
-        MemoryMode.EVENTED_ENTERPRISE, "test_enterprise_real", config=config
+        MemoryMode.EVENTED_ENTERPRISE,
+        "test_enterprise_real",
+        config=TEST_CONFIG,
     )
 
-    # The KV store should be a real Redis client wrapper, not the Fakeredis shim.
-    assert isinstance(memory.kv_store, RedisKeyValueStore)
-    # Its underlying client must be an actual ``redis.Redis`` instance.
-    from redis import Redis as RealRedis
+    # The KV store should be a real Redis client wrapper, not any in-memory shim.
+    kv = memory.kv_store
+    if hasattr(kv, "redis_store"):
+        assert isinstance(kv.redis_store, RedisKeyValueStore)
+        from redis import Redis as RealRedis
 
-    assert isinstance(memory.kv_store.client, RealRedis)
+        assert isinstance(kv.redis_store.client, RealRedis)
+    else:
+        assert isinstance(kv, RedisKeyValueStore)
+        from redis import Redis as RealRedis
 
-    # The vector store should be a Qdrant client implementation.
-    from somafractalmemory.implementations.storage import QdrantVectorStore
+        assert isinstance(kv.client, RealRedis)
 
-    assert isinstance(memory.vector_store, QdrantVectorStore)
+    # The vector store must be Milvus (exclusive backend per architecture decision)
+    assert isinstance(memory.vector_store, MilvusVectorStore)
+
+
+@pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure",
+)
+def test_redis_unavailable_raises_runtime_error():
+    """Test V1.6: Redis unavailable → factory raises RuntimeError.
+
+    VIBE CODING RULES: No fallback to in-memory stores.
+    """
+    # Create a config pointing to a non-existent Redis
+    config = {
+        "redis": {"host": "nonexistent-redis-host-12345", "port": 9999},
+    }
+    with pytest.raises(RuntimeError, match="Redis health check failed"):
+        create_memory_system(
+            MemoryMode.EVENTED_ENTERPRISE,
+            "test_redis_unavailable",
+            config=config,
+        )
+
+
+@pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure",
+)
+def test_milvus_only_backend():
+    """Test V5.5: Milvus is the exclusive vector backend.
+
+    The factory should use MilvusVectorStore and not support any alternatives.
+    """
+    memory = create_memory_system(
+        MemoryMode.EVENTED_ENTERPRISE,
+        "test_milvus_only",
+        config=TEST_CONFIG,
+    )
+    # Vector store must be Milvus
+    assert isinstance(memory.vector_store, MilvusVectorStore)
+    # Verify it's not any other type
+    assert type(memory.vector_store).__name__ == "MilvusVectorStore"

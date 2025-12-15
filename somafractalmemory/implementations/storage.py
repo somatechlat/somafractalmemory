@@ -23,11 +23,22 @@ except Exception:  # pragma: no cover - optional dependency path
     Psycopg2Instrumentor = None  # type: ignore
 
 # Specific third‑party imports
+# Qdrant client imports - required for QdrantVectorStore (used in local testing)
+try:
+    import qdrant_client
+    from qdrant_client.models import Distance, PointIdsList, PointStruct, VectorParams
+
+    _QDRANT_AVAILABLE = True
+except ImportError:
+    _QDRANT_AVAILABLE = False
+    qdrant_client = None  # type: ignore
+
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 from redis.exceptions import ConnectionError
 
 # Local application imports
+from somafractalmemory.core import VectorStoreError
 from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
 
 # Module-level caches for shared connection objects to enable connection
@@ -35,7 +46,7 @@ from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
 # connection churn under high QPS and avoids creating many short-lived
 # connections when multiple Memory instances are constructed.
 _redis_connection_pools: dict[tuple[str, int, int], redis.ConnectionPool] = {}
-_qdrant_clients: dict[tuple, qdrant_client.QdrantClient] = {}
+_qdrant_clients: dict[tuple, Any] = {}  # Cache for Qdrant clients
 
 # Initialise instrumentation (executed at import time) if available
 if Psycopg2Instrumentor is not None:  # pragma: no cover - optional dependency path
@@ -48,7 +59,7 @@ if Psycopg2Instrumentor is not None:  # pragma: no cover - optional dependency p
 
 # NOTE: In‑memory KV and Vector stores have been **removed** to enforce the
 # “real‑infrastructure‑only” policy. The production code now relies exclusively
-# on `RedisKeyValueStore`, `PostgresRedisHybridStore`, and `QdrantVectorStore`.
+# on `RedisKeyValueStore`, `PostgresRedisHybridStore`, and `MilvusVectorStore`.
 
 
 class RedisKeyValueStore(IKeyValueStore):
@@ -191,27 +202,30 @@ class PostgresRedisHybridStore(IKeyValueStore):
         return ok
 
 
+# ---------------------------------------------------------------------
+# Qdrant implementation (for local testing with on-disk storage)
+# ---------------------------------------------------------------------
+# NOTE: QdrantVectorStore is kept for local testing scenarios where an
+# on-disk vector store is needed without running a full Milvus cluster.
+# Production deployments use MilvusVectorStore exclusively.
+
+
 class QdrantVectorStore(IVectorStore):
-    """Qdrant implementation of the vector store interface."""
+    """Qdrant implementation of the vector store interface.
+
+    Used primarily for local testing with on-disk storage. Production
+    deployments should use MilvusVectorStore.
+    """
 
     def __init__(self, collection_name: str, **kwargs):
+        if not _QDRANT_AVAILABLE:
+            raise VectorStoreError(
+                "qdrant-client is required for QdrantVectorStore. "
+                "Install with: pip install qdrant-client"
+            )
         self._init_kwargs = kwargs
-        # TLS/SSL configuration – optional env vars
-        # Centralised TLS configuration for Qdrant.
-        from common.config.settings import load_settings
-
-        _settings = load_settings()
-        self._use_tls = _settings.qdrant_tls
-        self._cert_path = _settings.qdrant_tls_cert
-        # If TLS is requested, ensure the client uses https scheme
-        if self._use_tls:
-            url = self._init_kwargs.get("url")
-            if url and not url.startswith("https://"):
-                # Remove the http:// prefix safely and prepend https://
-                self._init_kwargs["url"] = f"https://{url.removeprefix('http://')}"
         # Attempt to reuse a shared Qdrant client when the same connection
-        # parameters are used multiple times. We canonicalize the init kwargs
-        # into a tuple of (key,str(value)) pairs to use as a cache key.
+        # parameters are used multiple times.
         try:
             key = tuple(sorted((k, str(v)) for k, v in self._init_kwargs.items()))
         except Exception:
@@ -229,79 +243,31 @@ class QdrantVectorStore(IVectorStore):
     def is_on_disk(self) -> bool:
         """Checks if the Qdrant client is using on-disk storage."""
         if "url" in self._init_kwargs or "host" in self._init_kwargs:
-            return False  # It's a remote client
+            return False
         path = self._init_kwargs.get("path")
         location = self._init_kwargs.get("location")
         return path is not None and path != ":memory:" and location != ":memory:"
 
     def setup(self, vector_dim: int, namespace: str):
         self.collection_name = namespace
-        # Modern (non-deprecated) collection creation logic:
-        # 1. Prefer collection_exists + create_collection
-        # 2. Fallback to get_collection (older clients) to detect presence
-        # 3. Do NOT blindly drop existing collection to preserve data in real deployments
-        # 4. If dimension mismatch occurs, we log (if logger available) and proceed – tests assume fresh start
         try:
             exists = False
-            try:
-                # Newer qdrant-client
-                if hasattr(self.client, "collection_exists"):
-                    exists = bool(self.client.collection_exists(self.collection_name))  # type: ignore[arg-type]
-                else:  # pragma: no cover - older client path
+            if hasattr(self.client, "collection_exists"):
+                exists = bool(self.client.collection_exists(self.collection_name))
+            else:
+                try:
                     self.client.get_collection(collection_name=self.collection_name)
                     exists = True
-            except Exception:
-                exists = False
+                except Exception:
+                    exists = False
 
             if not exists:
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
                 )
-            else:
-                # Optional: verify dimension; skip heavy reconciliation for now
-                try:
-                    info = self.client.get_collection(collection_name=self.collection_name)
-                    current_dim = None
-                    # Structure differs by client version; attempt best-effort extraction
-                    if hasattr(info, "config") and hasattr(info.config, "params"):
-                        try:
-                            current_dim = info.config.params.size  # type: ignore[attr-defined]
-                        except Exception:  # pragma: no cover - defensive
-                            current_dim = None
-                    if current_dim and current_dim != vector_dim:
-                        # Best-effort remediation: create an alternate collection name with correct dim
-                        # (Avoid destructive recreate). Downstream code always references self.collection_name,
-                        # so we only adjust name if mismatch discovered.
-                        alt_name = f"{self.collection_name}_dim{vector_dim}"
-                        if not (
-                            hasattr(self.client, "collection_exists")
-                            and self.client.collection_exists(alt_name)
-                        ):
-                            self.client.create_collection(
-                                collection_name=alt_name,
-                                vectors_config=VectorParams(
-                                    size=vector_dim, distance=Distance.COSINE
-                                ),
-                            )
-                        self.collection_name = alt_name
-                except Exception:
-                    # Non-fatal; continue with existing collection
-                    pass
         except Exception:
-            # Final fallback: attempt deprecated recreate_collection for extremely old clients
-            try:  # pragma: no cover - legacy path
-                # Suppress DeprecationWarning emitted by older qdrant_client
-                import warnings
-
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=DeprecationWarning)
-                    self.client.recreate_collection(
-                        collection_name=self.collection_name,
-                        vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
-                    )
-            except Exception:
-                pass
+            pass
 
     def upsert(self, points: list[dict[str, Any]]):
         point_structs = [
@@ -310,28 +276,23 @@ class QdrantVectorStore(IVectorStore):
         self.client.upsert(collection_name=self.collection_name, wait=True, points=point_structs)
 
     def search(self, vector: list[float], top_k: int) -> list[Any]:
-        # Prefer modern query_points API; fallback to deprecated search for older clients
         try:
             if hasattr(self.client, "query_points"):
                 response = self.client.query_points(
                     collection_name=self.collection_name,
-                    query=vector,  # type: ignore[arg-type]
+                    query=vector,
                     limit=top_k,
                     with_payload=True,
                 )
-                # Newer client returns a QueryResponse with .points; older may already be a list
                 points = getattr(response, "points", response)
                 return points
         except Exception:
-            # If modern path fails unexpectedly, fall back below
             pass
-        # Legacy path
         return self.client.search(
             collection_name=self.collection_name, query_vector=vector, limit=top_k
         )
 
     def delete(self, ids: list[str]):
-        # Qdrant point IDs can be strings or UUIDs. We'll stick to strings as passed.
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=PointIdsList(points=[i for i in ids if i]),
@@ -339,17 +300,7 @@ class QdrantVectorStore(IVectorStore):
         )
 
     def scroll(self) -> Iterator[Any]:
-        # Use centralized configuration for Qdrant pagination limit.
-        from common.config.settings import load_settings
-
-        _settings = load_settings()
-        _lim = int(_settings.qdrant_scroll_limit)
-        # Request both payload and the stored vector so callers can inspect the
-        # embedding (e.g., the norm‑invariant test). Older Qdrant versions return
-        # vectors only when ``with_vector=True`` is supplied.
-        # The Qdrant client uses the flag ``with_vectors`` (plural) to include the
-        # stored embedding in the returned points. Supplying it ensures the test
-        # that validates vector norm can access ``point.vector``.
+        _lim = 100
         records, next_page_offset = self.client.scroll(
             collection_name=self.collection_name,
             limit=_lim,
@@ -376,9 +327,10 @@ class QdrantVectorStore(IVectorStore):
 
 
 # ---------------------------------------------------------------------
-# Milvus implementation (new)
+# Milvus implementation (production vector backend)
 # ---------------------------------------------------------------------
-# NOTE: Implements the same IVectorStore interface as QdrantVectorStore.
+# NOTE: Milvus is the production vector backend. MilvusVectorStore is used
+# by the factory for all production deployments.
 # Uses the official `pymilvus` client. All network‑related errors are wrapped
 # in `VectorStoreError` to keep error handling consistent across backends.
 
@@ -392,7 +344,7 @@ class MilvusVectorStore(IVectorStore):
     """
 
     def __init__(self, collection_name: str, **kwargs):
-        # Lazy import to avoid mandatory dependency when Qdrant is used.
+        # Import pymilvus - required for Milvus (exclusive vector backend)
         try:
             from pymilvus import Collection, connections, utility
         except ImportError as exc:
@@ -497,8 +449,7 @@ class MilvusVectorStore(IVectorStore):
             )
             if not records:
                 break
-            for rec in records:
-                yield rec
+            yield from records
             offset += batch
 
     # -----------------------------------------------------------------

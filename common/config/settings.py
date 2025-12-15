@@ -178,8 +178,6 @@ class SMFSettings(SomaBaseSettings):
     # Redis connection defaults (mirroring typical local dev values)
     redis_port: int = Field(default=6379, description="Redis port (overrides infra if set)")
     redis_db: int = Field(default=0, description="Redis DB index")
-    # Qdrant connection defaults (used when qdrant_url is not a full URL)
-    qdrant_port: int = Field(default=6333, description="Qdrant port when host is used")
 
     # Postgres TLS/SSL options (optional)
     postgres_ssl_mode: str | None = Field(

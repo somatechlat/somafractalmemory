@@ -50,26 +50,80 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: somafractalmemory_qdrant
-    ports:
-      - "${QDRANT_HOST_PORT:-40023}:6333"
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: somafractalmemory_etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
     volumes:
-      - qdrantdata:/qdrant/storage
-    restart: always
+      - etcddata:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
-      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/6333' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
     profiles:
       - core
     networks:
       smfnet:
         aliases:
-          - qdrant
-          - somabrain_qdrant
+          - etcd
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: somafractalmemory_minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - miniodata:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - minio
+
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    container_name: somafractalmemory_milvus
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "${MILVUS_HOST_PORT:-19530}:19530"
+      - "${MILVUS_GRPC_PORT:-9091}:9091"
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvusdata:/var/lib/milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - milvus
+          - somabrain_milvus
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -98,7 +152,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      qdrant:
+      milvus:
         condition: service_healthy
     volumes:
       - ./:/app:delegated
@@ -123,7 +177,11 @@ volumes:
     driver: local
   redisdata:
     driver: local
-  qdrantdata:
+  milvusdata:
+    driver: local
+  etcddata:
+    driver: local
+  miniodata:
     driver: local
 
 networks:

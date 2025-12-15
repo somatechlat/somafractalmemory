@@ -12,9 +12,10 @@ infra:
   etcd: ""
   prometheus: ""
   jaeger: ""
-  qdrant: "qdrant"
+  milvus: "milvus"
   postgres: "postgres"
 
 # Database connections
 postgres_url: "postgresql://soma:soma@postgres:5432/somamemory"
-qdrant_host: "qdrant"
+milvus_host: "milvus"
+milvus_port: 19530

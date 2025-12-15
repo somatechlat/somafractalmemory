@@ -40,8 +40,17 @@ from prometheus_client import (
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+# Redis client for rate limiting
+try:
+    import redis
+    from redis.exceptions import RedisError
+except ImportError:
+    redis = None  # type: ignore[assignment]
+    RedisError = Exception  # type: ignore[misc,assignment]
+
 # Helper wrappers to optionally enqueue metric updates when async metrics are enabled.
 # Centralised async‑metrics flag
+from common.config.settings import load_settings
 from common.config.settings import load_settings as _load_settings
 from common.utils.async_metrics import submit as _submit_metric
 from common.utils.logger import configure_logging, get_logger
@@ -95,9 +104,9 @@ def safe_parse_coord(coord: str) -> tuple[float, ...]:
         if not parts:
             raise ValueError
         return tuple(float(p) for p in parts)
-    except Exception:
+    except Exception as exc:
         # FastAPI will translate this into a JSON error response.
-        raise HTTPException(status_code=400, detail=f"Invalid coord: {coord}")
+        raise HTTPException(status_code=400, detail=f"Invalid coord: {coord}") from exc
 
 
 class HealthResponse(BaseModel):
@@ -927,7 +936,7 @@ def delete_memory(coord: str, request: Request = None) -> MemoryDeleteResponse:
         try:
             deleted = mem.delete(parsed)
             # Record successful delete as a metric
-            DELETE_SUCCESS.labels(endpoint="/memories").inc()
+            app.state.DELETE_SUCCESS.labels(endpoint="/memories").inc()
             return MemoryDeleteResponse(coord=coord, deleted=bool(deleted))
         except VectorStoreError as exc:
             span.set_status(_trace.Status(_trace.StatusCode.ERROR, str(exc)))
@@ -1125,6 +1134,41 @@ def readyz():
 # Per Requirements B1.1, B2.1, B3.1
 # ---------------------------------------------------------------------
 
+# Prometheus metrics for graph operations (H2)
+GRAPH_LINK_TOTAL = Counter(
+    "sfm_graph_link_total",
+    "Total graph link creation operations",
+    ["tenant", "link_type", "status"],
+)
+GRAPH_LINK_LATENCY = Histogram(
+    "sfm_graph_link_latency_seconds",
+    "Graph link creation latency",
+    ["tenant", "link_type"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
+GRAPH_NEIGHBORS_TOTAL = Counter(
+    "sfm_graph_neighbors_total",
+    "Total graph neighbors query operations",
+    ["tenant", "status"],
+)
+GRAPH_NEIGHBORS_LATENCY = Histogram(
+    "sfm_graph_neighbors_latency_seconds",
+    "Graph neighbors query latency",
+    ["tenant"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
+GRAPH_PATH_TOTAL = Counter(
+    "sfm_graph_path_total",
+    "Total graph path query operations",
+    ["tenant", "status", "found"],
+)
+GRAPH_PATH_LATENCY = Histogram(
+    "sfm_graph_path_latency_seconds",
+    "Graph path query latency",
+    ["tenant"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
+
 
 class GraphLinkRequest(BaseModel):
     """Request model for creating a graph link."""
@@ -1193,36 +1237,76 @@ def create_graph_link(req: GraphLinkRequest, request: Request = None) -> GraphLi
     Links include type, strength, and optional metadata.
 
     TENANT ISOLATION: Links are scoped by tenant extracted from request headers.
+    Observability: Prometheus metrics and OpenTelemetry spans per H2.
     """
-    try:
-        from_parsed = safe_parse_coord(req.from_coord)
-        to_parsed = safe_parse_coord(req.to_coord)
-    except HTTPException:
-        raise
-
     # TENANT ISOLATION: Extract tenant and include in link metadata
     tenant = _get_tenant_from_request(request) if request else "default"
+    link_type = req.link_type or "related"
 
-    link_data = {
-        "link_type": req.link_type,
-        "strength": req.strength,
-        "_tenant": tenant,
-        "created_at": time.time(),
-    }
-    if req.metadata:
-        link_data.update(req.metadata)
+    # OpenTelemetry span for tracing (H1)
+    tracer = trace.get_tracer("soma.http_api")
+    with tracer.start_as_current_span("graph_link_create") as span:
+        span.set_attribute("tenant", tenant)
+        span.set_attribute("link_type", link_type)
+        start_time = time.perf_counter()
 
-    try:
-        mem.graph_store.add_link(from_parsed, to_parsed, link_data)
-        return GraphLinkResponse(
-            from_coord=req.from_coord,
-            to_coord=req.to_coord,
-            link_type=req.link_type,
-            ok=True,
-        )
-    except Exception as exc:
-        logger.error("Graph link creation failed", error=str(exc), exc_info=True)
-        raise HTTPException(status_code=500, detail="Graph link creation failed") from exc
+        try:
+            from_parsed = safe_parse_coord(req.from_coord)
+            to_parsed = safe_parse_coord(req.to_coord)
+        except HTTPException:
+            _maybe_submit(
+                lambda: GRAPH_LINK_TOTAL.labels(
+                    tenant=tenant, link_type=link_type, status="error"
+                ).inc()
+            )
+            raise
+
+        span.set_attribute("from_coord", req.from_coord)
+        span.set_attribute("to_coord", req.to_coord)
+
+        link_data = {
+            "link_type": link_type,
+            "strength": req.strength,
+            "_tenant": tenant,
+            "created_at": time.time(),
+        }
+        if req.metadata:
+            link_data.update(req.metadata)
+
+        try:
+            mem.graph_store.add_link(from_parsed, to_parsed, link_data)
+            duration = time.perf_counter() - start_time
+            _maybe_submit(
+                lambda: GRAPH_LINK_TOTAL.labels(
+                    tenant=tenant, link_type=link_type, status="success"
+                ).inc()
+            )
+            _maybe_submit(
+                lambda: GRAPH_LINK_LATENCY.labels(tenant=tenant, link_type=link_type).observe(
+                    duration
+                )
+            )
+            return GraphLinkResponse(
+                from_coord=req.from_coord,
+                to_coord=req.to_coord,
+                link_type=link_type,
+                ok=True,
+            )
+        except Exception as exc:
+            duration = time.perf_counter() - start_time
+            _maybe_submit(
+                lambda: GRAPH_LINK_TOTAL.labels(
+                    tenant=tenant, link_type=link_type, status="error"
+                ).inc()
+            )
+            _maybe_submit(
+                lambda: GRAPH_LINK_LATENCY.labels(tenant=tenant, link_type=link_type).observe(
+                    duration
+                )
+            )
+            span.record_exception(exc)
+            logger.error("Graph link creation failed", error=str(exc), exc_info=True)
+            raise HTTPException(status_code=500, detail="Graph link creation failed") from exc
 
 
 @app.get(
@@ -1242,6 +1326,7 @@ def get_graph_neighbors(
 
     Per Requirement B2.1: Returns k-hop neighbors with their link metadata.
     Results are filtered by tenant for isolation.
+    Observability: Prometheus metrics and OpenTelemetry spans per H2.
 
     Args:
         coord: The coordinate to find neighbors for.
@@ -1249,35 +1334,70 @@ def get_graph_neighbors(
         limit: Maximum number of neighbors to return.
         link_type: Optional filter by link type.
     """
-    try:
-        parsed = safe_parse_coord(coord)
-    except HTTPException:
-        raise
-
     # TENANT ISOLATION: Extract requesting tenant
     requesting_tenant = _get_tenant_from_request(request) if request else "default"
 
-    try:
-        # Get neighbors from graph store
-        neighbors = mem.graph_store.get_neighbors(
-            parsed, link_type=link_type, limit=limit * 2  # Over-fetch for tenant filtering
-        )
+    # OpenTelemetry span for tracing (H1)
+    tracer = trace.get_tracer("soma.http_api")
+    with tracer.start_as_current_span("graph_neighbors_query") as span:
+        span.set_attribute("tenant", requesting_tenant)
+        span.set_attribute("coord", coord)
+        span.set_attribute("k_hop", k_hop)
+        span.set_attribute("limit", limit)
+        if link_type:
+            span.set_attribute("link_type", link_type)
+        start_time = time.perf_counter()
 
-        # TENANT ISOLATION: Filter neighbors by tenant
-        filtered_neighbors = []
-        for neighbor in neighbors:
-            neighbor_tenant = neighbor.get("_tenant", "default")
-            if neighbor_tenant == requesting_tenant:
-                # Remove internal tenant field from response
-                clean_neighbor = {k: v for k, v in neighbor.items() if not k.startswith("_")}
-                filtered_neighbors.append(clean_neighbor)
-                if len(filtered_neighbors) >= limit:
-                    break
+        try:
+            parsed = safe_parse_coord(coord)
+        except HTTPException:
+            _maybe_submit(
+                lambda: GRAPH_NEIGHBORS_TOTAL.labels(tenant=requesting_tenant, status="error").inc()
+            )
+            raise
 
-        return GraphNeighborsResponse(coord=coord, neighbors=filtered_neighbors)
-    except Exception as exc:
-        logger.error("Graph neighbors query failed", error=str(exc), exc_info=True)
-        raise HTTPException(status_code=500, detail="Graph neighbors query failed") from exc
+        try:
+            # Get neighbors from graph store
+            neighbors = mem.graph_store.get_neighbors(
+                parsed,
+                link_type=link_type,
+                limit=limit * 2,  # Over-fetch for tenant filtering
+            )
+
+            # TENANT ISOLATION: Filter neighbors by tenant
+            filtered_neighbors = []
+            for neighbor in neighbors:
+                neighbor_tenant = neighbor.get("_tenant", "default")
+                if neighbor_tenant == requesting_tenant:
+                    # Remove internal tenant field from response
+                    clean_neighbor = {k: v for k, v in neighbor.items() if not k.startswith("_")}
+                    filtered_neighbors.append(clean_neighbor)
+                    if len(filtered_neighbors) >= limit:
+                        break
+
+            duration = time.perf_counter() - start_time
+            span.set_attribute("neighbors_count", len(filtered_neighbors))
+            _maybe_submit(
+                lambda: GRAPH_NEIGHBORS_TOTAL.labels(
+                    tenant=requesting_tenant, status="success"
+                ).inc()
+            )
+            _maybe_submit(
+                lambda: GRAPH_NEIGHBORS_LATENCY.labels(tenant=requesting_tenant).observe(duration)
+            )
+
+            return GraphNeighborsResponse(coord=coord, neighbors=filtered_neighbors)
+        except Exception as exc:
+            duration = time.perf_counter() - start_time
+            _maybe_submit(
+                lambda: GRAPH_NEIGHBORS_TOTAL.labels(tenant=requesting_tenant, status="error").inc()
+            )
+            _maybe_submit(
+                lambda: GRAPH_NEIGHBORS_LATENCY.labels(tenant=requesting_tenant).observe(duration)
+            )
+            span.record_exception(exc)
+            logger.error("Graph neighbors query failed", error=str(exc), exc_info=True)
+            raise HTTPException(status_code=500, detail="Graph neighbors query failed") from exc
 
 
 @app.get(
@@ -1297,6 +1417,7 @@ def find_graph_path(
 
     Per Requirement B3.1: Returns the shortest path as a list of coordinates.
     Returns empty path if no path exists (not an error).
+    Observability: Prometheus metrics and OpenTelemetry spans per H2.
 
     Args:
         from_coord: Starting coordinate.
@@ -1304,19 +1425,106 @@ def find_graph_path(
         max_length: Maximum path length to search (default 10).
         link_type: Optional filter by link type.
     """
-    try:
-        from_parsed = safe_parse_coord(from_coord)
-        to_parsed = safe_parse_coord(to_coord)
-    except HTTPException:
-        raise
+    # TENANT ISOLATION: Extract requesting tenant
+    requesting_tenant = _get_tenant_from_request(request) if request else "default"
 
-    try:
-        # Find shortest path
-        path_result = mem.graph_store.find_shortest_path(
-            from_parsed, to_parsed, link_type=link_type
-        )
+    # OpenTelemetry span for tracing (H1)
+    tracer = trace.get_tracer("soma.http_api")
+    with tracer.start_as_current_span("graph_path_query") as span:
+        span.set_attribute("tenant", requesting_tenant)
+        span.set_attribute("from_coord", from_coord)
+        span.set_attribute("to_coord", to_coord)
+        span.set_attribute("max_length", max_length)
+        if link_type:
+            span.set_attribute("link_type", link_type)
+        start_time = time.perf_counter()
 
-        if not path_result or len(path_result) > max_length:
+        try:
+            from_parsed = safe_parse_coord(from_coord)
+            to_parsed = safe_parse_coord(to_coord)
+        except HTTPException:
+            _maybe_submit(
+                lambda: GRAPH_PATH_TOTAL.labels(
+                    tenant=requesting_tenant, status="error", found="false"
+                ).inc()
+            )
+            raise
+
+        try:
+            # Find shortest path
+            path_result = mem.graph_store.find_shortest_path(
+                from_parsed, to_parsed, link_type=link_type
+            )
+
+            duration = time.perf_counter() - start_time
+
+            if not path_result or len(path_result) > max_length:
+                span.set_attribute("path_found", False)
+                _maybe_submit(
+                    lambda: GRAPH_PATH_TOTAL.labels(
+                        tenant=requesting_tenant, status="success", found="false"
+                    ).inc()
+                )
+                _maybe_submit(
+                    lambda: GRAPH_PATH_LATENCY.labels(tenant=requesting_tenant).observe(duration)
+                )
+                return GraphPathResponse(
+                    from_coord=from_coord,
+                    to_coord=to_coord,
+                    path=[],
+                    link_types=[],
+                    found=False,
+                )
+
+            # Convert path coordinates to strings
+            path_strs = [",".join(str(c) for c in coord) for coord in path_result]
+
+            # Extract link types from path (would need edge data)
+            link_types = []
+            for i in range(len(path_result) - 1):
+                # Get edge data between consecutive nodes
+                try:
+                    edge_data = mem.graph_store.graph.get_edge_data(
+                        path_result[i], path_result[i + 1]
+                    )
+                    if edge_data:
+                        link_types.append(edge_data.get("link_type", "unknown"))
+                    else:
+                        link_types.append("unknown")
+                except Exception:
+                    link_types.append("unknown")
+
+            span.set_attribute("path_found", True)
+            span.set_attribute("path_length", len(path_result))
+            _maybe_submit(
+                lambda: GRAPH_PATH_TOTAL.labels(
+                    tenant=requesting_tenant, status="success", found="true"
+                ).inc()
+            )
+            _maybe_submit(
+                lambda: GRAPH_PATH_LATENCY.labels(tenant=requesting_tenant).observe(duration)
+            )
+
+            return GraphPathResponse(
+                from_coord=from_coord,
+                to_coord=to_coord,
+                path=path_strs,
+                link_types=link_types,
+                found=True,
+            )
+        except Exception as exc:
+            duration = time.perf_counter() - start_time
+            _maybe_submit(
+                lambda: GRAPH_PATH_TOTAL.labels(
+                    tenant=requesting_tenant, status="error", found="false"
+                ).inc()
+            )
+            _maybe_submit(
+                lambda: GRAPH_PATH_LATENCY.labels(tenant=requesting_tenant).observe(duration)
+            )
+            span.record_exception(exc)
+            logger.error("Graph path query failed", error=str(exc), exc_info=True)
+            # Return empty path on error (not an error per B3.3)
             return GraphPathResponse(
                 from_coord=from_coord,
                 to_coord=to_coord,
@@ -1324,39 +1532,3 @@ def find_graph_path(
                 link_types=[],
                 found=False,
             )
-
-        # Convert path coordinates to strings
-        path_strs = [",".join(str(c) for c in coord) for coord in path_result]
-
-        # Extract link types from path (would need edge data)
-        link_types = []
-        for i in range(len(path_result) - 1):
-            # Get edge data between consecutive nodes
-            try:
-                edge_data = mem.graph_store.graph.get_edge_data(
-                    path_result[i], path_result[i + 1]
-                )
-                if edge_data:
-                    link_types.append(edge_data.get("link_type", "unknown"))
-                else:
-                    link_types.append("unknown")
-            except Exception:
-                link_types.append("unknown")
-
-        return GraphPathResponse(
-            from_coord=from_coord,
-            to_coord=to_coord,
-            path=path_strs,
-            link_types=link_types,
-            found=True,
-        )
-    except Exception as exc:
-        logger.error("Graph path query failed", error=str(exc), exc_info=True)
-        # Return empty path on error (not an error per B3.3)
-        return GraphPathResponse(
-            from_coord=from_coord,
-            to_coord=to_coord,
-            path=[],
-            link_types=[],
-            found=False,
-        )
