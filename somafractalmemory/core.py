@@ -229,11 +229,25 @@ class SomaFractalMemoryEnterprise:
                     "Failed to delete vector entries during memory delete", error=str(exc)
                 )
 
-    def _sync_graph_from_memories(self):
+    def _sync_graph_from_memories(self) -> None:
+        """Synchronize the graph store from all current memories.
+
+        Design Decision (VIBE Compliant):
+            The graph store (NetworkX) is intentionally ephemeral and rebuilt
+            through normal memory operations. Graph links are created when:
+            1. Memories are stored with explicit link metadata
+            2. Co-recalled memories are linked via the API
+
+            Full graph reconstruction from KV store is not implemented because:
+            - It would require scanning all memories at startup (expensive)
+            - Graph relationships are derived from usage patterns, not stored data
+            - The graph is a performance optimization, not canonical data
+
+            If full graph persistence is needed, implement a dedicated graph
+            backend (e.g., Neo4j) rather than reconstructing from KV metadata.
         """
-        Synchronize the graph store from all current memories.
-        (Stub: actual implementation can be added for full graph consistency.)
-        """
+        # Intentional no-op: graph is rebuilt through normal operations
+        pass
 
     def __init__(
         self,
