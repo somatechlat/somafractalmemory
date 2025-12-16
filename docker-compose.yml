@@ -1,3 +1,28 @@
+# =============================================================================
+# PORT RANGE POLICY: All host ports MUST be in the 35000-35999 range.
+# This avoids conflicts with other services and provides a predictable range.
+#
+# SomaFractalMemory Port Assignments (35000-35099):
+#   35000 - API (main entry point)
+#   35001 - PostgreSQL
+#   35002 - Redis
+#   35003 - Milvus gRPC
+#   35004 - Milvus HTTP/metrics
+#
+# IMPORTANT: Any agent modifying this file MUST use ports in the 35000+ range.
+# =============================================================================
+#
+# MEMORY LIMIT: Total cluster memory is capped at 10GB.
+# Distribution:
+#   - PostgreSQL: 1GB
+#   - Redis: 512MB
+#   - etcd: 256MB
+#   - MinIO: 512MB
+#   - Milvus: 6GB (requires significant memory for vector operations)
+#   - API: 1.5GB
+#   Total: ~9.75GB (leaves headroom for OS)
+# =============================================================================
+
 services:
   postgres:
     image: postgres:15
@@ -8,10 +33,16 @@ services:
       POSTGRES_HOST_AUTH_METHOD: md5
     container_name: somafractalmemory_postgres
     ports:
-      - "${POSTGRES_HOST_PORT:-40021}:5432"
+      - "${POSTGRES_HOST_PORT:-35001}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U soma"]
       interval: 10s
@@ -31,10 +62,16 @@ services:
     image: redis:7
     container_name: somafractalmemory_redis
     ports:
-      - "${REDIS_HOST_PORT:-40022}:6379"
+      - "${REDIS_HOST_PORT:-35002}:6379"
     volumes:
       - redisdata:/data
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     healthcheck:
       test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
@@ -61,6 +98,12 @@ services:
     volumes:
       - etcddata:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
       interval: 30s
@@ -82,6 +125,12 @@ services:
     volumes:
       - miniodata:/minio_data
     command: minio server /minio_data --console-address ":9001"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -99,13 +148,19 @@ services:
     container_name: somafractalmemory_milvus
     command: ["milvus", "run", "standalone"]
     ports:
-      - "${MILVUS_HOST_PORT:-19530}:19530"
-      - "${MILVUS_GRPC_PORT:-9091}:9091"
+      - "${MILVUS_HOST_PORT:-35003}:19530"
+      - "${MILVUS_GRPC_PORT:-35004}:9091"
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
     volumes:
       - milvusdata:/var/lib/milvus
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 4G
     depends_on:
       etcd:
         condition: service_healthy
@@ -133,11 +188,11 @@ services:
       dockerfile: Dockerfile
     container_name: somafractalmemory_api
     ports:
-      - "${API_PORT:-9595}:${SOMA_API_PORT:-9595}"
+      - "${API_PORT:-35000}:${SOMA_API_PORT:-9595}"
     # The Dockerfile CMD now runs the bootstrap script which ultimately starts uvicorn.
     # Removing the explicit command here allows the bootstrap process (migrations, health checks)
     # to execute before the API server starts.
-    # Port 9595 is the PUBLIC API ENTRY POINT (externally accessible)
+    # Port 35000 is the PUBLIC API ENTRY POINT (externally accessible)
     environment:
       # Use the token defined in the .env file for consistency with tests.
       # This mirrors the fallback logic in http_api._load_api_token.
@@ -156,6 +211,12 @@ services:
         condition: service_healthy
     volumes:
       - ./:/app:delegated
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+        reservations:
+          memory: 768M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-9595}/healthz"]
       interval: 30s
