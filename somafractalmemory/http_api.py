@@ -1,7 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
 """HTTP API service for SomaFractalMemory.
 
 This is the canonical FastAPI surface used for local runs, OpenAPI generation,
@@ -13,16 +9,11 @@ in place for legacy imports.
 import os
 import threading
 import time
-import warnings
+import warnings  # noqa: E402
 from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-
-# Suppress FastAPI deprecation warnings (e.g., on_event) that are not relevant to
-# test execution. This keeps the test suite clean and aligns with the VIBE rule
-# that code should not emit unnecessary noise.
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -63,6 +54,11 @@ from common.utils.trace import configure_tracer
 # OPA client and enforcement have been removed – the project does not include an OPA service.
 from somafractalmemory.core import DeleteError, KeyValueStoreError, MemoryType, VectorStoreError
 from somafractalmemory.factory import MemoryMode, create_memory_system
+
+# Suppress FastAPI deprecation warnings (e.g., on_event) that are not relevant to
+# test execution. This keeps the test suite clean and aligns with the VIBE rule
+# that code should not emit unnecessary noise.
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _settings = _load_settings()
 _USE_ASYNC_METRICS = _settings.async_metrics_enabled
