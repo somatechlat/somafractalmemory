@@ -1,6 +1,15 @@
 # Canonical Roadmap – No‑Fallback, Full‑Infra on Every Startup
 
-**Goal**: From now on, never use a local mock or fallback. On every startup—regardless of mode—the whole stack (PostgreSQL KV, Qdrant vector, Redis cache, Prometheus metrics, OpenTelemetry tracing, Alembic migrations, health‑checks) must be started and the service must **fail fast** if any required component is unavailable.
+> **STATUS: COMPLETE** (Updated 2025-12-16)
+>
+> This roadmap has been fully implemented. Key changes:
+> - Qdrant removed → Milvus is the ONLY vector backend
+> - InMemory fallbacks removed → fail-fast on missing infrastructure
+> - PostgreSQL is the canonical KV store
+> - Redis is cache-only (no fallback to Redis for KV)
+> - Health checks cover all backends (KV, Vector, Graph)
+
+**Goal**: From now on, never use a local mock or fallback. On every startup—regardless of mode—the whole stack (PostgreSQL KV, Milvus vector, Redis cache, Prometheus metrics, OpenTelemetry tracing, Alembic migrations, health‑checks) must be started and the service must **fail fast** if any required component is unavailable.
 
 ---
 
