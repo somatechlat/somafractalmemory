@@ -162,12 +162,14 @@ def create_memory_system(
 
     settings = load_settings(overrides=overrides if overrides else None)
 
-    # Log the settings being used
-    logger.info(f"Postgres URL: {settings.postgres_url}")
-    logger.info(f"Redis host: {settings.infra.redis}")
-    logger.info(f"Milvus config: {milvus_kwargs}")
-
+    # Ensure redis_kwargs has defaults from settings if not already set
     redis_kwargs.setdefault("host", settings.infra.redis)
+    redis_kwargs.setdefault("port", settings.redis_port)
+
+    # Log the actual settings being used (not the defaults)
+    logger.info(f"Postgres URL: {settings.postgres_url}")
+    logger.info(f"Redis config: host={redis_kwargs.get('host')}, port={redis_kwargs.get('port')}")
+    logger.info(f"Milvus config: {milvus_kwargs}")
 
     # ---------------------------------------------------------------------
     # Production‑only configuration – **no testing fallbacks**.

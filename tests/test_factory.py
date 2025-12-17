@@ -21,14 +21,20 @@ from somafractalmemory.implementations.storage import (
 )
 
 # Test configuration for localhost connections (tests run on host, not in Docker)
+# Structure must match what factory.py expects: nested dicts for redis, postgres, milvus
+# Port defaults match docker-compose.yml: Postgres=40021, Redis=40022, Milvus=35003
 TEST_CONFIG = {
-    "redis_host": os.environ.get("REDIS_HOST", "localhost"),
-    "redis_port": int(os.environ.get("REDIS_PORT", "40022")),
-    "postgres_url": os.environ.get(
-        "POSTGRES_URL", "postgresql://soma:soma@localhost:40021/somamemory"
-    ),
-    "milvus_host": os.environ.get("MILVUS_HOST", "localhost"),
-    "milvus_port": int(os.environ.get("MILVUS_PORT", "19530")),
+    "redis": {
+        "host": os.environ.get("REDIS_HOST", "localhost"),
+        "port": int(os.environ.get("REDIS_PORT", "40022")),
+    },
+    "postgres": {
+        "url": os.environ.get("POSTGRES_URL", "postgresql://soma:soma@localhost:40021/somamemory"),
+    },
+    "milvus": {
+        "host": os.environ.get("MILVUS_HOST", os.environ.get("SOMA_MILVUS_HOST", "localhost")),
+        "port": int(os.environ.get("MILVUS_PORT", os.environ.get("SOMA_MILVUS_PORT", "35003"))),
+    },
 }
 
 

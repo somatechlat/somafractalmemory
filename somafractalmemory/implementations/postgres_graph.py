@@ -10,7 +10,6 @@ Tables:
 
 from __future__ import annotations
 
-import json
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -21,20 +20,23 @@ from psycopg2 import errors as psycopg_errors
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
+from somafractalmemory.implementations.graph_helpers import (
+    EDGES_TABLE_SQL,
+    NODES_TABLE_SQL,
+    bfs_shortest_path,
+    coord_to_str,
+    export_graph_to_file,
+    import_graph_from_file,
+    parse_edge_row,
+    parse_edge_rows_for_export,
+    parse_node_rows,
+    str_to_coord,
+)
 from somafractalmemory.interfaces.graph import IGraphStore
 
 
 class PostgresGraphStore(IGraphStore):
-    """PostgreSQL implementation of the graph store interface.
-
-    Persists graph nodes and edges to PostgreSQL tables, ensuring data
-    survives SFM restarts. Per Task V2.1-V2.7.
-
-    Tables created:
-    - graph_nodes(coord TEXT PRIMARY KEY, data JSONB, tenant TEXT, created_at TIMESTAMPTZ)
-    - graph_edges(id SERIAL PRIMARY KEY, from_coord TEXT, to_coord TEXT, link_type TEXT,
-                  strength FLOAT, metadata JSONB, tenant TEXT, created_at TIMESTAMPTZ)
-    """
+    """PostgreSQL graph store. Persists nodes/edges to graph_nodes and graph_edges tables."""
 
     _NODES_TABLE = "graph_nodes"
     _EDGES_TABLE = "graph_edges"
@@ -111,86 +113,55 @@ class PostgresGraphStore(IGraphStore):
         """Create graph_nodes and graph_edges tables if they don't exist."""
 
         def _create_tables(cur):
-            # Create graph_nodes table (V2.2)
-            cur.execute(
-                SQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS {} (
-                        coord TEXT PRIMARY KEY,
-                        data JSONB NOT NULL DEFAULT '{}',
-                        tenant TEXT NOT NULL DEFAULT 'default',
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
-                    """
-                ).format(Identifier(self._NODES_TABLE))
-            )
-            # Create graph_edges table (V2.2)
-            cur.execute(
-                SQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS {} (
-                        id SERIAL PRIMARY KEY,
-                        from_coord TEXT NOT NULL,
-                        to_coord TEXT NOT NULL,
-                        link_type TEXT NOT NULL DEFAULT 'related',
-                        strength FLOAT NOT NULL DEFAULT 1.0,
-                        metadata JSONB NOT NULL DEFAULT '{}',
-                        tenant TEXT NOT NULL DEFAULT 'default',
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        UNIQUE(from_coord, to_coord, link_type, tenant)
-                    );
-                    """
-                ).format(Identifier(self._EDGES_TABLE))
-            )
+            cur.execute(SQL(NODES_TABLE_SQL).format(Identifier(self._NODES_TABLE)))
+            cur.execute(SQL(EDGES_TABLE_SQL).format(Identifier(self._EDGES_TABLE)))
 
         self._execute(_create_tables)
+        self._create_indexes()
 
-        # Create indexes for efficient queries
+    def _create_indexes(self):
+        """Create indexes for efficient queries. Non-fatal if permissions restricted."""
         try:
 
-            def _create_indexes(cur):
-                # Index on from_coord for neighbor lookups
+            def _do_create(cur):
+                edges = Identifier(self._EDGES_TABLE)
+                nodes = Identifier(self._NODES_TABLE)
+                # Index names use Identifier + Literal concatenation for safety
                 cur.execute(
-                    SQL("CREATE INDEX IF NOT EXISTS idx_{}_from ON {} (from_coord);").format(
-                        Identifier(self._EDGES_TABLE), Identifier(self._EDGES_TABLE)
-                    )
-                )
-                # Index on to_coord for reverse lookups
-                cur.execute(
-                    SQL("CREATE INDEX IF NOT EXISTS idx_{}_to ON {} (to_coord);").format(
-                        Identifier(self._EDGES_TABLE), Identifier(self._EDGES_TABLE)
-                    )
-                )
-                # Index on tenant for isolation
-                cur.execute(
-                    SQL("CREATE INDEX IF NOT EXISTS idx_{}_tenant ON {} (tenant);").format(
-                        Identifier(self._EDGES_TABLE), Identifier(self._EDGES_TABLE)
+                    SQL("CREATE INDEX IF NOT EXISTS {} ON {} (from_coord);").format(
+                        Identifier(f"idx_{self._EDGES_TABLE}_from"), edges
                     )
                 )
                 cur.execute(
-                    SQL("CREATE INDEX IF NOT EXISTS idx_{}_tenant ON {} (tenant);").format(
-                        Identifier(self._NODES_TABLE), Identifier(self._NODES_TABLE)
+                    SQL("CREATE INDEX IF NOT EXISTS {} ON {} (to_coord);").format(
+                        Identifier(f"idx_{self._EDGES_TABLE}_to"), edges
                     )
                 )
-                # Index on link_type for filtered queries
                 cur.execute(
-                    SQL("CREATE INDEX IF NOT EXISTS idx_{}_type ON {} (link_type);").format(
-                        Identifier(self._EDGES_TABLE), Identifier(self._EDGES_TABLE)
+                    SQL("CREATE INDEX IF NOT EXISTS {} ON {} (tenant);").format(
+                        Identifier(f"idx_{self._EDGES_TABLE}_tenant"), edges
+                    )
+                )
+                cur.execute(
+                    SQL("CREATE INDEX IF NOT EXISTS {} ON {} (tenant);").format(
+                        Identifier(f"idx_{self._NODES_TABLE}_tenant"), nodes
+                    )
+                )
+                cur.execute(
+                    SQL("CREATE INDEX IF NOT EXISTS {} ON {} (link_type);").format(
+                        Identifier(f"idx_{self._EDGES_TABLE}_type"), edges
                     )
                 )
 
-            self._execute(_create_indexes)
+            self._execute(_do_create)
         except Exception:
-            # Non-fatal if permissions are restricted
             pass
 
     def _coord_to_str(self, coord: tuple[float, ...]) -> str:
-        """Convert coordinate tuple to string for storage."""
-        return ",".join(str(c) for c in coord)
+        return coord_to_str(coord)
 
     def _str_to_coord(self, coord_str: str) -> tuple[float, ...]:
-        """Convert string back to coordinate tuple."""
-        return tuple(float(c) for c in coord_str.split(","))
+        return str_to_coord(coord_str)
 
     def add_memory(self, coordinate: tuple[float, ...], memory_data: dict[str, Any]):
         """Add a memory node to the graph (V2.3).
@@ -300,16 +271,9 @@ class PostgresGraphStore(IGraphStore):
             return cur.fetchall()
 
         rows = self._execute(_query)
-        neighbors: list[tuple[Any, dict[str, Any]]] = []
-        for to_coord_str, ltype, strength, metadata in rows:
-            neighbor_coord = self._str_to_coord(to_coord_str)
-            edge_data = {
-                "type": ltype,
-                "strength": strength,
-                **(metadata if isinstance(metadata, dict) else {}),
-            }
-            neighbors.append((neighbor_coord, edge_data))
-        return neighbors
+        return [
+            parse_edge_row(to_str, ltype, strength, meta) for to_str, ltype, strength, meta in rows
+        ]
 
     def find_shortest_path(
         self,
@@ -318,9 +282,7 @@ class PostgresGraphStore(IGraphStore):
         link_type: str | None = None,
         max_length: int = 10,
     ) -> list[Any]:
-        """Find shortest path between two coordinates.
-
-        Uses BFS with optional link_type filter.
+        """Find shortest path between two coordinates using BFS.
 
         Args:
             from_coord: Start coordinate.
@@ -334,50 +296,28 @@ class PostgresGraphStore(IGraphStore):
         from_str = self._coord_to_str(from_coord)
         to_str = self._coord_to_str(to_coord)
 
-        if from_str == to_str:
-            return [from_coord]
+        def get_neighbors(coord_val: str) -> list[str]:
+            def _query(cur):
+                if link_type is not None:
+                    cur.execute(
+                        SQL(
+                            "SELECT to_coord FROM {} WHERE from_coord = %s AND link_type = %s"
+                        ).format(Identifier(self._EDGES_TABLE)),
+                        (coord_val, link_type),
+                    )
+                else:
+                    cur.execute(
+                        SQL("SELECT to_coord FROM {} WHERE from_coord = %s").format(
+                            Identifier(self._EDGES_TABLE)
+                        ),
+                        (coord_val,),
+                    )
+                return [row[0] for row in cur.fetchall()]
 
-        # BFS implementation
-        visited: set[str] = {from_str}
-        queue: list[tuple[str, list[str]]] = [(from_str, [from_str])]
+            return self._execute(_query)
 
-        while queue and len(queue[0][1]) <= max_length:
-            current, path = queue.pop(0)
-
-            # Get neighbors from database - use factory to capture current value
-            def _make_query(coord_val: str, ltype: str | None):
-                def _query(cur):
-                    if ltype is not None:
-                        cur.execute(
-                            SQL(
-                                "SELECT to_coord FROM {} WHERE from_coord = %s AND link_type = %s"
-                            ).format(Identifier(self._EDGES_TABLE)),
-                            (coord_val, ltype),
-                        )
-                    else:
-                        cur.execute(
-                            SQL("SELECT to_coord FROM {} WHERE from_coord = %s").format(
-                                Identifier(self._EDGES_TABLE)
-                            ),
-                            (coord_val,),
-                        )
-                    return [row[0] for row in cur.fetchall()]
-
-                return _query
-
-            neighbors = self._execute(_make_query(current, link_type))
-
-            for neighbor in neighbors:
-                if neighbor == to_str:
-                    # Found path
-                    result_path = path + [neighbor]
-                    return [self._str_to_coord(c) for c in result_path]
-
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append((neighbor, path + [neighbor]))
-
-        return []  # No path found
+        path_strs = bfs_shortest_path(from_str, to_str, get_neighbors, max_length)
+        return [self._str_to_coord(c) for c in path_strs] if path_strs else []
 
     def remove_memory(self, coordinate: tuple[float, ...]):
         """Remove a memory node and all its edges.
@@ -413,77 +353,47 @@ class PostgresGraphStore(IGraphStore):
         self._execute(_truncate)
 
     def export_graph(self, path: str):
-        """Export graph to a JSON file.
-
-        Args:
-            path: File path to write to.
-        """
+        """Export graph to a JSON file."""
 
         def _export(cur):
-            # Get all nodes
             cur.execute(
                 SQL("SELECT coord, data, tenant FROM {};").format(Identifier(self._NODES_TABLE))
             )
-            nodes = [{"coord": row[0], "data": row[1], "tenant": row[2]} for row in cur.fetchall()]
-
-            # Get all edges
+            nodes = parse_node_rows(cur.fetchall())
             cur.execute(
                 SQL(
                     "SELECT from_coord, to_coord, link_type, strength, metadata, tenant FROM {};"
                 ).format(Identifier(self._EDGES_TABLE))
             )
-            edges = [
-                {
-                    "from_coord": row[0],
-                    "to_coord": row[1],
-                    "link_type": row[2],
-                    "strength": row[3],
-                    "metadata": row[4],
-                    "tenant": row[5],
-                }
-                for row in cur.fetchall()
-            ]
+            edges = parse_edge_rows_for_export(cur.fetchall())
+            return nodes, edges
 
-            return {"nodes": nodes, "edges": edges}
-
-        data = self._execute(_export)
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+        nodes, edges = self._execute(_export)
+        export_graph_to_file(nodes, edges, path)
 
     def import_graph(self, path: str):
-        """Import graph from a JSON file.
-
-        Args:
-            path: File path to read from.
-        """
-        with open(path) as f:
-            data = json.load(f)
+        """Import graph from a JSON file."""
+        data = import_graph_from_file(path)
 
         def _import(cur):
-            # Import nodes
+            node_sql = SQL(
+                "INSERT INTO {} (coord, data, tenant) VALUES (%s, %s, %s) "
+                "ON CONFLICT (coord) DO UPDATE SET data = EXCLUDED.data;"
+            ).format(Identifier(self._NODES_TABLE))
             for node in data.get("nodes", []):
                 cur.execute(
-                    SQL(
-                        """
-                        INSERT INTO {} (coord, data, tenant)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (coord) DO UPDATE SET data = EXCLUDED.data;
-                        """
-                    ).format(Identifier(self._NODES_TABLE)),
+                    node_sql,
                     (node["coord"], Json(node.get("data", {})), node.get("tenant", "default")),
                 )
 
-            # Import edges
+            edge_sql = SQL(
+                "INSERT INTO {} (from_coord, to_coord, link_type, strength, metadata, tenant) "
+                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (from_coord, to_coord, link_type, tenant) "
+                "DO UPDATE SET strength = EXCLUDED.strength, metadata = EXCLUDED.metadata;"
+            ).format(Identifier(self._EDGES_TABLE))
             for edge in data.get("edges", []):
                 cur.execute(
-                    SQL(
-                        """
-                        INSERT INTO {} (from_coord, to_coord, link_type, strength, metadata, tenant)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (from_coord, to_coord, link_type, tenant)
-                        DO UPDATE SET strength = EXCLUDED.strength, metadata = EXCLUDED.metadata;
-                        """
-                    ).format(Identifier(self._EDGES_TABLE)),
+                    edge_sql,
                     (
                         edge["from_coord"],
                         edge["to_coord"],
@@ -497,11 +407,7 @@ class PostgresGraphStore(IGraphStore):
         self._execute(_import)
 
     def health_check(self) -> bool:
-        """Check if the graph store is healthy.
-
-        Returns:
-            True if both tables are accessible.
-        """
+        """Check if the graph store is healthy. Returns True if both tables accessible."""
         try:
 
             def _check(cur):
@@ -581,13 +487,6 @@ class PostgresGraphStore(IGraphStore):
             return cur.fetchall()
 
         rows = self._execute(_query)
-        neighbors: list[tuple[Any, dict[str, Any]]] = []
-        for to_coord_str, ltype, strength, metadata in rows:
-            neighbor_coord = self._str_to_coord(to_coord_str)
-            edge_data = {
-                "type": ltype,
-                "strength": strength,
-                **(metadata if isinstance(metadata, dict) else {}),
-            }
-            neighbors.append((neighbor_coord, edge_data))
-        return neighbors
+        return [
+            parse_edge_row(to_str, ltype, strength, meta) for to_str, ltype, strength, meta in rows
+        ]
