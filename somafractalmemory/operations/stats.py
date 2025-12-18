@@ -89,85 +89,35 @@ def memory_stats_op(system: "SomaFractalMemoryEnterprise") -> dict[str, Any]:
                 elif mt == MemoryType.SEMANTIC.value:
                     semantic += 1
 
+        # Get vector count from the namespace's collection only (namespace isolation)
         vector_count = 0
         try:
-            if hasattr(system.vector_store, "scroll"):
+            if hasattr(system.vector_store, "count"):
+                # Use efficient count() method - returns only this namespace's vectors
+                vector_count = system.vector_store.count()
+            elif hasattr(system.vector_store, "scroll"):
+                # Fallback to scroll if count() not available
                 for _ in system.vector_store.scroll():
                     vector_count += 1
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to get vector count", error=str(e))
             vector_count = 0
 
-        namespaces: dict[str, dict[str, int]] = {}
-        try:
-            if pg_store is not None and SQL is not None:
-
-                def _nsagg(cur):
-                    cur.execute(
-                        SQL(
-                            "SELECT split_part(key,':',1) AS namespace, COUNT(*) AS total, "
-                            "SUM(CASE WHEN (value->>'memory_type')='episodic' THEN 1 ELSE 0 END) AS episodic, "
-                            "SUM(CASE WHEN (value->>'memory_type')='semantic' THEN 1 ELSE 0 END) AS semantic "
-                            "FROM {} WHERE key LIKE %s GROUP BY namespace;"
-                        ).format(Identifier(pg_store._TABLE_NAME)),
-                        (data_like,),
-                    )
-                    return cur.fetchall()
-
-                rows = pg_store._execute(_nsagg)
-                for ns, total, eps, sem in rows:
-                    namespaces[ns] = {
-                        "total": int(total or 0),
-                        "episodic": int(eps or 0),
-                        "semantic": int(sem or 0),
-                    }
-            else:
-                for key in system.kv_store.scan_iter("*:data"):
-                    ns = key.split(":", 1)[0]
-                    namespaces.setdefault(ns, {"total": 0, "episodic": 0, "semantic": 0})
-                    namespaces[ns]["total"] += 1
-                    raw = system.kv_store.get(key)
-                    if not raw:
-                        continue
-                    try:
-                        obj = deserialize(raw)
-                    except Exception:
-                        continue
-                    mt = obj.get("memory_type")
-                    if mt == MemoryType.EPISODIC.value:
-                        namespaces[ns]["episodic"] += 1
-                    elif mt == MemoryType.SEMANTIC.value:
-                        namespaces[ns]["semantic"] += 1
-        except Exception:
-            namespaces = {}
+        # Build namespace stats for current namespace only (namespace isolation)
+        namespaces: dict[str, dict[str, int]] = {
+            system.namespace: {
+                "total": int(kv_count or 0),
+                "episodic": int(episodic),
+                "semantic": int(semantic),
+            }
+        }
 
         if not kv_count:
             try:
-                kv_count = len(list(system.kv_store.scan_iter("*:data")))
+                glob_pattern = f"{system.namespace}:*:data"
+                kv_count = len(list(system.kv_store.scan_iter(glob_pattern)))
             except Exception:
                 kv_count = 0
-
-        vector_collections: dict[str, int] = {}
-        try:
-            from pymilvus import Collection, connections, utility
-
-            try:
-                connections.connect(
-                    alias="default",
-                    host=getattr(_settings, "milvus_host", "milvus"),
-                    port=getattr(_settings, "milvus_port", 19530),
-                )
-            except Exception:
-                pass
-            collection_names = utility.list_collections()
-            for name in collection_names:
-                try:
-                    coll = Collection(name)
-                    coll.load()
-                    vector_collections[name] = coll.num_entities
-                except Exception:
-                    vector_collections[name] = 0
-        except Exception:
-            vector_collections = {}
 
         return {
             "total_memories": int(kv_count or 0),
@@ -175,7 +125,6 @@ def memory_stats_op(system: "SomaFractalMemoryEnterprise") -> dict[str, Any]:
             "semantic": int(semantic),
             "vector_count": int(vector_count),
             "namespaces": namespaces,
-            "vector_collections": vector_collections,
         }
     except Exception:
         from .retrieve import get_all_memories_op

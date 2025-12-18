@@ -6,9 +6,12 @@ and executes them. It's opt-in via environment variable `SOMA_ASYNC_METRICS`.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections import deque
 from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 _queue: deque[Callable[[], None]] = deque()
 _lock = threading.Lock()
@@ -22,13 +25,14 @@ def _worker():
             with _lock:
                 if _queue:
                     fn = _queue.popleft()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to dequeue metric task: %s", e)
             fn = None
         if fn:
             try:
                 fn()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Metric task execution failed: %s", e)
         else:
             _stop.wait(0.01)
 
@@ -41,9 +45,9 @@ def submit(fn: Callable[[], None]) -> None:
     try:
         with _lock:
             _queue.append(fn)
-    except Exception:
-        # If queueing fails, best-effort: swallow and let synchronous fallback run
-        pass
+    except Exception as e:
+        # Log the failure but allow synchronous fallback to proceed
+        logger.debug("Failed to queue metric task, synchronous fallback will run: %s", e)
 
 
 def stop():

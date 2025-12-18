@@ -216,13 +216,15 @@ def _redact_dsn(url: str | None) -> str | None:
 
 
 def _postgres_config(settings: Any | None = None) -> dict[str, Any]:
-    if settings and hasattr(settings, "postgres_url"):
-        return {"url": settings.postgres_url}
+    # Use centralized settings - Pydantic handles SOMA_POSTGRES_URL env var
+    if settings and hasattr(settings, "postgres_url") and settings.postgres_url:
+        return {"url": str(settings.postgres_url)}
     host = getattr(getattr(settings, "infra", None), "postgres", "postgres")
     return {"url": f"postgresql://soma:soma@{host}:5432/somamemory"}
 
 
 def _redis_config(settings: Any | None = None) -> dict[str, Any]:
+    # Use centralized settings - Pydantic handles SOMA_REDIS_* env vars
     cfg: dict[str, Any] = {}
     if settings and getattr(settings, "infra", None):
         cfg["host"] = settings.infra.redis

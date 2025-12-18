@@ -31,6 +31,9 @@ from .operations import (
     store_vector_only_op,
     import_memories_op,
     export_memories_op,
+    set_importance_op,
+    remember_op,
+    share_memory_with_op,
     retrieve_op,
     retrieve_memories_op,
     get_all_memories_op,
@@ -60,6 +63,7 @@ from .operations import (
     decay_memories_op,
     apply_decay_to_all_op,
     run_decay_once_op,
+    reconcile_once_op,
     consolidate_memories_op,
     replay_memories_op,
     reflect_op,
@@ -117,7 +121,8 @@ class SomaFractalMemoryEnterprise:
         decay_enabled: bool = True,
         reconcile_enabled: bool = True,
     ) -> None:
-        self.namespace = _settings.namespace or namespace
+        # Use the explicitly passed namespace; only fall back to settings if not provided
+        self.namespace = namespace or _settings.namespace
         self.kv_store = kv_store
         self.vector_store = vector_store
         self.graph_store = graph_store
@@ -499,20 +504,14 @@ class SomaFractalMemoryEnterprise:
     def _adaptive_importance_norm(self, raw: float) -> Tuple[float, str]:
         return adaptive_importance_norm_op(self, raw)
 
-    # --- Additional methods that remain in core ---
+    # --- Additional delegated methods ---
     def iter_memories(self, pattern: Optional[str] = None):
         from .operations.retrieve import iter_memories_op
 
         return iter_memories_op(self, pattern)
 
     def set_importance(self, coordinate: Tuple[float, ...], importance: int = 1):
-        data_key, _ = _coord_to_key(self.namespace, coordinate)
-        data = self.kv_store.get(data_key)
-        if not data:
-            raise SomaFractalMemoryError(f"No memory at {coordinate}")
-        value = deserialize(data)
-        value["importance"] = importance
-        self.kv_store.set(data_key, serialize(value))
+        return set_importance_op(self, coordinate, importance)
 
     def remember(
         self,
@@ -520,35 +519,10 @@ class SomaFractalMemoryEnterprise:
         coordinate: Optional[Tuple[float, ...]] = None,
         memory_type: MemoryType = MemoryType.EPISODIC,
     ):
-        if coordinate is None:
-            coordinate = tuple(np.random.uniform(0, 100, size=2))
-        self._call_hook("before_store", data, coordinate, memory_type)
-        result = self.store_memory(coordinate, data, memory_type=memory_type)
-        self._call_hook("after_store", data, coordinate, memory_type)
-        return result
+        return remember_op(self, data, coordinate, memory_type)
 
     def share_memory_with(self, other_agent, filter_fn=None):
-        for mem in self.get_all_memories():
-            if filter_fn is None or filter_fn(mem):
-                other_agent.store_memory(
-                    mem.get("coordinate"),
-                    mem,
-                    memory_type=MemoryType(mem.get("memory_type", "episodic")),
-                )
+        return share_memory_with_op(self, other_agent, filter_fn)
 
     def _reconcile_once(self):
-        wal_prefix = f"{self.namespace}:wal:"
-        for wal_key in self.kv_store.scan_iter(f"{wal_prefix}*"):
-            raw = self.kv_store.get(wal_key)
-            if not raw:
-                continue
-            try:
-                entry = deserialize(raw)
-            except Exception:
-                continue
-            if entry.get("status") != "committed":
-                entry["status"] = "committed"
-                try:
-                    self.kv_store.set(wal_key, serialize(entry))
-                except Exception:
-                    pass
+        return reconcile_once_op(self)

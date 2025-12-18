@@ -39,9 +39,18 @@ class MilvusVectorStore(IVectorStore):
         self._utility = utility
 
     def setup(self, vector_dim: int, namespace: str):
-        """Set up the collection with the required schema."""
+        """Set up the collection with the required schema, index, and load it.
+
+        Milvus requires:
+        1. Collection with schema (id, embedding, payload)
+        2. Index on the embedding field for similarity search
+        3. Collection loaded into memory for queries
+
+        Without all three steps, search operations will fail.
+        """
         # Use namespace as collection name if not already set.
         self.collection_name = namespace
+
         # Check if collection exists; create if missing.
         if not self._utility.has_collection(self.collection_name):
             from pymilvus import CollectionSchema, DataType, FieldSchema
@@ -63,6 +72,23 @@ class MilvusVectorStore(IVectorStore):
                     f"does not match required {vector_dim}"
                 )
 
+        # Ensure index exists on embedding field (required for search)
+        coll = self._Collection(self.collection_name)
+        if not coll.indexes:
+            index_params = {
+                "metric_type": "IP",  # Inner Product for cosine similarity on normalized vectors
+                "index_type": "IVF_FLAT",
+                "params": {"nlist": 128},
+            }
+            coll.create_index(field_name="embedding", index_params=index_params)
+
+        # Load collection into memory (required for queries)
+        try:
+            coll.load()
+        except Exception:
+            # Collection may already be loaded; ignore load errors
+            pass
+
     def upsert(self, points: list[dict[str, Any]]):
         """Insert or update vectors in the collection."""
         ids = [p["id"] for p in points]
@@ -71,6 +97,8 @@ class MilvusVectorStore(IVectorStore):
         coll = self._Collection(self.collection_name)
         try:
             coll.insert([ids, vectors, payloads])
+            # Flush to ensure data is persisted and visible to queries
+            coll.flush()
         except Exception as exc:
             raise VectorStoreError("Milvus upsert failed") from exc
 
@@ -131,6 +159,32 @@ class MilvusVectorStore(IVectorStore):
                 break
             yield from records
             offset += batch
+
+    def count(self) -> int:
+        """Return the number of entities in the namespace's collection.
+
+        This method returns the count of vectors stored in the current
+        namespace's Milvus collection only, ensuring namespace isolation.
+
+        Note: Milvus requires flush() for num_entities to reflect recent inserts.
+        """
+        try:
+            coll = self._Collection(self.collection_name)
+            # Flush to ensure num_entities reflects recent inserts
+            try:
+                coll.flush()
+            except Exception:
+                pass
+            # Ensure collection is loaded before querying
+            try:
+                coll.load()
+            except Exception:
+                # Collection may already be loaded
+                pass
+            return coll.num_entities
+        except Exception:
+            # Collection may not exist or be accessible
+            return 0
 
     def health_check(self) -> bool:
         """Check if the Milvus connection is healthy."""

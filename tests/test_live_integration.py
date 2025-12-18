@@ -31,7 +31,24 @@ BASE_URL = f"http://127.0.0.1:{common_settings.api_port or 9595}"
 
 
 def _auth_headers() -> dict[str, str]:
-    token = common_settings.api_token or os.getenv("SOMA_API_TOKEN", "devtoken")
+    # For live integration tests hitting the running API container,
+    # we need to use the token configured in the container.
+    # Try to get it from the container's environment, fall back to common patterns.
+    token = os.environ.get("SOMA_API_TOKEN")
+    if not token or token == "test-token":
+        # conftest.py sets test-token, but we need the real token for live API
+        # Try to read from .env file which the container uses
+        import pathlib
+
+        env_file = pathlib.Path(__file__).parent.parent / ".env"
+        if env_file.exists():
+            with open(env_file) as f:
+                for line in f:
+                    if line.startswith("SOMA_API_TOKEN="):
+                        token = line.strip().split("=", 1)[1]
+                        break
+    if not token:
+        token = "devtoken"  # Last resort fallback
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 

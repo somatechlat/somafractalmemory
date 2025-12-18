@@ -86,10 +86,11 @@ def pytest_sessionstart(session):
     milvus_port = getattr(settings, "milvus_port", 19530)
 
     # Export back resolved env for tests and library code.
-    os.environ["POSTGRES_URL"] = pg_url
-    os.environ["REDIS_HOST"] = redis_host
+    # Convert Pydantic types to strings for environment variables
+    os.environ["POSTGRES_URL"] = str(pg_url) if pg_url else ""
+    os.environ["REDIS_HOST"] = str(redis_host) if redis_host else "localhost"
     os.environ["REDIS_PORT"] = str(redis_port)
-    os.environ["SOMA_MILVUS_HOST"] = milvus_host
+    os.environ["SOMA_MILVUS_HOST"] = str(milvus_host) if milvus_host else "localhost"
     os.environ["SOMA_MILVUS_PORT"] = str(milvus_port)
 
     # Connectivity check with small retry if needed.

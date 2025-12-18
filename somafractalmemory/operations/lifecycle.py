@@ -319,3 +319,22 @@ def adaptive_importance_norm_op(
         except OverflowError:
             norm = 1.0 if raw > c else 0.0
         return (norm, "logistic")
+
+
+def reconcile_once_op(system: "SomaFractalMemoryEnterprise") -> None:
+    """Reconcile uncommitted WAL entries by marking them as committed."""
+    wal_prefix = f"{system.namespace}:wal:"
+    for wal_key in system.kv_store.scan_iter(f"{wal_prefix}*"):
+        raw = system.kv_store.get(wal_key)
+        if not raw:
+            continue
+        try:
+            entry = deserialize(raw)
+        except Exception:
+            continue
+        if entry.get("status") != "committed":
+            entry["status"] = "committed"
+            try:
+                system.kv_store.set(wal_key, serialize(entry))
+            except Exception:
+                pass

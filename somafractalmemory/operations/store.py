@@ -263,3 +263,59 @@ def import_memories_op(
             store_memory_op(system, coord_t, mem, memory_type=mtype)
             n += 1
     return n
+
+
+def set_importance_op(
+    system: "SomaFractalMemoryEnterprise",
+    coordinate: tuple[float, ...],
+    importance: int = 1,
+) -> None:
+    """Set the importance level of a memory at the given coordinate."""
+    from ..core import SomaFractalMemoryError
+    from ..serialization import deserialize
+
+    data_key, _ = _coord_to_key(system.namespace, coordinate)
+    data = system.kv_store.get(data_key)
+    if not data:
+        raise SomaFractalMemoryError(f"No memory at {coordinate}")
+    value = deserialize(data)
+    value["importance"] = importance
+    system.kv_store.set(data_key, serialize(value))
+
+
+def remember_op(
+    system: "SomaFractalMemoryEnterprise",
+    data: dict[str, Any],
+    coordinate: tuple[float, ...] | None = None,
+    memory_type: "MemoryType" = None,
+) -> Any:
+    """Store a memory with optional auto-generated coordinate and hook callbacks."""
+    from ..core import MemoryType as MT
+
+    if memory_type is None:
+        memory_type = MT.EPISODIC
+    if coordinate is None:
+        coordinate = tuple(np.random.uniform(0, 100, size=2))
+    system._call_hook("before_store", data, coordinate, memory_type)
+    result = store_memory_op(system, coordinate, data, memory_type=memory_type)
+    system._call_hook("after_store", data, coordinate, memory_type)
+    return result
+
+
+def share_memory_with_op(
+    system: "SomaFractalMemoryEnterprise",
+    other_agent: "SomaFractalMemoryEnterprise",
+    filter_fn: Any = None,
+) -> None:
+    """Share memories with another agent, optionally filtered."""
+    from ..core import MemoryType
+    from .retrieve import get_all_memories_op
+
+    for mem in get_all_memories_op(system):
+        if filter_fn is None or filter_fn(mem):
+            store_memory_op(
+                other_agent,
+                mem.get("coordinate"),
+                mem,
+                memory_type=MemoryType(mem.get("memory_type", "episodic")),
+            )

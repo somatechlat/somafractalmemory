@@ -6,11 +6,17 @@ from somafractalmemory.factory import MemoryMode, create_memory_system
 
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
-    # Use real Redis service (provided by Docker compose) and on‑disk Qdrant.
-    config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"host": "redis", "port": 6379},
-    }
+    # Use real Redis service - configuration comes from environment variables
+    # (REDIS_HOST, REDIS_PORT, POSTGRES_URL, SOMA_MILVUS_HOST, SOMA_MILVUS_PORT)
+    # No hardcoded Docker hostnames - let factory.py read from env vars
+    import os
+
+    config = {}
+    # Only pass redis config if explicitly set in env (otherwise factory uses env vars)
+    redis_host = os.environ.get("REDIS_HOST")
+    redis_port = os.environ.get("REDIS_PORT")
+    if redis_host:
+        config["redis"] = {"host": redis_host, "port": int(redis_port or 6379)}
     return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "additional_ns", config=config)
 
 

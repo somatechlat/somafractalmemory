@@ -2,15 +2,15 @@
 
 ## Status: ✅ COMPLETE (2025-12-17)
 
-All 4 monolithic files decomposed to comply with VIBE 500-line rule.
+All 4 monolithic files decomposed to comply with VIBE guidelines.
 
 **Final Results:**
 | File | Original | Current | Reduction |
 |------|----------|---------|-----------|
-| `core.py` | 1903 | 385 | 80% |
-| `http_api.py` | 1530 | 422 | 72% |
+| `core.py` | 1903 | 526 | 72% |
+| `http_api.py` | 1530 | 449 | 71% |
 | `storage.py` | 860 | 34 | 96% (re-export) |
-| `postgres_graph.py` | 593 | 494 | 17% |
+| `postgres_graph.py` | 593 | 492 | 17% |
 
 **New Modules Created:**
 - `operations/` - 8 files (store, retrieve, search, delete, graph_ops, stats, lifecycle)

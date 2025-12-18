@@ -139,6 +139,14 @@ class QdrantVectorStore(IVectorStore):
                 offset=next_page_offset,
             )
 
+    def count(self) -> int:
+        """Return the number of entities in the namespace's collection."""
+        try:
+            info = self.client.get_collection(collection_name=self.collection_name)
+            return info.points_count
+        except Exception:
+            return 0
+
     def health_check(self) -> bool:
         """Check if the Qdrant connection is healthy."""
         try:

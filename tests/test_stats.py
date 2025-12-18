@@ -1,17 +1,34 @@
+import os
+import uuid
+
 import pytest
 
 from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
 
+def _get_test_config():
+    """Get test configuration from environment variables."""
+    redis_host = os.environ.get("REDIS_HOST", "localhost")
+    redis_port = int(os.environ.get("REDIS_PORT", "40022"))
+    milvus_host = os.environ.get("SOMA_MILVUS_HOST", "localhost")
+    milvus_port = int(os.environ.get("SOMA_MILVUS_PORT", "35003"))
+    postgres_url = os.environ.get(
+        "POSTGRES_URL", "postgresql://soma:soma@localhost:40021/somamemory"
+    )
+    return {
+        "redis": {"host": redis_host, "port": redis_port},
+        "milvus": {"host": milvus_host, "port": milvus_port},
+        "postgres": {"url": postgres_url},
+    }
+
+
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
-    # Use the real Redis container (exposed on host port 40022) instead of the fakeredis testing shim.
-    config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        "redis": {"host": "localhost", "port": 40022},
-    }
-    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "stats_ns", config=config)
+    # Use unique namespace per test run to avoid leftover data
+    namespace = f"stats_test_{uuid.uuid4().hex[:8]}"
+    config = _get_test_config()
+    return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, namespace, config=config)
 
 
 def test_memory_stats_counts(mem: SomaFractalMemoryEnterprise):

@@ -3,6 +3,12 @@ PostgreSQL Key-Value Store implementation for SomaFractalMemory.
 
 This module provides a PostgreSQL-backed implementation of the IKeyValueStore
 interface, storing arbitrary keys with JSONB values.
+
+Connection Pool Configuration:
+- pool_size=10: Base number of connections to maintain
+- max_overflow=20: Additional connections allowed under load
+- pool_pre_ping=True: Verify connections before use
+- pool_recycle=3600: Recycle connections after 1 hour
 """
 
 import json
@@ -15,9 +21,34 @@ import psycopg2
 from psycopg2 import OperationalError
 from psycopg2 import errors as psycopg_errors
 from psycopg2.extras import Json
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from somafractalmemory.interfaces.storage import IKeyValueStore
+
+# Module-level connection pool for sharing across instances
+_connection_pools: dict[str, ThreadedConnectionPool] = {}
+_pool_lock = threading.Lock()
+
+
+def _get_connection_pool(url: str, **kwargs) -> ThreadedConnectionPool:
+    """Get or create a shared connection pool for the given URL.
+
+    This ensures multiple PostgresKeyValueStore instances share the same
+    pool, preventing connection exhaustion during concurrent tenant operations.
+    """
+    with _pool_lock:
+        if url not in _connection_pools:
+            # Create pool with generous limits for concurrent tenant tests
+            # minconn=2: Keep at least 2 connections ready
+            # maxconn=30: Allow up to 30 concurrent connections
+            _connection_pools[url] = ThreadedConnectionPool(
+                minconn=2,
+                maxconn=30,
+                dsn=url,
+                **kwargs,
+            )
+        return _connection_pools[url]
 
 
 class PostgresKeyValueStore(IKeyValueStore):
@@ -25,6 +56,9 @@ class PostgresKeyValueStore(IKeyValueStore):
 
     Stores arbitrary keys with JSONB values in a table ``kv_store``.
     The table is created on first use if it does not exist.
+
+    Uses a shared ThreadedConnectionPool to prevent connection exhaustion
+    during concurrent tenant operations.
     """
 
     _TABLE_NAME = "kv_store"
@@ -47,13 +81,14 @@ class PostgresKeyValueStore(IKeyValueStore):
         self._sslrootcert = getattr(_settings, "postgres_ssl_root_cert", None)
         self._sslcert = getattr(_settings, "postgres_ssl_cert", None)
         self._sslkey = getattr(_settings, "postgres_ssl_key", None)
+        self._pool: ThreadedConnectionPool | None = None
         self._conn = None
         self._lock = threading.RLock()
         self._ensure_connection()
         self._ensure_table()
 
     def _ensure_connection(self):
-        """Establish a new connection if none exists or if closed by server."""
+        """Get a connection from the pool or establish a new one."""
         if self._conn is None or getattr(self._conn, "closed", 0) != 0:
             conn_kwargs = {}
             if self._sslmode:
@@ -64,14 +99,27 @@ class PostgresKeyValueStore(IKeyValueStore):
                 conn_kwargs["sslcert"] = self._sslcert
             if self._sslkey:
                 conn_kwargs["sslkey"] = self._sslkey
-            self._conn = psycopg2.connect(self._url, **conn_kwargs)
-            self._conn.autocommit = True
+
+            # Try to use shared connection pool first
+            try:
+                self._pool = _get_connection_pool(self._url, **conn_kwargs)
+                self._conn = self._pool.getconn()
+                self._conn.autocommit = True
+            except Exception:
+                # Fallback to direct connection if pool fails
+                self._pool = None
+                self._conn = psycopg2.connect(self._url, **conn_kwargs)
+                self._conn.autocommit = True
 
     def _reset_connection(self):
-        """Close and reset the connection."""
+        """Return connection to pool or close it."""
         if self._conn is not None:
             try:
-                self._conn.close()
+                if self._pool is not None:
+                    # Return to pool instead of closing
+                    self._pool.putconn(self._conn)
+                else:
+                    self._conn.close()
             except Exception:
                 pass
         self._conn = None
@@ -230,6 +278,10 @@ class PostgresKeyValueStore(IKeyValueStore):
         memory_type: str | None = None,
     ) -> list[dict]:
         """Search for text within stored values."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         pattern = f"{namespace}:%:data"
         like_op = "LIKE" if case_sensitive else "ILIKE"
         term_pattern = f"%{term}%"
@@ -248,7 +300,8 @@ class PostgresKeyValueStore(IKeyValueStore):
                     # val is dict from psycopg2 jsonb
                     if isinstance(val, dict):
                         out.append(val)
-        except Exception:
-            # Fallback silence – caller will use in-memory scan
+        except Exception as e:
+            # Log the error; caller will use in-memory scan as fallback
+            logger.debug("Postgres text search failed, caller will use in-memory scan: %s", e)
             return []
         return out

@@ -60,5 +60,10 @@ class IVectorStore(ABC):
         pass
 
     @abstractmethod
+    def count(self) -> int:
+        """Return the number of entities in the collection."""
+        pass
+
+    @abstractmethod
     def health_check(self) -> bool:
         pass

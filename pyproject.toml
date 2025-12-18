@@ -51,6 +51,7 @@ api = [
 ]
 dev = [
   "pytest",
+  "hypothesis>=6.0.0",
   # fakeredis removed – all tests now require the real Redis service.
   "testcontainers",
   "ruff",

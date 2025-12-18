@@ -133,10 +133,13 @@ def create_memory_system(
             overrides["postgres_url"] = postgres_cfg["url"]
 
         redis_cfg = config.get("redis") or {}
+        logger.debug(f"Redis config from dict: {redis_cfg}")
         if redis_cfg.get("host"):
             redis_kwargs["host"] = redis_cfg["host"]
+            logger.debug(f"Set redis_kwargs['host'] = {redis_cfg['host']}")
         if redis_cfg.get("port") is not None:
             redis_kwargs["port"] = int(redis_cfg["port"])
+            logger.debug(f"Set redis_kwargs['port'] = {redis_cfg['port']}")
 
         # Milvus configuration from config dict
         milvus_cfg = config.get("milvus") or {}
@@ -146,25 +149,26 @@ def create_memory_system(
             milvus_kwargs["port"] = int(milvus_cfg["port"])
 
     # Honor bare environment overrides even when config is absent
-    # Load centralized settings once.
+    # Load centralized settings once - all env vars are handled by Pydantic.
     _settings = load_settings()
-    # Apply explicit environment overrides using the central settings.
+
+    # Apply Postgres URL from settings (Pydantic already handles SOMA_POSTGRES_URL env var)
     if _settings.postgres_url:
-        overrides.setdefault("postgres_url", _settings.postgres_url)
-    # Milvus configuration – use settings if not already set from config.
+        overrides.setdefault("postgres_url", str(_settings.postgres_url))
+
+    # Milvus configuration – use settings (Pydantic handles SOMA_MILVUS_HOST/PORT env vars)
     if not milvus_kwargs.get("host"):
-        milvus_kwargs["host"] = getattr(_settings, "milvus_host", "milvus")
+        milvus_kwargs["host"] = _settings.milvus_host
     if not milvus_kwargs.get("port"):
-        milvus_kwargs["port"] = int(getattr(_settings, "milvus_port", 19530))
-    # Redis configuration – use settings infra defaults.
-    if _settings.infra.redis:
-        redis_kwargs.setdefault("host", _settings.infra.redis)
+        milvus_kwargs["port"] = _settings.milvus_port
+
+    # Redis configuration – use settings (Pydantic handles SOMA_REDIS_* env vars)
+    if not redis_kwargs.get("host"):
+        redis_kwargs["host"] = _settings.infra.redis
+    if not redis_kwargs.get("port"):
+        redis_kwargs["port"] = _settings.redis_port
 
     settings = load_settings(overrides=overrides if overrides else None)
-
-    # Ensure redis_kwargs has defaults from settings if not already set
-    redis_kwargs.setdefault("host", settings.infra.redis)
-    redis_kwargs.setdefault("port", settings.redis_port)
 
     # Log the actual settings being used (not the defaults)
     logger.info(f"Postgres URL: {settings.postgres_url}")

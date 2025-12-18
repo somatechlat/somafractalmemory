@@ -6,6 +6,10 @@ Per Task V2.1-V2.7: Replaces in-memory NetworkXGraphStore for production use.
 Tables:
 - graph_nodes: Stores memory nodes with coordinate as primary key
 - graph_edges: Stores directed edges between nodes with metadata
+
+Connection Pool Configuration:
+- Uses shared ThreadedConnectionPool from postgres_kv module
+- Prevents connection exhaustion during concurrent tenant operations
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import psycopg2
 from psycopg2 import OperationalError
 from psycopg2 import errors as psycopg_errors
 from psycopg2.extras import Json
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from somafractalmemory.implementations.graph_helpers import (
@@ -32,6 +37,7 @@ from somafractalmemory.implementations.graph_helpers import (
     parse_node_rows,
     str_to_coord,
 )
+from somafractalmemory.implementations.postgres_kv import _get_connection_pool
 from somafractalmemory.interfaces.graph import IGraphStore
 
 
@@ -61,13 +67,14 @@ class PostgresGraphStore(IGraphStore):
         self._sslrootcert = getattr(_settings, "postgres_ssl_root_cert", None)
         self._sslcert = getattr(_settings, "postgres_ssl_cert", None)
         self._sslkey = getattr(_settings, "postgres_ssl_key", None)
+        self._pool: ThreadedConnectionPool | None = None
         self._conn = None
         self._lock = threading.RLock()
         self._ensure_connection()
         self._ensure_tables()
 
     def _ensure_connection(self):
-        """Establish connection if none exists or if closed."""
+        """Get a connection from the shared pool or establish a new one."""
         if self._conn is None or getattr(self._conn, "closed", 0) != 0:
             conn_kwargs = {}
             if self._sslmode:
@@ -78,14 +85,27 @@ class PostgresGraphStore(IGraphStore):
                 conn_kwargs["sslcert"] = self._sslcert
             if self._sslkey:
                 conn_kwargs["sslkey"] = self._sslkey
-            self._conn = psycopg2.connect(self._url, **conn_kwargs)
-            self._conn.autocommit = True
+
+            # Try to use shared connection pool first
+            try:
+                self._pool = _get_connection_pool(self._url, **conn_kwargs)
+                self._conn = self._pool.getconn()
+                self._conn.autocommit = True
+            except Exception:
+                # Fallback to direct connection if pool fails
+                self._pool = None
+                self._conn = psycopg2.connect(self._url, **conn_kwargs)
+                self._conn.autocommit = True
 
     def _reset_connection(self):
-        """Close and reset connection."""
+        """Return connection to pool or close it."""
         if self._conn is not None:
             try:
-                self._conn.close()
+                if self._pool is not None:
+                    # Return to pool instead of closing
+                    self._pool.putconn(self._conn)
+                else:
+                    self._conn.close()
             except Exception:
                 pass
         self._conn = None
