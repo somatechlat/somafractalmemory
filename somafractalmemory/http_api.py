@@ -28,6 +28,7 @@ try:
     import redis
     from redis.exceptions import RedisError
 except ImportError:
+    # type: ignore[assignment,misc] - redis is optional; fallback for environments without it
     redis = None  # type: ignore[assignment]
     RedisError = Exception  # type: ignore[misc,assignment]
 

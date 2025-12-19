@@ -16,7 +16,7 @@ from common.config.settings import load_settings as _load_settings
 try:
     import numpy as np
 except Exception:  # pragma: no cover - optional dependency at runtime
-    np = None  # type: ignore
+    np = None  # type: ignore[assignment] - numpy is optional; None fallback for environments without it
 
 
 def serialize(obj: Any) -> bytes:

@@ -68,10 +68,10 @@ def store_op(
             }
             try:
                 system.kv_store.set(wal_key, serialize(wal_payload))
-            except Exception as e:
-                logger.warning("Failed to write WAL entry", error=str(e))
-        except Exception:
-            pass
+            except Exception as wal_exc:
+                logger.warning("Failed to write WAL entry", error=str(wal_exc))
+        except Exception as outer_exc:
+            logger.debug("WAL write outer exception", extra={"error": str(outer_exc)})
 
 
 def store_memory_op(
@@ -115,12 +115,12 @@ def store_memory_op(
             try:
                 _submit_metric(fn)
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Async metric submission failed", extra={"error": str(exc)})
         try:
             fn()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Metric submission failed", extra={"error": str(exc)})
 
     with system.store_latency.labels(system.namespace).time():
         _maybe_submit(lambda: system.store_count.labels(system.namespace).inc())

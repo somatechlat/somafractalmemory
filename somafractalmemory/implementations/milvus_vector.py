@@ -6,11 +6,14 @@ All network-related errors are wrapped in VectorStoreError for consistent
 error handling across backends.
 """
 
+import logging
 from collections.abc import Iterator
 from typing import Any
 
 from somafractalmemory.core import VectorStoreError
 from somafractalmemory.interfaces.storage import IVectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class MilvusVectorStore(IVectorStore):
@@ -85,9 +88,12 @@ class MilvusVectorStore(IVectorStore):
         # Load collection into memory (required for queries)
         try:
             coll.load()
-        except Exception:
-            # Collection may already be loaded; ignore load errors
-            pass
+        except Exception as exc:
+            # Collection may already be loaded; log at debug level
+            logger.debug(
+                "Collection load skipped (may already be loaded)",
+                extra={"collection": self.collection_name, "error": str(exc)},
+            )
 
     def upsert(self, points: list[dict[str, Any]]):
         """Insert or update vectors in the collection."""
@@ -133,6 +139,7 @@ class MilvusVectorStore(IVectorStore):
         coll = self._Collection(self.collection_name)
         try:
             # Prefer the native ``ids`` argument supported by modern Milvus SDKs.
+            # type: ignore[arg-type] - Milvus SDK type stubs don't match runtime behavior
             coll.delete(ids=ids)  # type: ignore[arg-type]
         except Exception:
             # Fallback to expression syntax for legacy clients.
@@ -173,22 +180,35 @@ class MilvusVectorStore(IVectorStore):
             # Flush to ensure num_entities reflects recent inserts
             try:
                 coll.flush()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Flush before count failed",
+                    extra={"collection": self.collection_name, "error": str(exc)},
+                )
             # Ensure collection is loaded before querying
             try:
                 coll.load()
-            except Exception:
+            except Exception as exc:
                 # Collection may already be loaded
-                pass
+                logger.debug(
+                    "Load before count skipped (may already be loaded)",
+                    extra={"collection": self.collection_name, "error": str(exc)},
+                )
             return coll.num_entities
-        except Exception:
+        except Exception as exc:
             # Collection may not exist or be accessible
+            logger.debug(
+                "Count failed, returning 0",
+                extra={"collection": self.collection_name, "error": str(exc)},
+            )
             return 0
 
     def health_check(self) -> bool:
         """Check if the Milvus connection is healthy."""
         try:
             return self._utility.has_collection(self.collection_name)
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                "Health check failed", extra={"collection": self.collection_name, "error": str(exc)}
+            )
             return False

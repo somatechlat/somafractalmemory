@@ -5,11 +5,14 @@ This module provides a wrapper that batches writes to KV and Vector stores
 in-process, flushing them periodically or when a configured batch size is reached.
 """
 
+import logging
 import threading
 from collections.abc import Iterator, Mapping
 from typing import Any
 
 from somafractalmemory.interfaces.storage import IKeyValueStore, IVectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class BatchedStore(IKeyValueStore, IVectorStore):
@@ -65,9 +68,9 @@ class BatchedStore(IKeyValueStore, IVectorStore):
         try:
             if isinstance(key_or_ids, list) or isinstance(key_or_ids, tuple):
                 return self._vec.delete(key_or_ids)
-        except Exception:
-            # Fallthrough to KV path
-            pass
+        except Exception as exc:
+            # Log and fallthrough to KV path - type: ignore[union-attr] for mixed types
+            logger.debug("Vector delete failed, trying KV path", extra={"error": str(exc)})
         # KV delete path (single key)
         return self._kv.delete(key_or_ids)
 
@@ -118,9 +121,9 @@ class BatchedStore(IKeyValueStore, IVectorStore):
             try:
                 with self._lock:
                     self._flush_locked()
-            except Exception:
-                # Avoid letting background thread crash silently
-                pass
+            except Exception as exc:
+                # Log background flush errors to avoid silent failures
+                logger.debug("Background flush failed", extra={"error": str(exc)})
             self._stop.wait(self._flush_interval)
 
     def _flush_locked(self):
@@ -141,36 +144,51 @@ class BatchedStore(IKeyValueStore, IVectorStore):
                     pipe.set(k, v)
                 try:
                     pipe.execute()
-                except Exception:
+                except Exception as exc:
                     # Fallback to individual writes
+                    logger.debug(
+                        "Pipeline execute failed, falling back to individual writes",
+                        extra={"error": str(exc), "item_count": len(kv_items)},
+                    )
                     for k, v in kv_items:
                         try:
                             self._kv.set(k, v)
-                        except Exception:
-                            pass
+                        except Exception as item_exc:
+                            logger.debug(
+                                "Individual KV set failed", extra={"key": k, "error": str(item_exc)}
+                            )
             else:
                 for k, v in kv_items:
                     try:
                         self._kv.set(k, v)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as item_exc:
+                        logger.debug("KV set failed", extra={"key": k, "error": str(item_exc)})
+        except Exception as exc:
+            logger.debug("KV flush failed", extra={"error": str(exc), "item_count": len(kv_items)})
 
         # Flush vector items
         try:
             if vec_items:
                 try:
                     self._vec.upsert(vec_items)
-                except Exception:
+                except Exception as exc:
                     # If upsert fails, attempt individual upserts to avoid losing data
+                    logger.debug(
+                        "Batch vector upsert failed, falling back to individual upserts",
+                        extra={"error": str(exc), "item_count": len(vec_items)},
+                    )
                     for p in vec_items:
                         try:
                             self._vec.upsert([p])
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+                        except Exception as item_exc:
+                            logger.debug(
+                                "Individual vector upsert failed",
+                                extra={"point_id": p.get("id"), "error": str(item_exc)},
+                            )
+        except Exception as exc:
+            logger.debug(
+                "Vector flush failed", extra={"error": str(exc), "item_count": len(vec_items)}
+            )
 
     def flush(self, timeout: float = 5.0):
         """Flush pending items synchronously (useful for tests)."""
@@ -182,11 +200,12 @@ class BatchedStore(IKeyValueStore, IVectorStore):
         self._stop.set()
         try:
             self._worker.join(timeout=1.0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Worker join failed during stop", extra={"error": str(exc)})
 
     def __del__(self):
         try:
             self.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            # Destructor exceptions are expected during interpreter shutdown
+            logger.debug("Stop failed during destructor", extra={"error": str(exc)})

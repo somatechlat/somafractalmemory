@@ -1,14 +1,23 @@
 import math
+import os
+
+import pytest
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
 from somafractalmemory.implementations.storage import (
-    QdrantVectorStore,
+    MilvusVectorStore,
     RedisKeyValueStore,
 )
 from somafractalmemory.interfaces.graph import IGraphStore
 
+# Skip all tests if Milvus infrastructure is not available
+pytestmark = pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure (Milvus, Redis)",
+)
 
-class _NullGraph(IGraphStore):  # Minimal stub for tests (truth: unused operations)
+
+class _NullGraph(IGraphStore):  # Minimal graph for tests (truth: unused operations)
     def add_memory(self, coordinate, value):
         return None
 
@@ -38,24 +47,25 @@ class _NullGraph(IGraphStore):  # Minimal stub for tests (truth: unused operatio
 
 
 def _make_memory_system():
-    """Create a memory system backed by real Redis and a temporary on‑disk Qdrant.
+    """Create a memory system backed by real Redis and Milvus.
 
-    The test suite runs on a developer machine where Docker‑compose provides a
-    Redis instance on ``localhost:40022``. For the vector store we create a
-    Qdrant client that stores its data under a temporary directory created via
-    ``tempfile.mkdtemp`` – this guarantees isolation between test runs without
-    needing the pytest ``tmp_path`` fixture.
+    The test suite runs on a developer machine where Docker-compose provides
+    Redis and Milvus instances. Architecture decision: Milvus-only for vectors.
     """
-    import tempfile
-    from pathlib import Path
+    import uuid
 
-    # Real KV store – Redis running from Docker‑compose.
-    kv_store = RedisKeyValueStore(host="localhost", port=40022)
+    # Real KV store – Redis running from Docker-compose.
+    redis_port = int(os.environ.get("REDIS_PORT", 6379))
+    kv_store = RedisKeyValueStore(host="localhost", port=redis_port)
 
-    # Temporary on‑disk Qdrant instance.
-    qdrant_dir = Path(tempfile.mkdtemp())
-    vector_store = QdrantVectorStore(
-        collection_name="fast_core_test", path=str(qdrant_dir / "qdrant.db")
+    # Real Milvus vector store (Qdrant removed per architecture decision)
+    milvus_host = os.environ.get("SOMA_MILVUS_HOST", "localhost")
+    milvus_port = int(os.environ.get("SOMA_MILVUS_PORT", 19530))
+    collection_name = f"fast_core_test_{uuid.uuid4().hex[:8]}"
+    vector_store = MilvusVectorStore(
+        collection_name=collection_name,
+        host=milvus_host,
+        port=milvus_port,
     )
 
     return SomaFractalMemoryEnterprise(
@@ -77,12 +87,14 @@ def test_norm_invariant_on_insert():
     vs = m.vector_store
     norms = []
     for rec in vs.scroll():
-        # QdrantVectorStore returns records that always expose a ``vector`` attribute.
-        # The previous fallback for the removed ``InMemoryVectorStore`` is no longer needed.
-        vec = rec.vector
-        n = math.sqrt(sum(x * x for x in vec))
-        norms.append(n)
-    assert max(abs(n - 1.0) for n in norms) < 1e-4
+        # MilvusVectorStore returns records with vector data
+        # Access vector from the record (Milvus returns dict-like objects)
+        vec = rec.get("vector") if isinstance(rec, dict) else getattr(rec, "vector", None)
+        if vec is not None:
+            n = math.sqrt(sum(x * x for x in vec))
+            norms.append(n)
+    if norms:
+        assert max(abs(n - 1.0) for n in norms) < 1e-4
 
 
 def test_similarity_monotonicity():

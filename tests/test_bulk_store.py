@@ -1,16 +1,32 @@
+import os
+
+import pytest
+
 from somafractalmemory.core import MemoryType
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
+# Skip if infrastructure is not available
+pytestmark = pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure (Milvus, Redis, Postgres)",
+)
+
 
 def test_store_memories_bulk_core(tmp_path):
-    """Test bulk storage of multiple memories."""
-    # Use the real Redis service (exposed on host port 40022) instead of the fakeredis testing shim.
+    """Test bulk storage of multiple memories.
+
+    Uses real Redis and Milvus services (Qdrant removed per architecture decision).
+    """
+    redis_port = int(os.environ.get("REDIS_PORT", 6379))
+    milvus_host = os.environ.get("SOMA_MILVUS_HOST", "localhost")
+    milvus_port = int(os.environ.get("SOMA_MILVUS_PORT", 19530))
+
     mem = create_memory_system(
         MemoryMode.EVENTED_ENTERPRISE,
         "bulk_core",
         config={
-            "redis": {"host": "localhost", "port": 40022},
-            "qdrant": {"path": str(tmp_path / "q.db")},
+            "redis": {"host": "localhost", "port": redis_port},
+            "milvus": {"host": milvus_host, "port": milvus_port},
         },
     )
     items = [

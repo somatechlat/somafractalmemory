@@ -134,6 +134,7 @@ class PostgresKeyValueStore(IKeyValueStore):
 
         def _run() -> Any:
             self._ensure_connection()
+            # type: ignore[union-attr] - _conn is guaranteed non-None after _ensure_connection()
             with self._conn.cursor() as cur:  # type: ignore[union-attr]
                 return fn(cur)
 

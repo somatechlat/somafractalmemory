@@ -60,12 +60,12 @@ def recall_op(
             try:
                 _submit_metric(fn)
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Async metric submission failed", extra={"error": str(exc)})
         try:
             fn()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Metric submission failed", extra={"error": str(exc)})
 
     system._call_hook("before_recall", query, context, top_k, memory_type)
     with system.recall_latency.labels(system.namespace).time():
@@ -177,8 +177,8 @@ def hybrid_recall_with_scores_op(
                     else:
                         if t in s_cmp:
                             cnt += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Term match count failed", extra={"error": str(exc)})
         return cnt
 
     def coord_key(payload: dict[str, Any]) -> str:

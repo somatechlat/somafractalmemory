@@ -25,7 +25,7 @@ def _start_compose_services(services: list[str]) -> None:
     dc = shutil.which("docker")
     if not dc:
         print(
-            "docker not found; cannot auto-start services. Please start Redis/Postgres/Qdrant manually."
+            "docker not found; cannot auto-start services. Please start Redis/Postgres/Milvus manually."
         )
         return
     # Use `docker compose` (v2) to start services
@@ -49,7 +49,7 @@ def pytest_sessionstart(session):
     """If USE_REAL_INFRA=1 is set, wire tests to use reachable services.
 
     Behavior:
-    - Respect environment overrides for REDIS_HOST/PORT, POSTGRES_URL, QDRANT_HOST/PORT,
+    - Respect environment overrides for REDIS_HOST/PORT, POSTGRES_URL, SOMA_MILVUS_HOST/PORT,
       KAFKA_BOOTSTRAP_SERVERS. Provide sensible localhost defaults that match docker-compose
       published ports when not set.
     - Attempt to auto-detect common host ports (e.g., Redis 6379 or 6381) and export the
@@ -57,6 +57,8 @@ def pytest_sessionstart(session):
     - Try to start compose services if nothing is reachable, then wait briefly and re-check.
     - Never abort the entire test session; if infra remains unreachable, mark it via env so
       integration tests can skip gracefully.
+
+    Note: Qdrant support was removed per architecture decision - Milvus is the only vector backend.
     """
     # Accept either USE_LIVE_INFRA (preferred) or USE_REAL_INFRA (back-compat)
     use_live = settings.use_live_infura if hasattr(settings, "use_live_infura") else False

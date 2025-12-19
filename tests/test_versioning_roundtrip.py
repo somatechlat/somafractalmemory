@@ -1,15 +1,27 @@
+import os
+
 import pytest
 
 from somafractalmemory.core import MemoryType, SomaFractalMemoryEnterprise
 from somafractalmemory.factory import MemoryMode, create_memory_system
 
+# Skip if infrastructure is not available
+pytestmark = pytest.mark.skipif(
+    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+    reason="Requires live infrastructure (Milvus, Redis, Postgres)",
+)
+
 
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
+    """Create memory system using Milvus (Qdrant removed per architecture decision)."""
+    redis_port = int(os.environ.get("REDIS_PORT", 6379))
+    milvus_host = os.environ.get("SOMA_MILVUS_HOST", "localhost")
+    milvus_port = int(os.environ.get("SOMA_MILVUS_PORT", 19530))
+
     config = {
-        "qdrant": {"path": str(tmp_path / "qdrant.db")},
-        # Use the real Redis container (host port 40022) instead of the fakeredis shim.
-        "redis": {"host": "localhost", "port": 40022},
+        "redis": {"host": "localhost", "port": redis_port},
+        "milvus": {"host": milvus_host, "port": milvus_port},
     }
     return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, "persistence_ns", config=config)
 
