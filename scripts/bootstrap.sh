@@ -62,8 +62,9 @@ export REDIS_URL="redis://$REDIS_HOST:$REDIS_PORT/0"
 echo "🚦 All dependencies are assumed healthy. Starting FastAPI server..."
 
 # Finally start the FastAPI server directly.
+# Using single worker to avoid memory issues in constrained container
 exec /opt/venv/bin/uvicorn somafractalmemory.http_api:app \
   --host 0.0.0.0 \
   --port "${SOMA_API_PORT:-9595}" \
-  --workers 2 \
+  --workers 1 \
   --log-level info
