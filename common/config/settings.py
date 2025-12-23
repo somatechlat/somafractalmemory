@@ -224,6 +224,11 @@ class SMFSettings(SomaBaseSettings):
     vault_url: str = Field(default="", description="Vault endpoint URL")
     secrets_path: str = Field(default="", description="Path to secrets in Vault/K8s")
 
+    # Circuit breaker (Added for SomaBrain compatibility)
+    circuit_failure_threshold: int = Field(default=3)
+    circuit_reset_interval: float = Field(default=60.0)
+    circuit_cooldown_interval: float = Field(default=0.0)
+
     model_config = SettingsConfigDict(arbitrary_types_allowed=True)
 
     def validate_config(self) -> None:
