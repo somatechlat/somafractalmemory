@@ -1,16 +1,45 @@
-# --- Virtual environments ---
+# =============================================================================
+# GITIGNORE - SomaFractalMemory
+# =============================================================================
+
+# --- Virtual Environments ---
 .venv/
 venv/
 env/
 ENV/
+.python-version
+.venv-test/
+virtualenv/
+
+# --- Secrets & Credentials ---
 .env
 .env.*
 *.env
-!.env.template
 !.env.example
-.python-version
+!.env.template
+.env.bak
+.env.new
+.env.old
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+.secrets/
+*.secret
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+.ssh/
+.gnupg/
+*.gpg
+service-account*.json
+keyfile*.json
 
-# --- Python bytecode and caches ---
+# --- Python Bytecode & Caches ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,68 +48,112 @@ __pycache__/
 .pyright/
 .hypothesis/
 .cache/
+.ruff_cache/
+.tox/
 
-# --- Coverage reports ---
+# --- Coverage Reports ---
 .coverage
 .coverage.*
 htmlcov/
 coverage.xml
+pytest.xml
+junit.xml
+test-results/
 
-# --- Build & packaging ---
+# --- Build & Packaging ---
 build/
 dist/
 *.egg-info/
 somafractalmemory.egg-info/
 pip-wheel-metadata/
 wheels/
+eggs/
+*.egg
+*.whl
 
 # --- Logs ---
 *.log
 logs/
 audit_log.jsonl
+*.log.*
 
-# --- OS cruft ---
+# --- OS Cruft ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# --- IDE/editor ---
+# --- IDE/Editor ---
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-*
+.history/
+*.code-workspace
 
-# --- Local DBs / vector indices ---
+# --- Local DBs / Vector Indices ---
 qdrant.db/
 *_qdrant/
 *.index
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.mdb
+*.ldb
+
+# --- Docker ---
+docker-compose.override.yml
+docker-compose.local.yml
 
 # --- Notebooks ---
 .ipynb_checkpoints/
+*.ipynb
 
-# --- Generated docs/site ---
+# --- Generated Docs/Site ---
 site/
-
 openapi.json
 
-# --- Node / JS ---
+# --- Node/JS ---
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-# --- Misc generated ---
+# --- Kiro/Agent ---
+.kiro/
+
+# --- ML Models (large files) ---
+*.pth
+*.pt
+*.bin
+*.model
+*.onnx
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# --- Archives ---
+*.tar
+*.tar.gz
+*.zip
+*.7z
+*.gz
+*.xz
+*.bz2
+*.rar
+
+# --- Misc Generated ---
 README_MINIMAL.md
-docs/README.md
-
-# Environment variables
-.env
-.env.auto
-.env.development
-.env.local
-!.env.template
-
-# Common env backup/temp files (created during local edits or token rotation)
-.env.bak
-.env.new
-.env.old
-
-# local virtualenv used for tests
-.venv-test/
-.env
+tmp/
+temp/
+.tmp/
