@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "somafractalmemory"
 version = "0.2.0"
-description = "A world-class Python package for advanced fractal memory algorithms."
+description = "100% Django-based fractal memory system."
 authors = [
   { name="SomaTech", email="ai@somatech.lat" }
 ]
@@ -18,50 +18,30 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 
-# Keep runtime dependencies lean (core runtime only). Heavy optional stacks stay external.
+# 100% Django - lean dependencies only
 dependencies = [
-  "numpy",
+  "django>=4.2",
+  "django-ninja>=1.0",
+  "psycopg2-binary",
   "redis>=4.0.0",
   "pymilvus>=2.3.0",
-  "scikit-learn",
-  "cryptography",
-  "PyJWT",
-  "requests",
   "prometheus-client",
   "structlog",
   "pydantic-settings",
   "opentelemetry-api",
   "opentelemetry-sdk",
   "networkx",
-  "psycopg2-binary",
-  "redis[asyncio]",
-  "opentelemetry-instrumentation-psycopg2",
-  "opentelemetry-instrumentation-redis",
 ]
 
 [project.optional-dependencies]
-hash-embeddings = ["Pillow", "tenacity", "torch", "torchvision", "torchaudio"]
-api = [
-  "fastapi",
-  "uvicorn",
-  "opentelemetry-sdk",
-  "opentelemetry-instrumentation-fastapi",
-  "jsonschema",
-  "httpx",
-]
 dev = [
   "pytest",
   "hypothesis>=6.0.0",
-  # fakeredis removed – all tests now require the real Redis service.
   "testcontainers",
   "ruff",
   "bandit",
   "build",
-  "alembic>=1.14.0",
   "requests",
-]
-ops = [
-  "alembic>=1.14.0",
 ]
 
 [project.urls]
@@ -71,9 +51,6 @@ ops = [
 [project.scripts]
 soma = "somafractalmemory.cli:main"
 
-# Explicit package discovery configuration to avoid relying on implicit discovery.
-# The project hosts source under both the top-level package directory and `src/` (legacy/tests reference paths).
-# We include only the canonical runtime package to prevent accidental inclusion of test modules.
 [tool.setuptools.packages.find]
 include = ["somafractalmemory", "common"]
 exclude = ["tests", "docs", "site"]

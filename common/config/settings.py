@@ -266,8 +266,8 @@ class SMFSettings(SomaBaseSettings):
 
     # Batch upsert controls (formerly SOMA_ENABLE_BATCH_UPSERT etc.)
     enable_batch_upsert: bool = Field(default=False, description="Enable batched KV/vector upserts")
-    batch_size: int = Field(default=100, description="Batch size for upserts")
-    batch_flush_ms: int = Field(default=5, description="Batch flush interval in milliseconds")
+    batch_size: int = Field(default=1, description="Batch size for upserts")
+    batch_flush_ms: int = Field(default=0, description="Batch flush interval in milliseconds")
 
     # Milvus configuration (Qdrant removed - standardized on Milvus)
     milvus_host: str = Field(default="milvus", description="Milvus service host")

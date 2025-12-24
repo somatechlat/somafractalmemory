@@ -1,81 +1,38 @@
 # syntax=docker/dockerfile:1.6
-# Development Dockerfile (uv-managed virtualenv) for API and consumer workflows
+# LIGHTWEIGHT Django-only Dockerfile for SomaFractalMemory
 FROM python:3.10-slim AS base
 
-ARG ENABLE_REAL_EMBEDDINGS=0
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_PROJECT_ENVIRONMENT=/opt/venv
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
-        netcat-openbsd \
-        procps \
-        bash \
+# Minimal system deps (no build-essential - use precompiled wheels)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv once and place it on PATH
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    ln -s /root/.local/bin/uv /usr/local/bin/uv
+# Install dependencies directly with pip
+COPY api-requirements.txt /app/
 
-# Create and activate virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r api-requirements.txt
 
-
-
-# Copy minimal metadata to resolve dependencies before bringing the whole repo
-COPY pyproject.toml uv.lock* requirements*.txt api-requirements*.txt /app/
-
-RUN if [ "${ENABLE_REAL_EMBEDDINGS}" = "1" ]; then \
-        EXTRAS="--extra api --extra hash-embeddings"; \
-    else \
-        EXTRAS="--extra api"; \
-    fi && \
-    if [ -f uv.lock ]; then \
-        echo "Using uv.lock (frozen)"; \
-        . /opt/venv/bin/activate && uv sync --python /opt/venv/bin/python ${EXTRAS}; \
-    else \
-        echo "No uv.lock found; resolving"; \
-        . /opt/venv/bin/activate && uv lock && uv sync --python /opt/venv/bin/python ${EXTRAS}; \
-    fi && \
-    if [ -f api-requirements.txt ]; then \
-        . /opt/venv/bin/activate && /root/.local/bin/uv pip install -r api-requirements.txt && pip install pyyaml python-dotenv; \
-    fi
-
-# Copy application source and runtime assets
+# Copy application source - ONLY essential files
 COPY somafractalmemory/ ./somafractalmemory/
 COPY common/ ./common/
-# COPY workers/ ./workers/
 COPY scripts/ ./scripts/
-# COPY langfuse/ ./langfuse/
-# COPY examples/ ./examples/
-COPY docs/ ./docs/
-COPY mkdocs.yml README.md CHANGELOG.md LICENSE ./
+COPY manage.py ./
 
-RUN chmod +x /app/scripts/docker-entrypoint.sh
-# Ensure the new bootstrap script is executable
+RUN chmod +x /app/scripts/docker-entrypoint.sh || true
 RUN chmod +x /app/scripts/bootstrap.sh
 
-# Create non-root user for runtime
+# Create non-root user
 RUN useradd --create-home --uid 1000 appuser && \
-    chown -R appuser:appuser /app /opt/venv
+    chown -R appuser:appuser /app
 
 USER appuser
 
-ENV PATH="/opt/venv/bin:${PATH}"
-
-# Expose only the HTTP API port
 EXPOSE 9595
 
-# Use the new bootstrap script to start the full stack, run migrations, health checks,
-# and finally launch the API. The script prints progress to the container logs.
-# Use bash to invoke the bootstrap script to avoid permission issues when the
-# script is mounted as a bind‑mount volume (the exec bit can be lost). Bash is
-# installed in the image (see apt‑get line above).
 CMD ["bash", "/app/scripts/bootstrap.sh"]

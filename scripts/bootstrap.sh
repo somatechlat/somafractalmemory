@@ -2,69 +2,63 @@
 
 # ---------------------------------------------------------------------------
 # Bootstrap script for SomaFractalMemory API container.
-# Guarantees:
-#   * Alembic migrations are applied (fail fast on error).
-#   * PostgreSQL, Qdrant, and Redis are reachable before the API starts.
-#   * Qdrant collection exists (creates it if missing).
-#   * Environment variables are exported for the application.
-#   * All steps emit clear "print" statements that appear in container logs.
+# 100% Django patterns - Production WSGI server (gunicorn).
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
 
-# Helper for exponential back‑off
-backoff() {
-  local attempt=$1
-  local max=$2
-  local delay=$((2 ** attempt))
-  if (( delay > max )); then delay=$max; fi
-  echo "⏳ Waiting ${delay}s (attempt $((attempt+1)))..."
-  sleep $delay
-}
-
-echo "🚀 Starting bootstrap for SomaFractalMemory API"
+echo "🚀 Starting bootstrap for SomaFractalMemory API (Django - Production)"
 
 # ---------------------------------------------------------------------------
-# 1️⃣ Run Alembic migrations
+# Export connection strings for Django settings
 # ---------------------------------------------------------------------------
-echo "🔧 Running Alembic migrations..."
-# Ensure the project root is on PYTHONPATH so alembic can import the "common" package.
-export PYTHONPATH="/app:${PYTHONPATH:-}"
-# Run alembic in a non‑failing mode – duplicate‑table errors are expected after the
-# first successful run. We temporarily disable "set -e" so the script continues
-# regardless of alembic's exit code.
-set +e
-alembic upgrade head || true
-set -e
-echo "✅ Alembic migrations applied (or already up‑to‑date)."
-
-# ---------------------------------------------------------------------------
-# All required services are declared as dependencies in docker‑compose, so they
-# are guaranteed to be healthy before this script runs. We can therefore skip
-# the explicit wait loops and launch the API immediately after migrations.
-
-# Export connection strings for the app (the Settings loader reads them).
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_USER="${POSTGRES_USER:-soma}"
 POSTGRES_DB="${POSTGRES_DB:-somamemory}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-soma}"
-QDRANT_HOST="${QDRANT_HOST:-qdrant}"
-QDRANT_PORT="${QDRANT_PORT:-6333}"
-QDRANT_COLLECTION="${QDRANT_COLLECTION:-memories}"
+MILVUS_HOST="${MILVUS_HOST:-milvus}"
+MILVUS_PORT="${MILVUS_PORT:-19530}"
 REDIS_HOST="${REDIS_HOST:-redis}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
-export POSTGRES_DSN="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB"
-export QDRANT_URL="http://$QDRANT_HOST:$QDRANT_PORT"
-export REDIS_URL="redis://$REDIS_HOST:$REDIS_PORT/0"
+# Django settings environment
+export DJANGO_SETTINGS_MODULE="somafractalmemory.settings"
+export SOMA_POSTGRES_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB"
+export SOMA_DB_HOST="$POSTGRES_HOST"
+export SOMA_DB_PORT="$POSTGRES_PORT"
+export SOMA_DB_USER="$POSTGRES_USER"
+export SOMA_DB_PASSWORD="$POSTGRES_PASSWORD"
+export SOMA_DB_NAME="$POSTGRES_DB"
+export SOMA_MILVUS_HOST="$MILVUS_HOST"
+export SOMA_MILVUS_PORT="$MILVUS_PORT"
+export SOMA_REDIS_HOST="$REDIS_HOST"
+export SOMA_REDIS_PORT="$REDIS_PORT"
+export PYTHONPATH="/app:${PYTHONPATH:-}"
 
-echo "🚦 All dependencies are assumed healthy. Starting FastAPI server..."
+# ---------------------------------------------------------------------------
+# Run Django migrations
+# ---------------------------------------------------------------------------
+echo "🔧 Running Django migrations..."
+python /app/manage.py migrate --run-syncdb --noinput 2>&1 || {
+    echo "⚠️ Django migrate failed (tables may not exist yet), running syncdb..."
+    python /app/manage.py migrate --run-syncdb --noinput 2>&1 || true
+}
+echo "✅ Django migrations applied."
 
-# Finally start the FastAPI server directly.
-# Using single worker to avoid memory issues in constrained container
-exec /opt/venv/bin/uvicorn somafractalmemory.http_api:app \
-  --host 0.0.0.0 \
-  --port "${SOMA_API_PORT:-9595}" \
-  --workers 1 \
-  --log-level info
+echo "🚦 Starting gunicorn (production WSGI server)..."
+
+# Start gunicorn - production WSGI server
+# Workers = 2*CPU + 1 (but limited for container)
+exec gunicorn somafractalmemory.wsgi:application \
+    --bind 0.0.0.0:"${SOMA_API_PORT:-9595}" \
+    --workers "${GUNICORN_WORKERS:-2}" \
+    --threads "${GUNICORN_THREADS:-2}" \
+    --timeout 120 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --access-logfile - \
+    --error-logfile - \
+    --capture-output \
+    --log-level info

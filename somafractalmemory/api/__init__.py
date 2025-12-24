@@ -1,26 +1,30 @@
-# somafractalmemory/api/__init__.py
-"""API module for SomaFractalMemory HTTP endpoints.
+"""SomaFractalMemory API - 100% Django + Django Ninja.
 
-This module contains extracted components from http_api.py for VIBE compliance
-(<500 lines per file).
+All endpoints use Django Ninja routers.
+All strings use centralized messages for i18n.
 """
 
-from .dependencies import (
-    auth_dep,
+# Re-export core components
+from .core import (
+    API_TOKEN,
+    api,
+    get_graph,
+    get_mem,
     get_rate_limiter,
-    get_tenant_from_request,
-    get_tenant_scoped_namespace,
-    rate_limit_dep,
-    resolve_memory_type,
-    safe_parse_coord,
-    set_rate_limiter,
 )
+
+# Re-export messages
+from .messages import (
+    ErrorCode,
+    SuccessCode,
+    get_message,
+)
+
+# Re-export schemas
 from .schemas import (
     GraphLinkRequest,
     GraphLinkResponse,
-    GraphNeighborsRequest,
     GraphNeighborsResponse,
-    GraphPathRequest,
     GraphPathResponse,
     HealthResponse,
     MemoryDeleteResponse,
@@ -33,6 +37,16 @@ from .schemas import (
 )
 
 __all__ = [
+    # Core
+    "api",
+    "get_mem",
+    "get_graph",
+    "get_rate_limiter",
+    "API_TOKEN",
+    # Messages
+    "SuccessCode",
+    "ErrorCode",
+    "get_message",
     # Schemas
     "HealthResponse",
     "MemoryStoreRequest",
@@ -44,17 +58,6 @@ __all__ = [
     "StatsResponse",
     "GraphLinkRequest",
     "GraphLinkResponse",
-    "GraphNeighborsRequest",
     "GraphNeighborsResponse",
-    "GraphPathRequest",
     "GraphPathResponse",
-    # Dependencies
-    "auth_dep",
-    "rate_limit_dep",
-    "safe_parse_coord",
-    "get_tenant_from_request",
-    "get_tenant_scoped_namespace",
-    "resolve_memory_type",
-    "set_rate_limiter",
-    "get_rate_limiter",
 ]

@@ -1,135 +1,219 @@
-SomaFractalMemory
+# SomaFractalMemory
 
-Quick start (local dev)
-- Requirements: Docker, Docker Compose
-- Default API port: 9595
-- Default dev token: devtoken
+A production-ready fractal memory system built with Django and Django Ninja.
 
-⚡ Try it in 30 seconds (macOS zsh)
+## Overview
 
-```zsh
-# 1) Set a dev token (local only)
-export SOMA_API_TOKEN=devtoken
+SomaFractalMemory is a coordinate-based memory storage system that enables:
+- **Memory Storage**: Store and retrieve memories by coordinate vectors
+- **Graph Relationships**: Create links between memory coordinates
+- **Vector Search**: Semantic search using Milvus vector database
+- **Multi-tenancy**: Isolated data per tenant
 
-# 2) Start the full stack (API + Postgres + Redis + Qdrant)
+## Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| **API Framework** | Django 5.2 + Django Ninja |
+| **ORM** | Django ORM |
+| **Database** | PostgreSQL 15 |
+| **Cache** | Redis 7 |
+| **Vector Store** | Milvus 2.3 |
+| **WSGI Server** | gunicorn |
+| **Container** | Docker |
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Python 3.10+ (for local development)
+
+### Run with Docker Compose
+
+```bash
+# Clone the repository
+git clone https://github.com/somatechlat/somafractalmemory.git
+cd somafractalmemory
+
+# Start all services
 docker compose --profile core up -d
 
-# 3) Health check
-curl -fsS http://127.0.0.1:9595/healthz
-
-# 4) Store a memory
-curl -s -X POST http://127.0.0.1:9595/memories \
-	-H "Authorization: Bearer $SOMA_API_TOKEN" \
-	-H 'Content-Type: application/json' \
-	-d '{"coord":"0.1,0.2,0.3","payload":{"ok":true},"memory_type":"episodic"}'
-
-# 5) Search
-curl -s -X POST http://127.0.0.1:9595/memories/search \
-	-H "Authorization: Bearer $SOMA_API_TOKEN" \
-	-H 'Content-Type: application/json' \
-	-d '{"query":"ok", "top_k": 3}'
+# Check health
+curl http://localhost:9595/healthz
 ```
 
-Run the stack
-- Start services with the core profile:
-	- docker compose --profile core up -d
+### API Endpoints
 
-Health check
-- http://127.0.0.1:9595/healthz should return 200
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/healthz` | GET | Liveness probe |
+| `/health` | GET | Detailed health with service latencies |
+| `/stats` | GET | Memory statistics |
+| `/memories` | POST | Store a memory |
+| `/memories/{coord}` | GET | Retrieve a memory |
+| `/memories/{coord}` | DELETE | Delete a memory |
+| `/graph/link` | POST | Create a graph link |
+| `/graph/neighbors` | GET | Get neighbors of a coordinate |
+| `/graph/path` | GET | Find path between coordinates |
 
-Try a request
-- POST a memory with the pinned dev token:
-	- curl -s -X POST http://127.0.0.1:9595/memories \
-		-H 'Authorization: Bearer devtoken' -H 'Content-Type: application/json' \
-		-d '{"coord":"1000,1001","payload":{"hello":"world"},"memory_type":"episodic"}'
+### Example Usage
 
-Stats
-- curl -s -H 'Authorization: Bearer devtoken' http://127.0.0.1:9595/stats
+```bash
+# Store a memory
+curl -X POST http://localhost:9595/memories \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"coord": "1.0,2.0,3.0", "payload": {"content": "Hello World"}, "memory_type": "episodic"}'
 
-Notes
-- The docker-compose file pins SOMA_API_TOKEN to "devtoken" for reliable local testing.
-- If you change the token, update your client headers accordingly.
+# Retrieve a memory
+curl http://localhost:9595/memories/1.0,2.0,3.0 \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-Secrets and environments
-- See `docs/technical-manual/security-secrets.md` for dev vs prod guidance and how to override with `.env`.
-- Use `.env.example` as a starting point. Do not commit real secrets.
+# Create a graph link
+curl -X POST http://localhost:9595/graph/link \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"from_coord": "1.0,2.0,3.0", "to_coord": "4.0,5.0,6.0", "link_type": "related"}'
+```
 
+## Project Structure
 
-<a id="vibe-coding-rules"></a>
+```
+somafractalmemory/
+├── somafractalmemory/          # Django application
+│   ├── api/                    # Django Ninja API
+│   │   ├── routers/            # Route handlers
+│   │   │   ├── health.py       # Health endpoints
+│   │   │   ├── memory.py       # Memory CRUD
+│   │   │   ├── search.py       # Vector search
+│   │   │   └── graph.py        # Graph operations
+│   │   ├── schemas.py          # Pydantic schemas
+│   │   ├── messages.py         # i18n messages
+│   │   └── core.py             # API initialization
+│   ├── models.py               # Django ORM models
+│   ├── services.py             # Business logic
+│   ├── settings.py             # Django configuration
+│   ├── urls.py                 # URL routing
+│   └── wsgi.py                 # WSGI application
+├── common/                     # Shared utilities
+│   ├── config/                 # Configuration helpers
+│   └── utils/                  # Logger, decorators
+├── scripts/                    # Operational scripts
+│   ├── bootstrap.sh            # Container startup
+│   └── docker-entrypoint.sh    # Docker entrypoint
+├── tests/                      # Test suite
+├── docs/                       # Documentation
+├── Dockerfile                  # Container image
+├── docker-compose.yml          # Service orchestration
+└── pyproject.toml              # Python project config
+```
 
-## 🎯 Vibe Coding Rules – Engineering Working Agreement
+## Configuration
 
-These are the ground rules for how we build, test, and document this project. They’re direct, practical, and designed to keep quality high and friction low.
+### Environment Variables
 
-### 📋 Core principles
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOMA_API_TOKEN` | - | API authentication token |
+| `SOMA_API_PORT` | 9595 | API server port |
+| `POSTGRES_HOST` | postgres | PostgreSQL host |
+| `POSTGRES_PORT` | 5432 | PostgreSQL port |
+| `POSTGRES_USER` | soma | Database user |
+| `POSTGRES_PASSWORD` | soma | Database password |
+| `POSTGRES_DB` | somamemory | Database name |
+| `REDIS_HOST` | redis | Redis host |
+| `REDIS_PORT` | 6379 | Redis port |
+| `SOMA_MILVUS_HOST` | milvus | Milvus host |
+| `SOMA_MILVUS_PORT` | 19530 | Milvus gRPC port |
 
-1) NO BULLSHIT
-- No lies, no mocks, no placeholders, no fake implementations
-- No hype: if something is simple, call it simple; if risky, say why
-- Be precise about what works and what might fail
+### Memory Limits (10GB Total)
 
-2) CHECK FIRST, CODE SECOND
-- Review existing files and architecture before proposing changes
-- Ask for file contents if context is missing; never assume
+| Service | Memory Limit |
+|---------|--------------|
+| PostgreSQL | 1.5 GB |
+| Redis | 512 MB |
+| etcd | 256 MB |
+| MinIO | 256 MB |
+| Milvus | 6 GB |
+| API | 1 GB |
 
-3) NO UNNECESSARY FILES
-- Prefer modifying existing files over adding new ones
-- Don’t split across multiple files without a good reason
+## Database Models
 
-4) REAL IMPLEMENTATIONS ONLY
-- No TODO stubs; ship working code with error handling
-- Use real data paths; clearly mark test data as test data
+### Memory
 
-5) DOCUMENTATION = TRUTH
-- Read the docs first; don’t invent APIs or syntax
-- Cite official sources when behavior depends on external libraries
+Stores memory data with coordinate-based addressing.
 
-6) COMPLETE CONTEXT REQUIRED
-- Don’t modify code without understanding flow and dependencies
-- If context is missing, request it before changing anything
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `coordinate` | Float[] | Coordinate vector |
+| `payload` | JSONB | Memory content |
+| `memory_type` | String | "episodic" or "semantic" |
+| `metadata` | JSONB | Additional metadata |
+| `importance` | Float | Importance score |
+| `tenant` | String | Tenant identifier |
+| `created_at` | DateTime | Creation timestamp |
 
-7) REAL DATA, REAL SERVERS
-- Prefer real services and real data when available
-- Verify structures and responses; don’t guess
+### GraphLink
 
-### 🔍 Workflow for every task
+Stores relationships between memory coordinates.
 
-1) Understand: read the request; ask up to 2–3 clarifying questions together if needed
-2) Gather knowledge: read relevant docs; verify APIs and data formats
-3) Investigate: inspect existing files and architecture; trace the flow end-to-end
-4) Verify context: confirm what calls what; identify dependencies and impacts
-5) Plan: state exactly which files will change and why; note risks/dependencies
-6) Implement: write complete, working code based on verified sources
-7) Verify: think through edge cases; validate against real services when possible
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `from_coordinate` | Float[] | Source coordinate |
+| `to_coordinate` | Float[] | Target coordinate |
+| `link_type` | String | Relationship type |
+| `strength` | Float | Link strength |
+| `metadata` | JSONB | Additional metadata |
+| `tenant` | String | Tenant identifier |
 
-### 📚 Documentation rules
+## Development
 
-- Always read official documentation before coding
-- Base behavior on real, verified information; include links when relevant
-- If docs aren’t accessible, say so—don’t guess
+### Local Setup
 
-### 🔄 Context & flow rules
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
 
-- Understand where data comes from and where it goes
-- Know which components call and are called by the code you touch
-- If any link in the chain is unclear, pause and get the missing context
+# Install dependencies
+pip install -e ".[dev]"
 
-### 🌐 Real data & servers
+# Run tests
+pytest tests/
+```
 
-- Use real endpoints and datasets when available
-- Confirm shapes and error modes from actual responses/logs
+### Running Tests
 
-### 🗣️ Communication style
+```bash
+# Unit tests
+pytest tests/ -v
 
-- Straight, clear, and concise; no overselling
-- Be explicit about limitations, risks, and trade-offs
-- Reference sources: “According to the docs at <URL> …”
+# With coverage
+pytest tests/ --cov=somafractalmemory
+```
 
-### ✅ The contract
+## API Documentation
 
-- Check existing code first; document decisions
-- Read documentation proactively and cite it
-- Request missing context before modifying code
-- Implement real, production-ready solutions
-- Verify with real data/services when possible
-- Be honest about complexity and outcomes
+The API exposes an OpenAPI specification at `/openapi.json`.
+
+### Authentication
+
+All endpoints (except health probes) require Bearer token authentication:
+
+```
+Authorization: Bearer YOUR_TOKEN
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes with tests
+4. Submit a pull request

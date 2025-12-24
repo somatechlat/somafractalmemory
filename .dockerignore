@@ -129,3 +129,20 @@ compose.*.yml
 *.gz
 *.xz
 *.bz2
+
+# Extra directories not needed in container
+helm/
+webui/
+alembic/
+.kiro/
+.hypothesis/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+conftest.py
+pytest.ini
+mypy.ini
+bandit.yaml
+VIBE*.md
+violations.md
+CANONICAL_ROADMAP.md

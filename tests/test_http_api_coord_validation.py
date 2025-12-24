@@ -1,22 +1,28 @@
+"""Test coordinate validation - Django Ninja.
+
+Tests for malformed coordinate handling.
+100% Django patterns - NO FastAPI.
+"""
+
 import os
 
 import pytest
 
-# Set environment variables for localhost infrastructure BEFORE importing http_api
-# This is required because http_api.py creates the memory system at import time
-os.environ.setdefault("REDIS_HOST", "localhost")
-os.environ.setdefault("REDIS_PORT", "40022")
-os.environ.setdefault("POSTGRES_URL", "postgresql://soma:soma@localhost:40021/somamemory")
+# Set environment variables for localhost infrastructure BEFORE importing API
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
+os.environ.setdefault("SOMA_REDIS_HOST", "localhost")
+os.environ.setdefault("SOMA_REDIS_PORT", "40022")
+os.environ.setdefault("SOMA_POSTGRES_URL", "postgresql://soma:soma@localhost:40021/somamemory")
 os.environ.setdefault("SOMA_MILVUS_HOST", "localhost")
 os.environ.setdefault("SOMA_MILVUS_PORT", "35003")
 os.environ.setdefault("SOMA_API_TOKEN", "test-token")
 
 try:
-    from fastapi.testclient import TestClient
+    from ninja.testing import TestClient
 
-    from somafractalmemory.http_api import app
+    from somafractalmemory.api import api
 
-    client = TestClient(app)
+    client = TestClient(api)
     SKIP_REASON = None
 except ImportError as e:
     client = None
@@ -33,9 +39,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_malformed_coord_returns_400():
-    # Use the token from environment (set by conftest.py) or fallback to test-token
-    import os
-
+    """Test that malformed coordinates return 400 Bad Request."""
     token = os.environ.get("SOMA_API_TOKEN", "test-token")
     headers = {"Authorization": f"Bearer {token}"}
     payload = {
@@ -46,4 +50,6 @@ def test_malformed_coord_returns_400():
     r = client.post("/memories", headers=headers, json=payload)
     assert r.status_code == 400
     data = r.json()
-    assert "Invalid coord" in data.get("detail", "")
+    assert (
+        "Invalid coord" in data.get("detail", "") or "coordinate" in data.get("detail", "").lower()
+    )

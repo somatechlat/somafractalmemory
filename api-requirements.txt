@@ -1,8 +1,14 @@
-alembic
+# 100% Django dependencies ONLY - NO SQLAlchemy, NO Alembic
+django>=4.2
+django-ninja>=1.0
 psycopg2-binary
-uvicorn
 pyyaml
 python-dotenv
-
-# Optional binary serializer. Enable with SOMA_SERIALIZER=msgpack
 msgpack>=1.0.4
+redis>=4.0.0
+pymilvus>=2.3.0
+prometheus-client
+structlog
+pydantic-settings
+networkx
+gunicorn

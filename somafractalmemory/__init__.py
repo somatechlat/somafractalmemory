@@ -1,14 +1,47 @@
-# __init__.py for somafractalmemory package
+"""
+SomaFractalMemory - A coordinate-based fractal memory system.
 
-# NOTE: The http_api module has module-level code that creates a memory system,
-# which requires real infrastructure (Redis, Postgres, Milvus) and SOMA_API_TOKEN.
-# To avoid import failures during testing or when infrastructure is unavailable,
-# we do NOT import http_api at package init time.
-#
-# If you need Prometheus metrics registration, import http_api explicitly:
-#   from somafractalmemory import http_api
-#
-# The test_metrics_exposed test should import http_api directly if needed.
+This package provides a Django-based API for storing and retrieving memories
+using coordinate vectors. It supports:
 
-# No automatic http_api import - this prevents module-level initialization
-# from running when the package is imported for testing or library use.
+- Memory CRUD operations with coordinate-based addressing
+- Graph relationships between memory coordinates
+- Vector similarity search via Milvus
+- Multi-tenancy with namespace isolation
+
+Architecture:
+    - Django 5.2 + Django Ninja for the API layer
+    - PostgreSQL for persistent storage (via Django ORM)
+    - Redis for caching
+    - Milvus for vector similarity search
+
+Modules:
+    models      Django ORM models (Memory, GraphLink, etc.)
+    services    Business logic (MemoryService)
+    settings    Django configuration
+    api         Django Ninja API (routers, schemas)
+
+Usage:
+    # Start via Docker Compose
+    docker compose --profile core up -d
+
+    # Or run Django development server
+    python manage.py runserver
+
+Example:
+    >>> import requests
+    >>> response = requests.post(
+    ...     "http://localhost:9595/memories",
+    ...     json={"coord": "1.0,2.0,3.0", "payload": {"content": "Hello"}},
+    ...     headers={"Authorization": "Bearer YOUR_TOKEN"}
+    ... )
+    >>> response.json()
+    {'coord': '1.0,2.0,3.0', 'memory_type': 'episodic'}
+
+Version: 0.2.0
+License: MIT
+"""
+
+__version__ = "0.2.0"
+__author__ = "SomaTech LAT"
+__all__ = ["__version__"]

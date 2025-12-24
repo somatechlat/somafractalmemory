@@ -1,15 +1,15 @@
 # =============================================================================
 # PRODUCTION-GRADE DOCKER COMPOSE - SomaFractalMemory
 # =============================================================================
-# PORT RANGE: 35000-35999 (avoids conflicts)
-#   35000 - API
-#   35001 - PostgreSQL
-#   35002 - Redis
-#   35003 - Milvus gRPC
-#   35004 - Milvus HTTP/metrics
+# PORT RANGE: 40000-40004 (sequential)
+#   9595  - API (Django + gunicorn)
+#   40001 - PostgreSQL
+#   40002 - Redis
+#   40003 - Milvus gRPC
+#   40004 - Milvus HTTP/metrics
 #
-# MEMORY BUDGET: ~13.5GB total
-#   PostgreSQL: 2GB | Redis: 1GB | etcd: 512MB | MinIO: 512MB | Milvus: 8GB | API: 1.5GB
+# MEMORY BUDGET: 10GB total (production constrained)
+#   PostgreSQL: 1.5GB | Redis: 512MB | etcd: 256MB | MinIO: 256MB | Milvus: 6GB | API: 1GB
 # =============================================================================
 
 services:
@@ -23,42 +23,20 @@ services:
       POSTGRES_HOST_AUTH_METHOD: md5
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      - "${POSTGRES_HOST_PORT:-35001}:5432"
+      - "${POSTGRES_HOST_PORT:-40001}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     command: >
-      postgres
-      -c max_connections=200
-      -c shared_buffers=512MB
-      -c effective_cache_size=1536MB
-      -c maintenance_work_mem=128MB
-      -c work_mem=8MB
-      -c wal_buffers=16MB
-      -c checkpoint_completion_target=0.9
-      -c random_page_cost=1.1
-      -c effective_io_concurrency=200
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
-      -c max_worker_processes=4
-      -c max_parallel_workers_per_gather=2
-      -c max_parallel_workers=4
-      -c max_parallel_maintenance_workers=2
-      -c log_min_duration_statement=1000
-      -c log_checkpoints=on
-      -c log_connections=on
-      -c log_disconnections=on
-      -c log_lock_waits=on
-      -c idle_in_transaction_session_timeout=60000
-      -c statement_timeout=300000
+      postgres -c max_connections=100 -c shared_buffers=384MB -c effective_cache_size=1024MB -c maintenance_work_mem=64MB -c work_mem=4MB -c wal_buffers=8MB -c checkpoint_completion_target=0.9 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c min_wal_size=512MB -c max_wal_size=2GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1 -c log_min_duration_statement=1000 -c log_checkpoints=on -c log_connections=on -c log_disconnections=on -c log_lock_waits=on -c idle_in_transaction_session_timeout=60000 -c statement_timeout=300000
     restart: always
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 1536M
         reservations:
-          memory: 1G
+          memory: 768M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U soma"]
+      test: [ "CMD-SHELL", "pg_isready -h localhost -p 5432 -U soma" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -76,41 +54,20 @@ services:
     image: redis:7
     container_name: somafractalmemory_redis
     ports:
-      - "${REDIS_HOST_PORT:-35002}:6379"
+      - "${REDIS_HOST_PORT:-40002}:6379"
     volumes:
       - redisdata:/data
     command: >
-      redis-server
-      --maxmemory 900mb
-      --maxmemory-policy allkeys-lru
-      --maxclients 10000
-      --tcp-backlog 511
-      --timeout 0
-      --tcp-keepalive 300
-      --save 900 1
-      --save 300 10
-      --save 60 10000
-      --appendonly yes
-      --appendfsync everysec
-      --no-appendfsync-on-rewrite no
-      --auto-aof-rewrite-percentage 100
-      --auto-aof-rewrite-min-size 64mb
-      --activerehashing yes
-      --hz 10
-      --dynamic-hz yes
-      --lazyfree-lazy-eviction yes
-      --lazyfree-lazy-expire yes
-      --lazyfree-lazy-server-del yes
-      --replica-lazy-flush yes
+      redis-server --maxmemory 400mb --maxmemory-policy allkeys-lru --maxclients 5000 --tcp-backlog 511 --timeout 0 --tcp-keepalive 300 --save 900 1 --save 300 10 --save 60 10000 --appendonly yes --appendfsync everysec --no-appendfsync-on-rewrite no --auto-aof-rewrite-percentage 100 --auto-aof-rewrite-min-size 64mb --activerehashing yes --hz 10 --dynamic-hz yes --lazyfree-lazy-eviction yes --lazyfree-lazy-expire yes --lazyfree-lazy-server-del yes --replica-lazy-flush yes
     restart: always
     deploy:
       resources:
         limits:
-          memory: 1G
-        reservations:
           memory: 512M
+        reservations:
+          memory: 256M
     healthcheck:
-      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      test: [ "CMD", "redis-cli", "-p", "6379", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -130,24 +87,15 @@ services:
     volumes:
       - etcddata:/etcd
     command: >
-      etcd
-      --advertise-client-urls=http://127.0.0.1:2379
-      --listen-client-urls=http://0.0.0.0:2379
-      --data-dir=/etcd
-      --auto-compaction-mode=periodic
-      --auto-compaction-retention=1h
-      --quota-backend-bytes=8589934592
-      --snapshot-count=10000
-      --max-txn-ops=10000
-      --max-request-bytes=10485760
+      etcd --advertise-client-urls=http://127.0.0.1:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd --auto-compaction-mode=periodic --auto-compaction-retention=1h --quota-backend-bytes=8589934592 --snapshot-count=10000 --max-txn-ops=10000 --max-request-bytes=10485760
     deploy:
       resources:
         limits:
-          memory: 512M
-        reservations:
           memory: 256M
+        reservations:
+          memory: 128M
     healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -170,11 +118,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
-        reservations:
           memory: 256M
+        reservations:
+          memory: 128M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -188,10 +136,10 @@ services:
   milvus:
     image: milvusdb/milvus:v2.3.3
     container_name: somafractalmemory_milvus
-    command: ["milvus", "run", "standalone"]
+    command: [ "milvus", "run", "standalone" ]
     ports:
-      - "${MILVUS_HOST_PORT:-35003}:19530"
-      - "${MILVUS_GRPC_PORT:-35004}:9091"
+      - "${MILVUS_HOST_PORT:-40003}:19530"
+      - "${MILVUS_GRPC_PORT:-40004}:9091"
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
@@ -200,16 +148,16 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
-        reservations:
           memory: 6G
+        reservations:
+          memory: 4G
     depends_on:
       etcd:
         condition: service_healthy
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -230,13 +178,13 @@ services:
       dockerfile: Dockerfile
     container_name: somafractalmemory_api
     ports:
-      - "${API_PORT:-35000}:${SOMA_API_PORT:-9595}"
+      - "${API_PORT:-40000}:${SOMA_API_PORT:-9595}"
     environment:
       SOMA_API_TOKEN: "dev-032f8d463c84e7ef0d834c3a"
       SOMA_RATE_LIMIT_MAX: "0"
       SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"
       CONFIG_FILE: /app/config.yaml
-      SOMA_FORCE_HASH_EMBEDDINGS: "1"
+      SOMA_FORCE_HASH_EMBEDDINGS: "0"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
     depends_on:
@@ -248,14 +196,15 @@ services:
         condition: service_healthy
     volumes:
       - ./:/app:delegated
+      - hf_cache:/root/.cache/huggingface
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 1G
         reservations:
-          memory: 768M
+          memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-9595}/healthz"]
+      test: [ "CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-9595}/healthz" ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -280,6 +229,8 @@ volumes:
   etcddata:
     driver: local
   miniodata:
+    driver: local
+  hf_cache:
     driver: local
 
 networks:
