@@ -26,8 +26,8 @@ except Exception:  # pragma: no cover - tenacity not installed
 
         return decorator
 
-    # Provide minimal stubs for the retry configuration objects used as
-    # arguments; they are not needed when the decorator is a no‑op.
+    # Provide fallback implementations for the retry configuration objects
+    # used as arguments; they are not needed when the decorator is a no-op.
     def stop_after_attempt(_):  # pragma: no cover
         return None
 

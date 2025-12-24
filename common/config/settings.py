@@ -75,7 +75,7 @@ class SMFSettings(SomaBaseSettings):
     model_name: str = Field(default="microsoft/codebert-base")
     vector_dim: int = Field(default=768)
     # Canonical port for the HTTP service interface
-    api_port: int = Field(default=9595, description="FastAPI HTTP port")
+    api_port: int = Field(default=9595, description="Django API HTTP port")
     postgres_url: str = Field(
         default="postgresql://soma:soma@postgres:5432/somamemory",
         description="DSN used by the Postgres-backed key-value store",

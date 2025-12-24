@@ -109,8 +109,13 @@ def get_graph():
 
 
 def get_rate_limiter():
-    """Get rate limiter - placeholder for Django-based rate limiting."""
-    return None  # Rate limiting can be implemented with Django middleware
+    """Get rate limiter instance.
+
+    Rate limiting is implemented via Django middleware (see settings.MIDDLEWARE).
+    This function is kept for API compatibility and returns None
+    since rate limiting is handled at the middleware layer.
+    """
+    return None
 
 
 # -----------------------------------------------------------------------------
