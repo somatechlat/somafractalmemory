@@ -48,6 +48,8 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
     # CORS handled via custom middleware or django-cors-headers if installed
+    # SaaS Usage Tracking (billing)
+    "somafractalmemory.saas.middleware.UsageTrackingMiddleware",
 ]
 
 ROOT_URLCONF = "somafractalmemory.urls"
