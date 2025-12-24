@@ -124,6 +124,9 @@ class UsageRecord(models.Model):
     count = models.IntegerField(default=1)
     bytes_processed = models.BigIntegerField(default=0)
     api_key_id = models.UUIDField(null=True, blank=True)
+    
+    # Billing sync
+    synced_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "sfm_usage_records"
