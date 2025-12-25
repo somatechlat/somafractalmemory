@@ -25,7 +25,9 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("SOMA_DEBUG", "false").lower() in ("true", "1", "yes")
 ALLOWED_HOSTS = [
     h.strip()
-    for h in os.environ.get("SOMA_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    for h in os.environ.get("SOMA_ALLOWED_HOSTS", "localhost,127.0.0.1,host.docker.internal").split(
+        ","
+    )
     if h.strip()
 ]
 
