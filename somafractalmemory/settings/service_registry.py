@@ -67,7 +67,7 @@ class ServiceRegistry:
         name="somabrain",
         env_var="SOMABRAIN_URL",
         description="Cognitive runtime callback",
-        default_port=9696,
+        default_port=30101,
         required=False,
         health_check="/health",
     )
