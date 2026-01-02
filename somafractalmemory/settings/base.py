@@ -12,6 +12,7 @@ VIBE Compliance:
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -59,15 +60,28 @@ ROOT_URLCONF = "somafractalmemory.urls"
 # -----------------------------------------------------------------------------
 # Database Configuration (PostgreSQL)
 # -----------------------------------------------------------------------------
-# Primary database for Django ORM (not used by SomaFractalMemory stores directly)
+# Use SOMA_POSTGRES_URL from .env (loaded by settings/__init__.py)
+# Service Registry Pattern: NO hardcoded fallbacks (VIBE Rules 16, 47)
+
+# Parse DSN from environment
+SOMA_POSTGRES_URL = os.environ.get("SOMA_POSTGRES_URL")
+if not SOMA_POSTGRES_URL:
+    raise ValueError(
+        "❌ SOMA_POSTGRES_URL is required. "
+        "Set in .env: SOMA_POSTGRES_URL=postgresql://user:pass@host:port/dbname"
+    )
+
+# Parse DSN for Django ORM
+parsed = urlparse(SOMA_POSTGRES_URL)
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("SOMA_DB_NAME", "somamemory"),
-        "USER": os.environ.get("SOMA_DB_USER", "soma"),
-        "PASSWORD": os.environ.get("SOMA_DB_PASSWORD", "soma"),
-        "HOST": os.environ.get("SOMA_DB_HOST", os.environ.get("SOMA_INFRA__POSTGRES", "postgres")),
-        "PORT": os.environ.get("SOMA_DB_PORT", "5432"),
+        "NAME": parsed.path[1:] if parsed.path else "somamemory",
+        "USER": parsed.username or "postgres",
+        "PASSWORD": parsed.password or "",
+        "HOST": parsed.hostname or "localhost",
+        "PORT": parsed.port or 5432,
     }
 }
 
@@ -139,7 +153,7 @@ SOMA_SIMILARITY_ALLOW_NEGATIVE = os.environ.get(
 # -----------------------------------------------------------------------------
 # API Configuration
 # -----------------------------------------------------------------------------
-SOMA_API_PORT = int(os.environ.get("SOMA_API_PORT", "9595"))
+SOMA_API_PORT = int(os.environ.get("SOMA_API_PORT", "10101"))  # VIBE Rule 44: 10xxx range
 SOMA_LOG_LEVEL = os.environ.get("SOMA_LOG_LEVEL", "INFO")
 SOMA_MAX_REQUEST_BODY_MB = float(os.environ.get("SOMA_MAX_REQUEST_BODY_MB", "5.0"))
 
