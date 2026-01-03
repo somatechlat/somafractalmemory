@@ -95,11 +95,13 @@ def health_detailed(request: HttpRequest) -> dict:
     all_healthy = True
 
     # Check PostgreSQL
+    print("DEBUG: Checking Postgres...")
     try:
         pg_start = time.time()
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         pg_latency = (time.time() - pg_start) * 1000
+        print("DEBUG: Postgres OK")
         services.append(
             {
                 "name": "postgresql",
@@ -109,20 +111,25 @@ def health_detailed(request: HttpRequest) -> dict:
             }
         )
     except Exception as e:
+        print(f"DEBUG: Postgres FAILED: {e}")
         services.append(
             {"name": "postgresql", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
         all_healthy = False
 
     # Check Redis
+    print("DEBUG: Checking Redis...")
     try:
         import redis
 
         redis_start = time.time()
         redis_host = os.environ.get("SOMA_REDIS_HOST", "localhost")
         redis_port = int(os.environ.get("SOMA_REDIS_PORT", "6379"))
-        r = redis.Redis(host=redis_host, port=redis_port, socket_timeout=2)
+        redis_password = os.environ.get("SOMA_REDIS_PASSWORD", None)
+        print(f"DEBUG: Connecting Redis {redis_host}:{redis_port}")
+        r = redis.Redis(host=redis_host, port=redis_port, password=redis_password, socket_timeout=2)
         r.ping()
+        print("DEBUG: Redis OK")
         redis_latency = (time.time() - redis_start) * 1000
         services.append(
             {
@@ -133,12 +140,14 @@ def health_detailed(request: HttpRequest) -> dict:
             }
         )
     except Exception as e:
+        print(f"DEBUG: Redis FAILED: {e}")
         services.append(
             {"name": "redis", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
         all_healthy = False
 
     # Check Milvus
+    print("DEBUG: Checking Milvus...")
     try:
         from pymilvus import connections
 
@@ -163,40 +172,50 @@ def health_detailed(request: HttpRequest) -> dict:
         all_healthy = False
 
     # Database statistics
-    total_memories = Memory.objects.count()
-    episodic_count = Memory.objects.filter(memory_type="episodic").count()
-    semantic_count = Memory.objects.filter(memory_type="semantic").count()
-    total_links = GraphLink.objects.count()
-    total_namespaces = MemoryNamespace.objects.count()
+    try:
+        total_memories = Memory.objects.count()
+        episodic_count = Memory.objects.filter(memory_type="episodic").count()
+        semantic_count = Memory.objects.filter(memory_type="semantic").count()
+        total_links = GraphLink.objects.count()
+        total_namespaces = MemoryNamespace.objects.count()
 
-    database = {
-        "total_memories": total_memories,
-        "episodic_memories": episodic_count,
-        "semantic_memories": semantic_count,
-        "total_graph_links": total_links,
-        "total_namespaces": total_namespaces,
-    }
+        database = {
+            "total_memories": total_memories,
+            "episodic_memories": episodic_count,
+            "semantic_memories": semantic_count,
+            "total_graph_links": total_links,
+            "total_namespaces": total_namespaces,
+        }
+    except Exception as e:
+        database = {"error": str(e)}
+        all_healthy = False
 
     # Per-tenant stats
     tenants = []
-    tenant_list = Memory.objects.values_list("tenant", flat=True).distinct()
-    for tenant in tenant_list:
-        tenant_memories = Memory.objects.filter(tenant=tenant)
-        tenant_links = GraphLink.objects.filter(tenant=tenant).count()
-        tenants.append(
-            {
-                "tenant": tenant,
-                "total_memories": tenant_memories.count(),
-                "episodic": tenant_memories.filter(memory_type="episodic").count(),
-                "semantic": tenant_memories.filter(memory_type="semantic").count(),
-                "graph_links": tenant_links,
-            }
-        )
+    try:
+        tenant_list = Memory.objects.values_list("tenant", flat=True).distinct()
+        for tenant in tenant_list:
+            tenant_memories = Memory.objects.filter(tenant=tenant)
+            tenant_links = GraphLink.objects.filter(tenant=tenant).count()
+            tenants.append(
+                {
+                    "tenant": tenant,
+                    "total_memories": tenant_memories.count(),
+                    "episodic": tenant_memories.filter(memory_type="episodic").count(),
+                    "semantic": tenant_memories.filter(memory_type="semantic").count(),
+                    "graph_links": tenant_links,
+                }
+            )
+    except Exception as e:
+        tenants.append({"error": str(e)})
+        all_healthy = False
 
     # System info
     system = {
         "python_version": platform.python_version(),
         "platform": platform.platform(),
+        "hostname": platform.node(),
+        "process_id": os.getpid(),
         "hostname": platform.node(),
         "process_id": os.getpid(),
         "django_settings": os.environ.get("DJANGO_SETTINGS_MODULE", "unknown"),
@@ -212,6 +231,7 @@ def health_detailed(request: HttpRequest) -> dict:
         status = "unhealthy"
 
     return {
+        "healthy": status == "healthy",
         "status": status,
         "version": "0.2.0",
         "uptime_seconds": round(time.time() - start_time, 3),

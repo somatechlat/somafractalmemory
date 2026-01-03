@@ -59,11 +59,14 @@ ROOT_URLCONF = "somafractalmemory.urls"
 # -----------------------------------------------------------------------------
 # Database Configuration (PostgreSQL)
 # -----------------------------------------------------------------------------
+print(f"DEBUG: SOMA_DB_NAME from env: {os.environ.get('SOMA_DB_NAME')}")
+print(f"DEBUG: SOMA_DB_USER from env: {os.environ.get('SOMA_DB_USER')}")
+
 # Primary database for Django ORM (not used by SomaFractalMemory stores directly)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("SOMA_DB_NAME", "somamemory"),
+        "NAME": "somafractalmemory", # os.environ.get("SOMA_DB_NAME", "somamemory"),
         "USER": os.environ.get("SOMA_DB_USER", "soma"),
         "PASSWORD": os.environ.get("SOMA_DB_PASSWORD", "soma"),
         "HOST": os.environ.get("SOMA_DB_HOST", os.environ.get("SOMA_INFRA__POSTGRES", "postgres")),

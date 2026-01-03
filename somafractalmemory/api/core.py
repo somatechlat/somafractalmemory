@@ -127,8 +127,8 @@ from .routers.memory import router as memory_router
 from .routers.saas_admin import router as saas_admin_router
 from .routers.search import router as search_router
 
-api.add_router("/memories", memory_router, tags=["memories"])
 api.add_router("/memories", search_router, tags=["memories"])
+api.add_router("/memories", memory_router, tags=["memories"])
 api.add_router("", health_router, tags=["system"])
 api.add_router("/graph", graph_router, tags=["graph"])
 api.add_router("/admin", saas_admin_router, tags=["SaaS Admin"])

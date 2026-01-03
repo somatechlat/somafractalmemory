@@ -18,5 +18,5 @@ django_asgi_app = get_asgi_application()
 # Import Ninja API after Django is set up
 from somafractalmemory.api.core import api
 
-# For Django Ninja, the API itself is the ASGI app
-application = api
+# Standard Django ASGI application
+application = django_asgi_app

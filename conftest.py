@@ -5,8 +5,15 @@ import subprocess
 import time
 
 import pytest
+import django
+from django.conf import settings
 
-from somafractalmemory.config import settings
+# Force Setup
+if not settings.configured:
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
+django.setup()
+
+from django.conf import settings
 
 # Ensure FastAPI surface can import with mandatory auth in test runs.
 os.environ.setdefault("SOMA_API_TOKEN", "test-token")

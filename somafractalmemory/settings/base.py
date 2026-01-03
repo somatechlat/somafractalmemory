@@ -77,7 +77,7 @@ parsed = urlparse(SOMA_POSTGRES_URL)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": parsed.path[1:] if parsed.path else "somamemory",
+        "NAME": os.environ.get("SOMA_DB_NAME") or (parsed.path[1:] if parsed.path else "somafractalmemory"),
         "USER": parsed.username or "postgres",
         "PASSWORD": parsed.password or "",
         "HOST": parsed.hostname or "localhost",
