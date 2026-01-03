@@ -4,8 +4,8 @@ import socket
 import subprocess
 import time
 
-import pytest
 import django
+import pytest
 from django.conf import settings
 
 # Force Setup

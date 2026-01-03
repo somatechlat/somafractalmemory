@@ -16,7 +16,6 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
 django_asgi_app = get_asgi_application()
 
 # Import Ninja API after Django is set up
-from somafractalmemory.api.core import api
 
 # Standard Django ASGI application
 application = django_asgi_app
