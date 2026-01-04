@@ -15,3 +15,12 @@ This section contains operational and architectural guidance for SomaFractalMemo
  - Engineering rules and workflow: see [Vibe Coding Rules](../README.md#vibe-coding-rules)
 
 Additional topics will be added here over time, including deployment, monitoring, and runbooks.
+
+```{toctree}
+:hidden:
+
+security-secrets.md
+deployment-docker.md
+config-reference.md
+endpoints.md
+```
