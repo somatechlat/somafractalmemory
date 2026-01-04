@@ -1,5 +1,5 @@
 Architecture
 ============
 
-.. include:: ../../architecture.md
+.. include:: ../architecture.md
    :parser: myst_parser.sphinx_
