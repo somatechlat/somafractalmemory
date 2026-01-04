@@ -29,12 +29,20 @@ class EtcdFeatureFlagClient:
         namespace: str = "soma",
         timeout: int = 5,
     ) -> None:
+        """Initialize the instance."""
+
         if etcd3 is None:
             raise RuntimeError("etcd3 package must be installed to use EtcdFeatureFlagClient")
         self._namespace = namespace.rstrip("/")
         self._client = etcd3.client(host=host, port=port, timeout=timeout)
 
     def _key(self, flag_name: str) -> str:
+        """Execute key.
+
+        Args:
+            flag_name: The flag_name.
+        """
+
         return f"/{self._namespace}/{flag_name}".replace("//", "/")
 
     @retry(
@@ -43,6 +51,13 @@ class EtcdFeatureFlagClient:
         reraise=True,
     )
     def get_flag(self, flag_name: str, default: Any = None) -> Any:
+        """Retrieve flag.
+
+        Args:
+            flag_name: The flag_name.
+            default: The default.
+        """
+
         ETCD_OPS.labels(method="get_flag").inc()
         try:
             key = self._key(flag_name)
@@ -59,9 +74,22 @@ class EtcdFeatureFlagClient:
             raise
 
     def watch(self, flag_name: str, callback: Callable[[Any], None]) -> None:
+        """Execute watch.
+
+        Args:
+            flag_name: The flag_name.
+            callback: The callback.
+        """
+
         key = self._key(flag_name)
 
         def _handler(event):  # type: ignore[no-untyped-def]
+            """Execute handler.
+
+            Args:
+                event: The event.
+            """
+
             if event.value is None:
                 callback(None)
             else:
@@ -78,6 +106,8 @@ class EtcdFeatureFlagClient:
         reraise=True,
     )
     def close(self) -> None:
+        """Execute close."""
+
         ETCD_OPS.labels(method="close").inc()
         try:
             self._client.close()

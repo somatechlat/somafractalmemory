@@ -5,6 +5,8 @@ All database access through Django ORM models.
 NO external frameworks - pure Django.
 """
 
+# flake8: noqa: E402
+
 import os
 
 # Django setup MUST happen before any Django imports

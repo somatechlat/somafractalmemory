@@ -19,6 +19,8 @@ _stop = threading.Event()
 
 
 def _worker():
+    """Execute worker."""
+
     while not _stop.is_set():
         fn = None
         try:
@@ -42,6 +44,12 @@ _thread.start()
 
 
 def submit(fn: Callable[[], None]) -> None:
+    """Execute submit.
+
+    Args:
+        fn: The fn.
+    """
+
     try:
         with _lock:
             _queue.append(fn)
@@ -51,6 +59,8 @@ def submit(fn: Callable[[], None]) -> None:
 
 
 def stop():
+    """Execute stop."""
+
     _stop.set()
     try:
         _thread.join(timeout=1.0)

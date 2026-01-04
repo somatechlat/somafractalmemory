@@ -1,3 +1,5 @@
+"""Module test_additional."""
+
 import pytest
 
 from somafractalmemory.core import SomaFractalMemoryEnterprise
@@ -9,6 +11,12 @@ def mem(tmp_path) -> SomaFractalMemoryEnterprise:
     # Use real Redis service - configuration comes from environment variables
     # (REDIS_HOST, REDIS_PORT, POSTGRES_URL, SOMA_MILVUS_HOST, SOMA_MILVUS_PORT)
     # No hardcoded Docker hostnames - let factory.py read from env vars
+    """Execute mem.
+
+    Args:
+        tmp_path: The tmp_path.
+    """
+
     import os
 
     config = {}

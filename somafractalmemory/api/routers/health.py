@@ -92,7 +92,6 @@ def health_detailed(request: HttpRequest) -> dict:
 
     # Track service health
     services = []
-    all_healthy = True
 
     # Check PostgreSQL
     print("DEBUG: Checking Postgres...")
@@ -115,7 +114,6 @@ def health_detailed(request: HttpRequest) -> dict:
         services.append(
             {"name": "postgresql", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
-        all_healthy = False
 
     # Check Redis
     print("DEBUG: Checking Redis...")
@@ -144,7 +142,6 @@ def health_detailed(request: HttpRequest) -> dict:
         services.append(
             {"name": "redis", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
-        all_healthy = False
 
     # Check Milvus
     print("DEBUG: Checking Milvus...")
@@ -169,7 +166,6 @@ def health_detailed(request: HttpRequest) -> dict:
         services.append(
             {"name": "milvus", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
-        all_healthy = False
 
     # Database statistics
     try:
@@ -188,7 +184,6 @@ def health_detailed(request: HttpRequest) -> dict:
         }
     except Exception as e:
         database = {"error": str(e)}
-        all_healthy = False
 
     # Per-tenant stats
     tenants = []
@@ -208,14 +203,11 @@ def health_detailed(request: HttpRequest) -> dict:
             )
     except Exception as e:
         tenants.append({"error": str(e)})
-        all_healthy = False
 
     # System info
     system = {
         "python_version": platform.python_version(),
         "platform": platform.platform(),
-        "hostname": platform.node(),
-        "process_id": os.getpid(),
         "hostname": platform.node(),
         "process_id": os.getpid(),
         "django_settings": os.environ.get("DJANGO_SETTINGS_MODULE", "unknown"),
@@ -252,7 +244,7 @@ def stats(request: HttpRequest) -> StatsResponse:
         return StatsResponse(**raw)
     except Exception as exc:
         logger.warning("stats endpoint failed", error=str(exc), exc_info=True)
-        raise HttpError(503, get_message(ErrorCode.BACKEND_UNAVAILABLE, service="stats"))
+        raise HttpError(503, get_message(ErrorCode.BACKEND_UNAVAILABLE, service="stats")) from exc
 
 
 @router.get("/test-stats", response=StatsResponse)
@@ -270,7 +262,9 @@ def test_stats(request: HttpRequest) -> StatsResponse:
         return StatsResponse(**raw)
     except Exception as exc:
         logger.warning("test-stats endpoint failed", error=str(exc), exc_info=True)
-        raise HttpError(503, get_message(ErrorCode.BACKEND_UNAVAILABLE, service="test-stats"))
+        raise HttpError(
+            503, get_message(ErrorCode.BACKEND_UNAVAILABLE, service="test-stats")
+        ) from exc
 
 
 @router.get("/metrics", include_in_schema=False)

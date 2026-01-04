@@ -157,3 +157,4 @@ README_MINIMAL.md
 tmp/
 temp/
 .tmp/
+docs/sphinx/_build/

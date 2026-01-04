@@ -37,6 +37,8 @@ class ExceptPassVisitor(ast.NodeVisitor):
     """AST visitor that finds bare except:pass patterns."""
 
     def __init__(self, filename: str):
+        """Initialize the instance."""
+
         self.filename = filename
         self.violations: list[tuple[int, str]] = []
 

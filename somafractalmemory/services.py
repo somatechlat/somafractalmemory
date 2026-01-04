@@ -23,6 +23,8 @@ class MemoryService:
     """
 
     def __init__(self, namespace: str = "default"):
+        """Initialize the instance."""
+
         self.namespace = namespace
 
     @transaction.atomic
@@ -200,6 +202,8 @@ class GraphService:
     """
 
     def __init__(self, namespace: str = "default"):
+        """Initialize the instance."""
+
         self.namespace = namespace
 
     @transaction.atomic

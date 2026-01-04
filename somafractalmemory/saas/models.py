@@ -57,6 +57,8 @@ class APIKey(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_api_keys"
         ordering = ["-created_at"]
         verbose_name = "API Key"
@@ -67,6 +69,8 @@ class APIKey(models.Model):
         ]
 
     def __str__(self):
+        """Return string representation."""
+
         return f"{self.name} ({self.key_prefix}...)"
 
     @classmethod
@@ -109,6 +113,8 @@ class UsageRecord(models.Model):
     """Usage tracking for billing integration."""
 
     class OperationType(models.TextChoices):
+        """Operationtype class implementation."""
+
         MEMORY_STORE = "memory_store", "Memory Store"
         MEMORY_RECALL = "memory_recall", "Memory Recall"
         MEMORY_DELETE = "memory_delete", "Memory Delete"
@@ -124,11 +130,13 @@ class UsageRecord(models.Model):
     count = models.IntegerField(default=1)
     bytes_processed = models.BigIntegerField(default=0)
     api_key_id = models.UUIDField(null=True, blank=True)
-    
+
     # Billing sync
     synced_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_usage_records"
         ordering = ["-timestamp"]
         verbose_name = "Usage Record"
@@ -139,6 +147,8 @@ class UsageRecord(models.Model):
         ]
 
     def __str__(self):
+        """Return string representation."""
+
         return f"{self.tenant}:{self.operation} ({self.count})"
 
     @classmethod

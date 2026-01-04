@@ -1,5 +1,8 @@
+"""Module diagnose_sfm."""
+
 import os
 import sys
+import traceback
 
 import django
 
@@ -8,12 +11,13 @@ sys.path.append(os.getcwd())
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
 django.setup()
 
-import traceback
 
-from somafractalmemory.api.core import get_mem
+from somafractalmemory.api.core import get_mem  # noqa: E402
 
 
 def diagnose():
+    """Execute diagnose."""
+
     print("--- DIAGNOSING SOMAFRACTALMEMORY ---")
     try:
         service = get_mem()

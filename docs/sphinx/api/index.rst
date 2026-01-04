@@ -8,8 +8,8 @@ Auto-generated API documentation for SomaFractalMemory.
    :maxdepth: 2
    :caption: Core APIs
 
-   somafractalmemory.api.memories
-   somafractalmemory.api.health
+   somafractalmemory.api.routers.memory
+   somafractalmemory.api.routers.health
    somafractalmemory.api.schemas
 
 Module Index

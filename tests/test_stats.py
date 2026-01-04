@@ -1,3 +1,5 @@
+"""Module test_stats."""
+
 import os
 import uuid
 
@@ -26,6 +28,12 @@ def _get_test_config():
 @pytest.fixture
 def mem(tmp_path) -> SomaFractalMemoryEnterprise:
     # Use unique namespace per test run to avoid leftover data
+    """Execute mem.
+
+    Args:
+        tmp_path: The tmp_path.
+    """
+
     namespace = f"stats_test_{uuid.uuid4().hex[:8]}"
     config = _get_test_config()
     return create_memory_system(MemoryMode.EVENTED_ENTERPRISE, namespace, config=config)

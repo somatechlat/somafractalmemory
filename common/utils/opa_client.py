@@ -14,9 +14,13 @@ import requests
 
 
 class OPAClient:
+    """Opaclient class implementation."""
+
     def __init__(self, *, opa_url: str, policy_path: str) -> None:
         # Normalise URL and policy path to an evaluation endpoint like:
         #   http://opa:8181/v1/data/soma/authz/allow
+        """Initialize the instance."""
+
         base = opa_url.rstrip("/")
         policy = policy_path.strip("/")
         self._url = f"{base}/v1/data/{policy}"

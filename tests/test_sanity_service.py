@@ -1,10 +1,16 @@
+"""Module test_sanity_service."""
+
 from django.test import TestCase
 
 from somafractalmemory.services import get_graph_service, get_memory_service
 
 
 class MemoryServiceSanityTest(TestCase):
+    """Memoryservicesanitytest class implementation."""
+
     def test_store_and_retrieve(self):
+        """Execute test store and retrieve."""
+
         service = get_memory_service(namespace="test_ns")
         coord = (1.0, 2.0, 3.0)
         payload = {"data": "test_memory"}
@@ -28,6 +34,8 @@ class MemoryServiceSanityTest(TestCase):
         self.assertIsNone(retrieved_again)
 
     def test_search(self):
+        """Execute test search."""
+
         service = get_memory_service(namespace="test_ns")
         service.store((0, 0, 0), {"content": "apple pie"}, tenant="t1")
         service.store((1, 1, 1), {"content": "banana bread"}, tenant="t1")
@@ -38,7 +46,11 @@ class MemoryServiceSanityTest(TestCase):
 
 
 class GraphServiceSanityTest(TestCase):
+    """Graphservicesanitytest class implementation."""
+
     def test_link_and_traverse(self):
+        """Execute test link and traverse."""
+
         graph = get_graph_service(namespace="test_ns")
         c1 = (0.0, 0.0, 0.0)
         c2 = (1.0, 1.0, 1.0)

@@ -19,6 +19,8 @@ class Memory(models.Model):
     """
 
     class MemoryType(models.TextChoices):
+        """Memorytype class implementation."""
+
         EPISODIC = "episodic", "Episodic"
         SEMANTIC = "semantic", "Semantic"
 
@@ -41,6 +43,8 @@ class Memory(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_memories"
         verbose_name = "Memory"
         verbose_name_plural = "Memories"
@@ -59,6 +63,8 @@ class Memory(models.Model):
         ]
 
     def __str__(self):
+        """Return string representation."""
+
         return f"Memory({self.coordinate_key}, {self.memory_type})"
 
     @classmethod
@@ -97,6 +103,8 @@ class GraphLink(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_graph_links"
         verbose_name = "Graph Link"
         verbose_name_plural = "Graph Links"
@@ -115,6 +123,8 @@ class GraphLink(models.Model):
         ]
 
     def __str__(self):
+        """Return string representation."""
+
         return f"Link({self.from_coordinate_key} -> {self.to_coordinate_key}, {self.link_type})"
 
 
@@ -134,6 +144,8 @@ class VectorEmbedding(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_vector_embeddings"
         verbose_name = "Vector Embedding"
         verbose_name_plural = "Vector Embeddings"
@@ -142,6 +154,8 @@ class VectorEmbedding(models.Model):
         ]
 
     def __str__(self):
+        """Return string representation."""
+
         return f"Embedding({self.memory_id}, milvus={self.milvus_id})"
 
 
@@ -163,11 +177,15 @@ class MemoryNamespace(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_namespaces"
         verbose_name = "Memory Namespace"
         verbose_name_plural = "Memory Namespaces"
 
     def __str__(self):
+        """Return string representation."""
+
         return f"Namespace({self.name})"
 
     def update_stats(self):
@@ -194,6 +212,8 @@ class AuditLog(models.Model):
     """
 
     class Action(models.TextChoices):
+        """Action class implementation."""
+
         CREATE = "create", "Create"
         READ = "read", "Read"
         UPDATE = "update", "Update"
@@ -211,6 +231,8 @@ class AuditLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
+        """Meta class implementation."""
+
         db_table = "sfm_audit_log"
         verbose_name = "Audit Log"
         verbose_name_plural = "Audit Logs"
@@ -221,4 +243,6 @@ class AuditLog(models.Model):
         ]
 
     def __str__(self):
+        """Return string representation."""
+
         return f"Audit({self.action}, {self.coordinate_key}, {self.timestamp})"

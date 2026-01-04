@@ -1,3 +1,5 @@
+"""Module test_versioning_roundtrip."""
+
 import os
 
 import pytest

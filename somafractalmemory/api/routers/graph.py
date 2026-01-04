@@ -36,8 +36,8 @@ def _safe_parse_coord(coord: str) -> tuple[float, ...]:
         if not parts:
             raise HttpError(400, get_message(ErrorCode.EMPTY_COORDINATE))
         return tuple(float(p) for p in parts)
-    except ValueError:
-        raise HttpError(400, get_message(ErrorCode.INVALID_COORDINATE, coord=coord))
+    except ValueError as exc:
+        raise HttpError(400, get_message(ErrorCode.INVALID_COORDINATE, coord=coord)) from exc
 
 
 def _get_tenant_from_request(request: HttpRequest) -> str:
@@ -94,7 +94,7 @@ def create_graph_link(request: HttpRequest, req: GraphLinkRequest) -> GraphLinkR
         )
     except Exception as exc:
         logger.error("Graph link creation failed", error=str(exc), exc_info=True)
-        raise HttpError(500, get_message(ErrorCode.GRAPH_LINK_FAILED))
+        raise HttpError(500, get_message(ErrorCode.GRAPH_LINK_FAILED)) from exc
 
 
 @router.get("/neighbors", response=GraphNeighborsResponse)
@@ -124,7 +124,7 @@ def get_graph_neighbors(
         return GraphNeighborsResponse(coord=coord, neighbors=clean_neighbors)
     except Exception as exc:
         logger.error("Graph neighbors query failed", error=str(exc), exc_info=True)
-        raise HttpError(500, get_message(ErrorCode.GRAPH_NEIGHBORS_FAILED))
+        raise HttpError(500, get_message(ErrorCode.GRAPH_NEIGHBORS_FAILED)) from exc
 
 
 @router.get("/path", response=GraphPathResponse)

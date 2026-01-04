@@ -33,6 +33,7 @@ extensions = [
     "sphinx.ext.todo",  # Support for TODO items
     "sphinx.ext.coverage",  # Doc coverage stats
     "sphinx_autodoc_typehints",  # Type hints support
+    "sphinx.ext.autosummary",  # Create summaries
 ]
 
 # Napoleon settings for Google-style docstrings
@@ -74,6 +75,7 @@ html_theme_options = {
 }
 
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]  # YACHAQ brand styling
 html_title = "SomaFractalMemory Documentation"
 html_short_title = "SomaFractalMemory"
 

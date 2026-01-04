@@ -1,3 +1,5 @@
+"""Module conftest."""
+
 import os
 import shutil
 import socket
@@ -20,6 +22,14 @@ os.environ.setdefault("SOMA_API_TOKEN", "test-token")
 
 
 def _tcp_open(host: str, port: int, timeout: float = 1.0) -> bool:
+    """Execute tcp open.
+
+    Args:
+        host: The host.
+        port: The port.
+        timeout: The timeout.
+    """
+
     try:
         with socket.create_connection((host, int(port)), timeout=timeout):
             return True
@@ -29,6 +39,12 @@ def _tcp_open(host: str, port: int, timeout: float = 1.0) -> bool:
 
 def _start_compose_services(services: list[str]) -> None:
     # Try to start required services via docker compose in the repo root
+    """Execute start compose services.
+
+    Args:
+        services: The services.
+    """
+
     dc = shutil.which("docker")
     if not dc:
         print(

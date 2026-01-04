@@ -36,8 +36,8 @@ def _safe_parse_coord(coord: str) -> tuple[float, ...]:
         if not parts:
             raise HttpError(400, get_message(ErrorCode.EMPTY_COORDINATE))
         return tuple(float(p) for p in parts)
-    except ValueError:
-        raise HttpError(400, get_message(ErrorCode.INVALID_COORDINATE, coord=coord))
+    except ValueError as exc:
+        raise HttpError(400, get_message(ErrorCode.INVALID_COORDINATE, coord=coord)) from exc
 
 
 def _get_tenant_from_request(request: HttpRequest) -> str:

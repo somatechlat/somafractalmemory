@@ -34,6 +34,8 @@ def _auth_headers() -> dict[str, str]:
     # For live integration tests hitting the running API container,
     # we need to use the token configured in the container.
     # Try to get it from the container's environment, fall back to common patterns.
+    """Execute auth headers."""
+
     token = os.environ.get("SOMA_API_TOKEN")
     if not token or token == "test-token":
         # conftest.py sets test-token, but we need the real token for live API
@@ -73,11 +75,15 @@ def ensure_api_is_up():
 
 
 def test_health_endpoint() -> None:
+    """Execute test health endpoint."""
+
     resp = requests.get(f"{BASE_URL}/healthz")
     assert resp.status_code == 200
 
 
 def test_store_retrieve_delete_cycle() -> None:
+    """Execute test store retrieve delete cycle."""
+
     coord = "1.2,3.4,5.6"
     payload = {"foo": "bar", "number": 42}
     # Store

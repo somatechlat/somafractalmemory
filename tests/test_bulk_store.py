@@ -1,3 +1,5 @@
+"""Module test_bulk_store."""
+
 import os
 
 import pytest

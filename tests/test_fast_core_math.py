@@ -1,3 +1,5 @@
+"""Module test_fast_core_math."""
+
 import math
 import os
 
@@ -18,31 +20,86 @@ pytestmark = pytest.mark.skipif(
 
 
 class _NullGraph(IGraphStore):  # Minimal graph for tests (truth: unused operations)
+    """Nullgraph class implementation."""
+
     def add_memory(self, coordinate, value):
+        """Execute add memory.
+
+        Args:
+            coordinate: The coordinate.
+            value: The value.
+        """
+
         return None
 
     def add_link(self, from_coord, to_coord, link_data):
+        """Execute add link.
+
+        Args:
+            from_coord: The from_coord.
+            to_coord: The to_coord.
+            link_data: The link_data.
+        """
+
         return None
 
     def find_shortest_path(self, from_coord, to_coord, link_type=None):
+        """Execute find shortest path.
+
+        Args:
+            from_coord: The from_coord.
+            to_coord: The to_coord.
+            link_type: The link_type.
+        """
+
         return []
 
     def get_neighbors(self, coord, link_type=None, limit=None):
+        """Retrieve neighbors.
+
+        Args:
+            coord: The coord.
+            link_type: The link_type.
+            limit: The limit.
+        """
+
         return []
 
     def remove_memory(self, coordinate):
+        """Execute remove memory.
+
+        Args:
+            coordinate: The coordinate.
+        """
+
         return None
 
     def clear(self):
+        """Execute clear."""
+
         return None
 
     def export_graph(self, path: str):
+        """Execute export graph.
+
+        Args:
+            path: The path.
+        """
+
         return None
 
     def import_graph(self, path: str):
+        """Execute import graph.
+
+        Args:
+            path: The path.
+        """
+
         return None
 
     def health_check(self):
+        """Execute health check."""
+
         return True
 
 
@@ -80,6 +137,8 @@ def _make_memory_system():
 
 
 def test_norm_invariant_on_insert():
+    """Execute test norm invariant on insert."""
+
     m = _make_memory_system()
     for i in range(10):
         m.store_memory((float(i), float(i + 1)), {"fact": f"x{i}", "importance": i})
@@ -98,6 +157,8 @@ def test_norm_invariant_on_insert():
 
 
 def test_similarity_monotonicity():
+    """Execute test similarity monotonicity."""
+
     m = _make_memory_system()
     # Insert a target memory identical to query, and a random different one
     target_payload = {"fact": "perfect", "importance": 5}
@@ -111,6 +172,8 @@ def test_similarity_monotonicity():
 
 
 def test_importance_monotonicity():
+    """Execute test importance monotonicity."""
+
     m = _make_memory_system()
     m.store_memory((0.0, 0.0), {"fact": "low", "importance": 1})
     m.store_memory((0.1, 0.1), {"fact": "high", "importance": 100})
@@ -121,6 +184,8 @@ def test_importance_monotonicity():
 
 
 def test_zero_similarity_clamp():
+    """Execute test zero similarity clamp."""
+
     m = _make_memory_system()
     m.store_memory((0.0, 0.0), {"fact": "alpha", "importance": 1})
     # Craft a vector far from random by storing arbitrary different content

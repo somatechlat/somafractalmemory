@@ -39,6 +39,12 @@ logger = logging.getLogger("backup_restore")
 
 
 def backup_local(dest: Path):
+    """Execute backup local.
+
+    Args:
+        dest: The dest.
+    """
+
     src = Path(MEMORY_DATA_DIR)
     if not src.exists():
         logger.error(f"Memory data dir {src} does not exist")
@@ -53,6 +59,12 @@ def backup_local(dest: Path):
 
 
 def backup_s3(dest: Path):
+    """Execute backup s3.
+
+    Args:
+        dest: The dest.
+    """
+
     if not boto3 or not S3_BUCKET:
         logger.error("boto3 or S3_BUCKET not configured")
         return False
@@ -70,6 +82,12 @@ def backup_s3(dest: Path):
 
 
 def restore_local(src: Path):
+    """Execute restore local.
+
+    Args:
+        src: The src.
+    """
+
     dest = Path(MEMORY_DATA_DIR)
     try:
         shutil.copytree(src, dest, dirs_exist_ok=True)
@@ -81,6 +99,12 @@ def restore_local(src: Path):
 
 
 def restore_s3(src_prefix: str):
+    """Execute restore s3.
+
+    Args:
+        src_prefix: The src_prefix.
+    """
+
     if not boto3 or not S3_BUCKET:
         logger.error("boto3 or S3_BUCKET not configured")
         return False
@@ -102,6 +126,8 @@ def restore_s3(src_prefix: str):
 
 
 def main():
+    """Execute main."""
+
     p = argparse.ArgumentParser()
     p.add_argument("--backup", action="store_true", help="Run backup job")
     p.add_argument("--restore", action="store_true", help="Run restore job")

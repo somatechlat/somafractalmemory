@@ -7,6 +7,8 @@ from common.config.settings import SMFSettings
 
 def test_config_validation():
     # Valid config
+    """Execute test config validation."""
+
     s = SMFSettings(namespace="test", api_port=9595)
     s.validate_config()
     # Invalid config: missing namespace
@@ -29,6 +31,8 @@ def test_config_validation():
 
 def test_metrics_exposed():
     # Prometheus metrics should be registered
+    """Execute test metrics exposed."""
+
     import prometheus_client
 
     metrics = prometheus_client.REGISTRY.collect()
@@ -43,19 +47,49 @@ def test_metrics_exposed():
 
 
 def test_retry_backoff(monkeypatch):
+    """Execute test retry backoff.
+
+    Args:
+        monkeypatch: The monkeypatch.
+    """
+
     from common.utils.redis_cache import RedisCache
 
     class DummyRedis:
+        """Dummyredis class implementation."""
+
         async def get(self, key):
+            """Execute get.
+
+            Args:
+                key: The key.
+            """
+
             raise RuntimeError("fail")
 
         async def set(self, key, value, ex=None):
+            """Execute set.
+
+            Args:
+                key: The key.
+                value: The value.
+                ex: The ex.
+            """
+
             raise RuntimeError("fail")
 
         async def delete(self, key):
+            """Execute delete.
+
+            Args:
+                key: The key.
+            """
+
             raise RuntimeError("fail")
 
         async def close(self):
+            """Execute close."""
+
             raise RuntimeError("fail")
 
     cache = RedisCache(DummyRedis())
