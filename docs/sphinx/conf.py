@@ -34,6 +34,7 @@ extensions = [
     "sphinx.ext.coverage",  # Doc coverage stats
     "sphinx_autodoc_typehints",  # Type hints support
     "sphinx.ext.autosummary",  # Create summaries
+    "myst_parser",  # Markdown support
 ]
 
 # Napoleon settings for Google-style docstrings
