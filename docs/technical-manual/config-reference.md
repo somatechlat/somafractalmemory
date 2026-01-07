@@ -55,12 +55,12 @@ Qdrant config:
 
 ## 📦 API / server
 
-- SOMA_API_PORT — container port (default 9595)
+- SOMA_API_PORT — container port (default 10101)
 - API_PORT — host-published port (Compose mapping)
 - SOMA_MAX_REQUEST_BODY_MB — max request size (default 5MB)
 
 ## 🧪 Quick checks
 
-- Health: `curl -fsS http://127.0.0.1:9595/healthz`
-- Stats: `curl -s http://127.0.0.1:9595/stats`
+- Health: `curl -fsS http://127.0.0.1:10101/healthz`
+- Stats: `curl -s http://127.0.0.1:10101/stats`
 - Endpoints: see Endpoint Catalog

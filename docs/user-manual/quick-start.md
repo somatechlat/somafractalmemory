@@ -8,7 +8,7 @@ This guide shows the minimal steps to store and retrieve a memory using the HTTP
 docker compose --profile core up -d
 ```
 
-The API will be reachable at `http://127.0.0.1:9595`.
+The API will be reachable at `http://127.0.0.1:10101`.
 
 ## 2. Set the dev token
 
@@ -19,7 +19,7 @@ export SOMA_API_TOKEN=devtoken
 ## 3. Store a memory
 
 ```bash
-curl -s -X POST http://127.0.0.1:9595/memories \
+curl -s -X POST http://127.0.0.1:10101/memories \
   -H "Authorization: Bearer $SOMA_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"coord":"1.0,2.0,3.0","payload":{"message":"Hello"},"memory_type":"semantic"}'
@@ -30,14 +30,14 @@ You should receive a `200` response with the stored memory ID.
 ## 4. Retrieve the memory by coordinate
 
 ```bash
-curl -s http://127.0.0.1:9595/memories/1.0,2.0,3.0 \
+curl -s http://127.0.0.1:10101/memories/1.0,2.0,3.0 \
   -H "Authorization: Bearer $SOMA_API_TOKEN"
 ```
 
 ## 5. Search by query
 
 ```bash
-curl -s -X POST http://127.0.0.1:9595/memories/search \
+curl -s -X POST http://127.0.0.1:10101/memories/search \
   -H "Authorization: Bearer $SOMA_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"Hello","top_k":5}'

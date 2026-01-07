@@ -20,8 +20,8 @@ resources:
 
 service:
   type: ClusterIP
-  port: 9595
-  targetPort: 9595
+  port: 10101
+  targetPort: 10101
 
 ingress:
   enabled: false

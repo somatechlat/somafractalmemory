@@ -24,11 +24,11 @@ docker_compose('./docker-compose.yml')
 # Development server with live reload
 local_resource(
     'sfm-dev',
-    serve_cmd='SOMA_DB_NAME=somafractalmemory .venv/bin/uvicorn somafractalmemory.asgi:application --host 0.0.0.0 --port 9595 --reload',
+    serve_cmd='SOMA_DB_NAME=somafractalmemory .venv/bin/uvicorn somafractalmemory.asgi:application --host 0.0.0.0 --port 10101 --reload',
     serve_dir='.',
     env={
         'SA01_DEPLOYMENT_MODE': 'PROD',
-        'SOMA_API_PORT': '9595',
+        'SOMA_API_PORT': '10101',
     },
     links=['http://localhost:10101/healthz'],
     labels=['app'],
@@ -40,7 +40,9 @@ local_resource(
     'db-migrate',
     cmd='''
         set -e
-        echo "⏳ Waiting for Postgres..."
+        set -a; source .env; set +a
+        export DJANGO_SETTINGS_MODULE=somafractalmemory.settings
+        echo "⏳ Waiting for Postgres on 10432..."
         until pg_isready -h localhost -p 10432; do sleep 1; done
         echo "🔄 Running migrations..."
         .venv/bin/python manage.py migrate --noinput

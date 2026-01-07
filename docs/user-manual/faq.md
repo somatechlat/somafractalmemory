@@ -29,7 +29,7 @@ A: The `POST /memories/bulk` endpoint accepts a JSON array of memory objects for
 ## Development
 
 **Q: Where can I find the API OpenAPI schema?**
-A: Visit `http://127.0.0.1:9595/openapi.json` when the server is running.
+A: Visit `http://127.0.0.1:10101/openapi.json` when the server is running.
 
 **Q: How do I run the test suite?**
 A: Inside the virtual environment run `pytest -q`. Linting with `ruff check .` and type checking with `mypy somafractalmemory` are also recommended.

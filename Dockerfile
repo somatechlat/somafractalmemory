@@ -33,6 +33,6 @@ RUN useradd --create-home --uid 1000 appuser && \
 
 USER appuser
 
-EXPOSE 9595
+EXPOSE 10101
 
 CMD ["bash", "/app/scripts/bootstrap.sh"]

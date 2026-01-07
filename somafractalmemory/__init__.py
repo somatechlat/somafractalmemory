@@ -31,7 +31,7 @@ Usage:
 Example:
     >>> import requests
     >>> response = requests.post(
-    ...     "http://localhost:9595/memories",
+    ...     "http://localhost:10101/memories",
     ...     json={"coord": "1.0,2.0,3.0", "payload": {"content": "Hello"}},
     ...     headers={"Authorization": "Bearer YOUR_TOKEN"}
     ... )

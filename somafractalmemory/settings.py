@@ -142,7 +142,7 @@ SOMA_SIMILARITY_ALLOW_NEGATIVE = os.environ.get(
 # -----------------------------------------------------------------------------
 # API Configuration
 # -----------------------------------------------------------------------------
-SOMA_API_PORT = int(os.environ.get("SOMA_API_PORT", "9595"))
+SOMA_API_PORT = int(os.environ.get("SOMA_API_PORT", "10101"))
 SOMA_LOG_LEVEL = os.environ.get("SOMA_LOG_LEVEL", "INFO")
 SOMA_MAX_REQUEST_BODY_MB = float(os.environ.get("SOMA_MAX_REQUEST_BODY_MB", "5.0"))
 

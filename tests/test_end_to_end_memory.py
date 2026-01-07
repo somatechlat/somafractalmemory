@@ -17,7 +17,7 @@ import requests
 
 from somafractalmemory.config.settings import settings
 
-BASE_URL = "http://127.0.0.1:9595"
+BASE_URL = "http://127.0.0.1:10101"
 
 
 def _load_token() -> str:

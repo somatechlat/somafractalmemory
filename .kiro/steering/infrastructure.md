@@ -15,7 +15,7 @@ docker compose --profile core up -d
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| API | 9595 | FastAPI HTTP server |
+| API | 10101 | FastAPI HTTP server |
 | PostgreSQL | 5433 | Canonical KV store |
 | Redis | 6379/6381 | Cache layer + locks |
 | Milvus | 19530 | Vector similarity search |
@@ -24,10 +24,10 @@ docker compose --profile core up -d
 
 ```bash
 # API health
-curl http://127.0.0.1:9595/healthz
+curl http://127.0.0.1:10101/healthz
 
 # Full health with auth
-curl -H "Authorization: Bearer devtoken" http://127.0.0.1:9595/health
+curl -H "Authorization: Bearer devtoken" http://127.0.0.1:10101/health
 ```
 
 ## Environment Variables

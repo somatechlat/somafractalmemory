@@ -12,14 +12,14 @@ SomaFractalMemory is an enterprise-grade agentic memory system for AI applicatio
 - **Multi-backend architecture**: PostgreSQL (canonical), Redis (cache), Milvus (vectors)
 - **Semantic graph operations** via NetworkX
 - **Memory decay and lifecycle management**
-- **REST API** on port 9595 (FastAPI + Uvicorn)
+- **REST API** on port 10101 (FastAPI + Uvicorn)
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    HTTP API (FastAPI)                       │
-│                      Port 9595                              │
+│                      Port 10101                              │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼

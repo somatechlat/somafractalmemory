@@ -21,14 +21,14 @@ cd somafractalmemory
 docker compose --profile core up -d
 
 # Verify health
-curl http://localhost:9595/healthz
+curl http://localhost:10101/healthz
 ```
 
 ### Services
 
 | Service | Image | Port | Memory |
 |---------|-------|------|--------|
-| API | somafractalmemory-api | 9595 | 1 GB |
+| API | somafractalmemory-api | 10101 | 1 GB |
 | PostgreSQL | postgres:15 | 40001 | 1.5 GB |
 | Redis | redis:7 | 40002 | 512 MB |
 | etcd | quay.io/coreos/etcd:v3.5.5 | - | 256 MB |
@@ -41,8 +41,8 @@ Create a `.env` file:
 
 ```bash
 # API Configuration
-API_PORT=9595
-SOMA_API_PORT=9595
+API_PORT=10101
+SOMA_API_PORT=10101
 SOMA_API_TOKEN=your-secure-token-here
 
 # PostgreSQL
@@ -117,7 +117,7 @@ api:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SOMA_API_TOKEN` | - | Authentication token |
-| `SOMA_API_PORT` | 9595 | API port |
+| `SOMA_API_PORT` | 10101 | API port |
 | `SOMA_MEMORY_NAMESPACE` | api_ns | Default namespace |
 | `SOMA_RATE_LIMIT_MAX` | 0 | Rate limit (0=disabled) |
 | `LOG_LEVEL` | INFO | Logging level |
@@ -154,7 +154,7 @@ api:
 ### Liveness Probe
 
 ```bash
-curl http://localhost:9595/healthz
+curl http://localhost:10101/healthz
 ```
 
 Expected response:
@@ -165,13 +165,13 @@ Expected response:
 ### Readiness Probe
 
 ```bash
-curl http://localhost:9595/readyz
+curl http://localhost:10101/readyz
 ```
 
 ### Detailed Health
 
 ```bash
-curl http://localhost:9595/health
+curl http://localhost:10101/health
 ```
 
 ---
@@ -181,7 +181,7 @@ curl http://localhost:9595/health
 ### Prometheus Metrics
 
 ```bash
-curl http://localhost:9595/metrics
+curl http://localhost:10101/metrics
 ```
 
 Exposed metrics:

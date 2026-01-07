@@ -1,7 +1,7 @@
 # Core settings
 namespace: "default"
 vector_dim: 768
-api_port: 9595
+api_port: 10101
 
 # Infrastructure endpoints
 infra:

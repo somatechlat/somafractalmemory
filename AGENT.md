@@ -70,7 +70,7 @@ somafractalmemory/
 
 ```bash
 # API
-SOMA_API_PORT=9595           # Internal port
+SOMA_API_PORT=10101           # Internal port
 API_PORT=21000               # Host port
 SOMA_API_TOKEN=devtoken      # API auth token
 

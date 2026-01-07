@@ -44,7 +44,7 @@ MILVUS_HOST=localhost
 MILVUS_PORT=20530
 
 # API Settings
-SFM_API_PORT=9595
+SFM_API_PORT=10101
 SFM_API_TOKEN=your-secure-token
 ```
 
@@ -72,7 +72,7 @@ docker compose up -d
 
 ```bash
 # Check API health
-curl http://localhost:9595/health
+curl http://localhost:10101/health
 
 # Expected response:
 # {"status": "healthy", "component": "somafractalmemory"}
@@ -98,7 +98,7 @@ python manage.py migrate --database=somafractalmemory
 
 | Service | Port |
 |---------|------|
-| Memory API | 9595 |
+| Memory API | 10101 |
 | Metrics | 9596 |
 
 **Dependencies (from SomaAgent01 20xxx):**
@@ -118,7 +118,7 @@ source .venv/bin/activate
 pip install -e .
 
 # Run development server
-uvicorn somafractalmemory.asgi:application --host 0.0.0.0 --port 9595 --reload
+uvicorn somafractalmemory.asgi:application --host 0.0.0.0 --port 10101 --reload
 ```
 
 ---
@@ -142,7 +142,7 @@ import httpx
 
 # Store a memory
 response = httpx.post(
-    "http://localhost:9595/memories",
+    "http://localhost:10101/memories",
     headers={"Authorization": "Bearer your-token"},
     json={
         "coord": "0.1,0.2,0.3,0.4",  # Fractal coordinates
@@ -158,7 +158,7 @@ response = httpx.post(
 
 # Search memories
 response = httpx.post(
-    "http://localhost:9595/memories/search",
+    "http://localhost:10101/memories/search",
     headers={"Authorization": "Bearer your-token"},
     json={
         "query": "weather",

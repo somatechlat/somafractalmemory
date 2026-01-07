@@ -179,7 +179,7 @@ services:
       dockerfile: Dockerfile
     container_name: somafractalmemory_api
     ports:
-      - "${API_PORT:-10101}:${SOMA_API_PORT:-9595}"
+      - "10101:10101"
     environment:
       SOMA_API_TOKEN: "dev-032f8d463c84e7ef0d834c3a"
       SOMA_RATE_LIMIT_MAX: "0"
@@ -205,7 +205,7 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-9595}/healthz" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-10101}/healthz" ]
       interval: 30s
       timeout: 5s
       retries: 5

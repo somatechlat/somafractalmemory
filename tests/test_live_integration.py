@@ -27,7 +27,7 @@ import requests
 # ``api_port`` field, causing an AttributeError during test collection.
 from common.config.settings import settings as common_settings
 
-BASE_URL = f"http://127.0.0.1:{common_settings.api_port or 9595}"
+BASE_URL = f"http://127.0.0.1:{common_settings.api_port or 10101}"
 
 
 def _auth_headers() -> dict[str, str]:

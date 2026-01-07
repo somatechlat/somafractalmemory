@@ -43,7 +43,7 @@ This guide walks you through installing **SomaFractalMemory** on a local macOS o
 
 6. **Verify the API is healthy**
    ```bash
-   curl -fsS http://127.0.0.1:9595/healthz
+   curl -fsS http://127.0.0.1:10101/healthz
    ```
    You should see `true`.
 
