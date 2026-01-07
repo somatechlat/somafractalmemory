@@ -164,7 +164,7 @@ cp .env.example .env
 python manage.py migrate
 
 # Start the server
-python manage.py runserver 9595
+python manage.py runserver 10101
 ```
 
 ### 🐳 Docker Deployment
@@ -180,7 +180,7 @@ docker-compose up -d
 ### Store Memory
 
 ```bash
-curl -X POST http://localhost:9595/api/v2/memory/store \
+curl -X POST http://localhost:10101/api/v2/memory/store \
   -H "Content-Type: application/json" \
   -d '{
     "content": "User prefers dark mode in all applications",
@@ -206,7 +206,7 @@ curl -X POST http://localhost:9595/api/v2/memory/store \
 ### Search Memory
 
 ```bash
-curl -X POST http://localhost:9595/api/v2/memory/search \
+curl -X POST http://localhost:10101/api/v2/memory/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What are the user preferences for UI?",
@@ -233,7 +233,7 @@ curl -X POST http://localhost:9595/api/v2/memory/search \
 ### Delete Memory
 
 ```bash
-curl -X DELETE http://localhost:9595/api/v2/memory/{id}
+curl -X DELETE http://localhost:10101/api/v2/memory/{id}
 ```
 
 ---
@@ -246,7 +246,7 @@ Core configuration in `config.yaml`:
 # Core settings
 namespace: "default"
 vector_dim: 768
-api_port: 9595
+api_port: 10101
 
 # Database connections
 postgres_url: "postgresql://soma:soma@postgres:5432/somamemory"

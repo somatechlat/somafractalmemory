@@ -1,58 +1,70 @@
-"""
-SOMAFRACTALMEMORY - MINIKUBE + TILT
-Uses existing Helm chart from infra/helm/
-Namespace: somafractalmemory
-ISOLATION: Port 10351 ONLY
-PORTS: 10xxx namespace
-"""
-allow_k8s_contexts('minikube')
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🚨 ARCHITECTURE: COLIMA + TILT + MINIKUBE 🚨
+# ═══════════════════════════════════════════════════════════════════════════════
+# SomaFractalMemory Tilt Development Configuration
+# VIBE Rule 113: Port Sovereignty - 10xxx Range (Storage Tier L2)
+# VIBE Rule 102: Shared-Nothing Architecture (Island Mandate)
+# RAM BUDGET: 8GB Maximum (VIBE Rule 108)
+# ═══════════════════════════════════════════════════════════════════════════════
 
+print("""
++==============================================================+
+|         SOMAFRACTALMEMORY - ISOLATED K8S DEPLOYMENT          |
++==============================================================+
+|  Tilt Dashboard:   http://localhost:10353                    |
+|  SFM API:          http://localhost:10101 (NodePort 30101)   |
+|  Minikube Profile: sfm                                       |
++==============================================================+
+|  RAM BUDGET: 8GB Maximum | ARCHITECTURE: Colima+Tilt+Minikube|
++==============================================================+
+""")
 
-# Ensure namespace exists (idempotent)
-local_resource(
-    'create-namespace-somafractalmemory',
-    cmd='kubectl create ns somafractalmemory --dry-run=client -o yaml | kubectl apply -f -',
-    labels=['setup']
-)
+# Ensure we're using the sfm minikube profile
+allow_k8s_contexts('sfm')
 
-# Create dev secrets (idempotent, safe for dev)
-local_resource(
-    'create-secrets-somafractalmemory',
-    cmd="""
-    kubectl create secret generic soma-postgres-password --from-literal=SOMA_POSTGRES_PASSWORD=somapassword --from-literal=POSTGRES_PASSWORD=somapassword --from-literal=password=somapassword --from-literal=postgresql-password=somapassword -n somafractalmemory --dry-run=client -o yaml | kubectl apply -f -
-    kubectl create secret generic soma-api-token --from-literal=SOMA_API_TOKEN=devtoken --from-literal=token=devtoken -n somafractalmemory --dry-run=client -o yaml | kubectl apply -f -
-    """,
-    labels=['setup']
-)
-
-# Apply strict dev limits (prod parity)
-k8s_yaml('../somaAgent01/infra/k8s/shared/dev-limits.yaml')
-
-# Use existing Helm chart - deployed to isolated namespace
-k8s_yaml(helm(
-    'infra/helm',
-    name='somafractalmemory',
-    namespace='somafractalmemory',
-    values=['infra/helm/values-local-dev.yaml'],
-))
-
-# Docker build with live update
+# Build the SFM API image
 docker_build(
-    'somafractalmemory',
+    'sfm-api',
     '.',
     dockerfile='Dockerfile',
-    live_update=[sync('.', '/app')],
+    live_update=[
+        sync('.', '/app'),
+        run('pip install -r api-requirements.txt', trigger=['api-requirements.txt']),
+    ]
 )
 
-# Resource config with port forwards (names match Helm chart output)
-k8s_resource('somafractalmemory-somafractalmemory', port_forwards=['10595:9595'], labels=['storage'])
-k8s_resource('somafractalmemory-postgres', port_forwards=['10432:5432'], labels=['storage'])
-k8s_resource('somafractalmemory-redis', port_forwards=['10379:6379'], labels=['storage'])
+# Deploy resilient K8s manifests
+k8s_yaml('infra/k8s/sfm-resilient.yaml')
 
-# Database migrations
-local_resource(
+# Resource configuration with port forwards
+k8s_resource(
+    'sfm-api',
+    port_forwards=['10101:10101'],
+    labels=['app'],
+    resource_deps=['postgres', 'redis', 'milvus']
+)
+
+k8s_resource(
+    'postgres',
+    port_forwards=['10432:5432'],
+    labels=['infra']
+)
+
+k8s_resource(
+    'redis',
+    port_forwards=['10379:6379'],
+    labels=['infra']
+)
+
+k8s_resource(
+    'milvus',
+    port_forwards=['10530:19530'],
+    labels=['infra']
+)
+
+# Migration job
+k8s_resource(
     'sfm-migrations',
-    cmd='kubectl exec -n somafractalmemory deploy/somafractalmemory-somafractalmemory -- python manage.py migrate --noinput 2>/dev/null || echo "Waiting for pod..."',
-    resource_deps=['somafractalmemory-postgres', 'somafractalmemory-somafractalmemory'],
     labels=['setup'],
+    resource_deps=['postgres']
 )

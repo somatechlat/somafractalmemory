@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml --profile core -o infra/k8s/
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: api
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: api
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml --profile core -o infra/k8s/
+        kompose.version: 1.37.0 (HEAD)
+      labels:
+        io.kompose.service: api
+    spec:
+      containers:
+        - env:
+            - name: CONFIG_FILE
+              value: /app/config.yaml
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: SOMA_API_TOKEN
+              value: dev-032f8d463c84e7ef0d834c3a
+            - name: SOMA_FORCE_HASH_EMBEDDINGS
+              value: "0"
+            - name: SOMA_RATE_LIMIT_MAX
+              value: "0"
+            - name: SOMA_RATE_LIMIT_WINDOW_SECONDS
+              value: "0"
+          image: api
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - http://localhost:10101/healthz
+            failureThreshold: 5
+            periodSeconds: 30
+            timeoutSeconds: 5
+          name: somafractalmemory-api
+          ports:
+            - containerPort: 10101
+              protocol: TCP
+          resources:
+            limits:
+              memory: "1073741824"
+            requests:
+              memory: "536870912"
+          volumeMounts:
+            - mountPath: /app
+              name: api-cm0
+            - mountPath: /root/.cache/huggingface
+              name: hf-cache
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            name: api-cm0
+          name: api-cm0
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: hf-cache

@@ -52,18 +52,18 @@ Edit .env:
 docker compose --profile core up -d
 ```
 
-What this starts: Postgres, Redis, Qdrant, and the API on http://127.0.0.1:9595.
+What this starts: Postgres, Redis, Qdrant, and the API on http://127.0.0.1:10101.
 
 Health check:
 
 ```bash
-curl -fsS http://127.0.0.1:9595/healthz
+curl -fsS http://127.0.0.1:10101/healthz
 ```
 
 Write a test memory:
 
 ```bash
-curl -s -X POST http://127.0.0.1:9595/memories \
+curl -s -X POST http://127.0.0.1:10101/memories \
   -H 'Authorization: Bearer devtoken' \
   -H 'Content-Type: application/json' \
   -d '{"coord":"0.1,0.2,0.3","payload":{"ok":true},"memory_type":"episodic"}'
@@ -112,7 +112,7 @@ Launch target (add to .vscode/launch.json if you keep one):
   "args": [
     "somafractalmemory.http_api:app",
     "--host", "0.0.0.0",
-    "--port", "9595"
+    "--port", "10101"
   ],
   "envFile": "${workspaceFolder}/.env",
   "jinja": true,
@@ -130,7 +130,7 @@ Tip: The API expects SOMA_API_TOKEN (or SOMA_API_TOKEN_FILE). /health and /healt
   - `docker compose --profile core down`
   - `docker volume rm somafractalmemory_pgdata somafractalmemory_redisdata`
   - `docker compose --profile core up -d`
-- Port 9595 busy: change API_PORT in .env and re-up the stack
+- Port 10101 busy: change API_PORT in .env and re-up the stack
 
 ## 🔎 Where things are
 

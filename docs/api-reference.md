@@ -5,7 +5,7 @@ Complete reference for all SomaFractalMemory API endpoints.
 ## Base URL
 
 ```
-http://localhost:9595
+http://localhost:10101
 ```
 
 ## Authentication
@@ -186,7 +186,7 @@ Store a new memory.
 **cURL Example**
 
 ```bash
-curl -X POST http://localhost:9595/memories \
+curl -X POST http://localhost:10101/memories \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"coord": "1.0,2.0,3.0", "payload": {"content": "Hello"}, "memory_type": "episodic"}'
@@ -223,7 +223,7 @@ Retrieve a memory by coordinate.
 **cURL Example**
 
 ```bash
-curl http://localhost:9595/memories/1.0,2.0,3.0 \
+curl http://localhost:10101/memories/1.0,2.0,3.0 \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -320,7 +320,7 @@ Get neighbors of a coordinate.
 **cURL Example**
 
 ```bash
-curl "http://localhost:9595/graph/neighbors?coord=1.0,2.0,3.0&k_hop=2&limit=5" \
+curl "http://localhost:10101/graph/neighbors?coord=1.0,2.0,3.0&k_hop=2&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -434,5 +434,5 @@ All errors follow this format:
 Get the full OpenAPI 3.0 specification:
 
 ```bash
-curl http://localhost:9595/openapi.json
+curl http://localhost:10101/openapi.json
 ```

@@ -2,7 +2,7 @@
 
 100% Django - NO uvicorn.
 Use with gunicorn:
-    gunicorn somafractalmemory.wsgi:application --bind 0.0.0.0:9595
+    gunicorn somafractalmemory.wsgi:application --bind 0.0.0.0:10101
 """
 
 import os

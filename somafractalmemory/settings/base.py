@@ -74,6 +74,23 @@ if not SOMA_POSTGRES_URL:
 # Parse DSN for Django ORM
 parsed = urlparse(SOMA_POSTGRES_URL)
 
+
+# Handle K8s Service env var collision - K8s sets POSTGRES_PORT as 'tcp://host:port'
+# Use SOMA_ prefixed vars exclusively to avoid this
+def _safe_port(parse_result) -> int:
+    """Safely extract port, defaulting to 5432 for PostgreSQL.
+
+    K8s auto-injects env vars like POSTGRES_PORT=tcp://host:port which can
+    contaminate URL parsing. This function catches the ValueError that urlparse
+    throws when accessing the .port property on malformed URLs.
+    """
+    try:
+        return int(parse_result.port) if parse_result.port else 5432
+    except ValueError:
+        # K8s Service env var collision - default to 5432
+        return 5432
+
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -82,19 +99,14 @@ DATABASES = {
         "USER": parsed.username or "postgres",
         "PASSWORD": parsed.password or "",
         "HOST": parsed.hostname or "localhost",
-        "PORT": parsed.port or 5432,
+        "PORT": _safe_port(parsed),
     }
 }
 
-# Legacy DSN format (for backwards compatibility with existing stores)
-SOMA_POSTGRES_URL = os.environ.get(
-    "SOMA_POSTGRES_URL",
-    os.environ.get(
-        "POSTGRES_URL",
-        f"postgresql://{DATABASES['default']['USER']}:{DATABASES['default']['PASSWORD']}@"
-        f"{DATABASES['default']['HOST']}:{DATABASES['default']['PORT']}/{DATABASES['default']['NAME']}",
-    ),
-)
+# NOTE: Do NOT add a POSTGRES_URL fallback here!
+# K8s auto-creates POSTGRES_PORT env vars for services named 'postgres'
+# which are incompatible URLs (tcp://host:port format).
+# Always use SOMA_ prefixed env vars exclusively.
 
 # PostgreSQL SSL/TLS options
 SOMA_POSTGRES_SSL_MODE = os.environ.get("SOMA_POSTGRES_SSL_MODE")
@@ -102,11 +114,32 @@ SOMA_POSTGRES_SSL_ROOT_CERT = os.environ.get("SOMA_POSTGRES_SSL_ROOT_CERT")
 SOMA_POSTGRES_SSL_CERT = os.environ.get("SOMA_POSTGRES_SSL_CERT")
 SOMA_POSTGRES_SSL_KEY = os.environ.get("SOMA_POSTGRES_SSL_KEY")
 
+
 # -----------------------------------------------------------------------------
 # Redis Configuration
+# NOTE: K8s creates REDIS_PORT=tcp://host:port which contaminates envFrom.
+# Use robust parsing that handles both "6379" and "tcp://host:6379" formats.
 # -----------------------------------------------------------------------------
-SOMA_REDIS_HOST = os.environ.get("SOMA_INFRA__REDIS", os.environ.get("REDIS_HOST", "redis"))
-SOMA_REDIS_PORT = int(os.environ.get("SOMA_REDIS_PORT", os.environ.get("REDIS_PORT", "6379")))
+def _parse_port(value: str, default: int) -> int:
+    """Parse a port value that may be a plain integer or tcp://host:port URL."""
+    if not value:
+        return default
+    # If it starts with tcp://, extract the port from the URL
+    if value.startswith("tcp://"):
+        try:
+            # Format: tcp://10.110.211.102:6379
+            return int(value.rsplit(":", 1)[-1])
+        except (ValueError, IndexError):
+            return default
+    # Otherwise try to parse as integer
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+SOMA_REDIS_HOST = os.environ.get("SOMA_REDIS_HOST", "redis")
+SOMA_REDIS_PORT = _parse_port(os.environ.get("SOMA_REDIS_PORT", "6379"), 6379)
 SOMA_REDIS_DB = int(os.environ.get("SOMA_REDIS_DB", "0"))
 SOMA_REDIS_PASSWORD = os.environ.get("SOMA_REDIS_PASSWORD")
 
@@ -116,7 +149,7 @@ SOMA_REDIS_PASSWORD = os.environ.get("SOMA_REDIS_PASSWORD")
 SOMA_MILVUS_HOST = os.environ.get(
     "SOMA_MILVUS_HOST", os.environ.get("SOMA_INFRA__MILVUS", "milvus")
 )
-SOMA_MILVUS_PORT = int(os.environ.get("SOMA_MILVUS_PORT", "19530"))
+SOMA_MILVUS_PORT = _parse_port(os.environ.get("SOMA_MILVUS_PORT", "19530"), 19530)
 
 # -----------------------------------------------------------------------------
 # Memory System Configuration

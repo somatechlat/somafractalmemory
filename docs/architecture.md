@@ -16,7 +16,7 @@ SomaFractalMemory is a fractal memory system that stores and retrieves data usin
 ┌─────────────────────────────────────────────────────────────┐
 │                   Django + gunicorn                          │
 │                   (WSGI Server)                              │
-│                   Port: 9595                                 │
+│                   Port: 10101                                 │
 └─────────────────────────┬───────────────────────────────────┘
                           │
                           ▼

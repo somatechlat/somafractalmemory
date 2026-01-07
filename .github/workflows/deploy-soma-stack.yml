@@ -133,7 +133,7 @@ jobs:
           NS=soma-${{ env.DEPLOY_MODE }}
           SVC_IP=$(kubectl get svc soma-somafractalmemory -n "$NS" -o jsonpath='{.spec.clusterIP}')
           if [[ -n "$SVC_IP" ]]; then
-            curl -sf "http://$SVC_IP:9595/healthz" || true
+            curl -sf "http://$SVC_IP:10101/healthz" || true
           fi
 
       - name: Save Helm release manifest (for audit)

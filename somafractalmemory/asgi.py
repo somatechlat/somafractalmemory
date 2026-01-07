@@ -2,8 +2,8 @@
 
 100% Django patterns.
 Run via daphne or gunicorn:
-    daphne somafractalmemory.asgi:application -b 0.0.0.0 -p 9595
-    gunicorn somafractalmemory.asgi:application -k daphne.server.DaphneServer --bind 0.0.0.0:9595
+    daphne somafractalmemory.asgi:application -b 0.0.0.0 -p 10101
+    gunicorn somafractalmemory.asgi:application -k daphne.server.DaphneServer --bind 0.0.0.0:10101
 """
 
 import os

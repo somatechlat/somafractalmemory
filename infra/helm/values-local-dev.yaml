@@ -14,8 +14,8 @@ resources:
     memory: "256Mi"
 
 service:
-  port: 9595
-  targetPort: 9595
+  port: 10101
+  targetPort: 10101
 
 # PostgreSQL (matches docker-compose 1.5GB limit)
 postgres:

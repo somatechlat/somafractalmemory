@@ -67,7 +67,7 @@ somafractalmemory/
 
 | Service | Port |
 |---------|------|
-| API | 9595 |
+| API | 10101 |
 
 ---
 

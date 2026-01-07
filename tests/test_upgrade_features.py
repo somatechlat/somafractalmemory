@@ -9,10 +9,10 @@ def test_config_validation():
     # Valid config
     """Execute test config validation."""
 
-    s = SMFSettings(namespace="test", api_port=9595)
+    s = SMFSettings(namespace="test", api_port=10101)
     s.validate_config()
     # Invalid config: missing namespace
-    s2 = SMFSettings(namespace="", api_port=9595)
+    s2 = SMFSettings(namespace="", api_port=10101)
     with pytest.raises(ValueError):
         s2.validate_config()
     # Invalid config: bad port
@@ -20,11 +20,11 @@ def test_config_validation():
     with pytest.raises(ValueError):
         s3.validate_config()
     # JWT enabled but missing key
-    s4 = SMFSettings(namespace="test", api_port=9595, jwt_enabled=True)
+    s4 = SMFSettings(namespace="test", api_port=10101, jwt_enabled=True)
     with pytest.raises(ValueError):
         s4.validate_config()
     # JWT enabled but missing issuer/audience
-    s5 = SMFSettings(namespace="test", api_port=9595, jwt_enabled=True, jwt_secret="x")
+    s5 = SMFSettings(namespace="test", api_port=10101, jwt_enabled=True, jwt_secret="x")
     with pytest.raises(ValueError):
         s5.validate_config()
 

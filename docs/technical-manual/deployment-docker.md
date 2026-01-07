@@ -11,7 +11,7 @@ Deploy the full stack locally with one public API port and persistent storage.
 
 - Docker Desktop with Compose v2
 - Ports available on host:
-  - 9595 (API)
+  - 10101 (API)
   - Optional dev-only: 40021 (Postgres), 40022 (Redis), 40023 (Qdrant)
 
 ## 🔐 .env baseline
@@ -33,18 +33,18 @@ For shared or hardened setups, use a strong token and enable rate limiting (e.g.
 docker compose --profile core up -d
 ```
 
-This brings up: Postgres, Redis, Qdrant, API. The API is published to http://127.0.0.1:9595.
+This brings up: Postgres, Redis, Qdrant, API. The API is published to http://127.0.0.1:10101.
 
 ## 🩺 Verify
 
 ```bash
-curl -fsS http://127.0.0.1:9595/healthz
+curl -fsS http://127.0.0.1:10101/healthz
 ```
 
 Write a memory:
 
 ```bash
-curl -s -X POST http://127.0.0.1:9595/memories \
+curl -s -X POST http://127.0.0.1:10101/memories \
   -H "Authorization: Bearer ${SOMA_API_TOKEN}" \
   -H 'Content-Type: application/json' \
   -d '{"coord":"0.1,0.2,0.3","payload":{"ok":true},"memory_type":"episodic"}'
@@ -56,7 +56,7 @@ curl -s -X POST http://127.0.0.1:9595/memories \
 - Rate limit: Set SOMA_RATE_LIMIT_MAX and SOMA_RATE_LIMIT_WINDOW_SECONDS > 0
 - CORS: Set SOMA_CORS_ORIGINS if you have browser clients
 - OPA policy (optional): OPA_URL and OPA_POLICY_PATH, with an allow decision
-- Ports: Expose only 9595; keep Postgres/Redis/Qdrant internal unless needed
+- Ports: Expose only 10101; keep Postgres/Redis/Qdrant internal unless needed
 - Persistence: Named volumes are configured by default (pgdata, redisdata, qdrantdata)
 
 ## 🧰 Recovery tips

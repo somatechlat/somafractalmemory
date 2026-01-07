@@ -51,7 +51,7 @@ echo "🚦 Starting gunicorn (production WSGI server)..."
 # Start gunicorn - production WSGI server
 # Workers = 2*CPU + 1 (but limited for container)
 exec gunicorn somafractalmemory.wsgi:application \
-    --bind 0.0.0.0:"${SOMA_API_PORT:-9595}" \
+    --bind 0.0.0.0:"${SOMA_API_PORT:-10101}" \
     --workers "${GUNICORN_WORKERS:-2}" \
     --threads "${GUNICORN_THREADS:-2}" \
     --timeout 120 \

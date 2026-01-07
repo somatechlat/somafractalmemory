@@ -31,7 +31,7 @@ Common variables:
 - JWT_PUBLIC_KEY (optional): RSA public key if JWT (RS256) is used (PEM)
 - JWT_ISSUER/JWT_AUDIENCE (optional): Validate iss/aud claims
 - POSTGRES_PASSWORD: Postgres password (string)
-- SOMA_API_PORT: API port inside container (int; default 9595)
+- SOMA_API_PORT: API port inside container (int; default 10101)
 
 ## Production guidance
 
@@ -49,5 +49,5 @@ Common variables:
 ## Local quick check
 
 - Start services: `docker compose --profile core up -d`
-- Health: GET `http://127.0.0.1:9595/healthz`
+- Health: GET `http://127.0.0.1:10101/healthz`
 - Use Authorization: `Bearer devtoken` for local tests unless overridden.

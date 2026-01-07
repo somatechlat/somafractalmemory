@@ -33,7 +33,7 @@ This document defines ALL settings for the **SomaFractalMemory** long-term memor
 |---------|------|---------|---------|
 | `namespace` | str | default | Memory namespace |
 | `vector_dim` | int | 768 | Embedding dimension |
-| `api_port` | int | 9595 | API server port |
+| `api_port` | int | 10101 | API server port |
 
 ---
 
@@ -89,7 +89,7 @@ This document defines ALL settings for the **SomaFractalMemory** long-term memor
 
 | Setting | Type | Default |
 |---------|------|---------|
-| `api_port` | int | 9595 |
+| `api_port` | int | 10101 |
 
 ---
 
