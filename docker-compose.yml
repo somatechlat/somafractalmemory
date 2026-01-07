@@ -1,15 +1,16 @@
 # =============================================================================
 # PRODUCTION-GRADE DOCKER COMPOSE - SomaFractalMemory
 # =============================================================================
-# PORT RANGE: 40000-40004 (sequential)
-#   9595  - API (Django + gunicorn)
-#   40001 - PostgreSQL
-#   40002 - Redis
-#   40003 - Milvus gRPC
-#   40004 - Milvus HTTP/metrics
+# VIBE Rule 113: Port Sovereignty - 10xxx Range (Storage Tier L2)
+# PORT RANGE: 10xxx (Island Isolation)
+#   10101 - API (Django + uvicorn)
+#   10432 - PostgreSQL
+#   10379 - Redis
+#   10530 - Milvus gRPC
+#   10531 - Milvus HTTP/metrics
 #
-# MEMORY BUDGET: 10GB total (production constrained)
-#   PostgreSQL: 1.5GB | Redis: 512MB | etcd: 256MB | MinIO: 256MB | Milvus: 6GB | API: 1GB
+# MEMORY BUDGET: 8GB total (VIBE Rule 108)
+#   PostgreSQL: 1.5GB | Redis: 512MB | etcd: 256MB | MinIO: 256MB | Milvus: 4GB | API: 1GB
 # =============================================================================
 
 services:
@@ -23,7 +24,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: md5
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      - "${POSTGRES_HOST_PORT:-40001}:5432"
+      - "${POSTGRES_HOST_PORT:-10432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     command: >
@@ -54,7 +55,7 @@ services:
     image: redis:7
     container_name: somafractalmemory_redis
     ports:
-      - "${REDIS_HOST_PORT:-40002}:6379"
+      - "${REDIS_HOST_PORT:-10379}:6379"
     volumes:
       - redisdata:/data
     command: >
@@ -138,8 +139,8 @@ services:
     container_name: somafractalmemory_milvus
     command: [ "milvus", "run", "standalone" ]
     ports:
-      - "${MILVUS_HOST_PORT:-40003}:19530"
-      - "${MILVUS_GRPC_PORT:-40004}:9091"
+      - "${MILVUS_HOST_PORT:-10530}:19530"
+      - "${MILVUS_GRPC_PORT:-10531}:9091"
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
@@ -178,7 +179,7 @@ services:
       dockerfile: Dockerfile
     container_name: somafractalmemory_api
     ports:
-      - "${API_PORT:-40000}:${SOMA_API_PORT:-9595}"
+      - "${API_PORT:-10101}:${SOMA_API_PORT:-9595}"
     environment:
       SOMA_API_TOKEN: "dev-032f8d463c84e7ef0d834c3a"
       SOMA_RATE_LIMIT_MAX: "0"
