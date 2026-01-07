@@ -1,53 +1,70 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🚨 ARCHITECTURE: COLIMA + TILT + MINIKUBE 🚨
+# ═══════════════════════════════════════════════════════════════════════════════
 # SomaFractalMemory Tilt Development Configuration
 # VIBE Rule 113: Port Sovereignty - 10xxx Range (Storage Tier L2)
 # VIBE Rule 102: Shared-Nothing Architecture (Island Mandate)
 # RAM BUDGET: 8GB Maximum (VIBE Rule 108)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 print("""
 +==============================================================+
-|         SOMAFRACTALMEMORY - ISOLATED LOCAL DEVELOPMENT       |
+|         SOMAFRACTALMEMORY - ISOLATED K8S DEPLOYMENT          |
 +==============================================================+
 |  Tilt Dashboard:   http://localhost:10353                    |
-|  SFM API:          http://localhost:10101                    |
-|  Postgres:         localhost:10432                           |
-|  Redis:            localhost:10379                           |
-|  Milvus:           localhost:10530                           |
+|  SFM API:          http://localhost:10101 (NodePort 30101)   |
+|  Minikube Profile: sfm                                       |
 +==============================================================+
-|  RAM BUDGET: 8GB Maximum                                     |
+|  RAM BUDGET: 8GB Maximum | ARCHITECTURE: Colima+Tilt+Minikube|
 +==============================================================+
 """)
 
-# Load existing docker-compose.yml infrastructure
-# Port overrides applied via environment variables
-docker_compose('./docker-compose.yml')
+# Ensure we're using the sfm minikube profile
+allow_k8s_contexts('sfm')
 
-# Development server with live reload
-local_resource(
-    'sfm-dev',
-    serve_cmd='SOMA_DB_NAME=somafractalmemory .venv/bin/uvicorn somafractalmemory.asgi:application --host 0.0.0.0 --port 10101 --reload',
-    serve_dir='.',
-    env={
-        'SA01_DEPLOYMENT_MODE': 'PROD',
-        'SOMA_API_PORT': '10101',
-    },
-    links=['http://localhost:10101/healthz'],
-    labels=['app'],
-    resource_deps=['postgres', 'redis', 'milvus'],
+# Build the SFM API image
+docker_build(
+    'sfm-api',
+    '.',
+    dockerfile='Dockerfile',
+    live_update=[
+        sync('.', '/app'),
+        run('pip install -r api-requirements.txt', trigger=['api-requirements.txt']),
+    ]
 )
 
-# Database migrations
-local_resource(
-    'db-migrate',
-    cmd='''
-        set -e
-        set -a; source .env; set +a
-        export DJANGO_SETTINGS_MODULE=somafractalmemory.settings
-        echo "⏳ Waiting for Postgres on 10432..."
-        until pg_isready -h localhost -p 10432; do sleep 1; done
-        echo "🔄 Running migrations..."
-        .venv/bin/python manage.py migrate --noinput
-        echo "✅ Migrations complete"
-    ''',
-    resource_deps=['postgres'],
+# Deploy resilient K8s manifests
+k8s_yaml('infra/k8s/sfm-resilient.yaml')
+
+# Resource configuration with port forwards
+k8s_resource(
+    'sfm-api',
+    port_forwards=['10101:10101'],
+    labels=['app'],
+    resource_deps=['postgres', 'redis', 'milvus']
+)
+
+k8s_resource(
+    'postgres',
+    port_forwards=['10432:5432'],
+    labels=['infra']
+)
+
+k8s_resource(
+    'redis',
+    port_forwards=['10379:6379'],
+    labels=['infra']
+)
+
+k8s_resource(
+    'milvus',
+    port_forwards=['10530:19530'],
+    labels=['infra']
+)
+
+# Migration job
+k8s_resource(
+    'sfm-migrations',
     labels=['setup'],
+    resource_deps=['postgres']
 )
