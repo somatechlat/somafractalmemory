@@ -3,7 +3,7 @@ SOMAFRACTALMEMORY - MINIKUBE + TILT
 Uses existing Helm chart from infra/helm/
 Namespace: somafractalmemory
 ISOLATION: Port 10351 ONLY
-PORTS: 9xxx namespace
+PORTS: 10xxx namespace
 """
 allow_k8s_contexts('minikube')
 
@@ -45,9 +45,9 @@ docker_build(
 )
 
 # Resource config with port forwards (names match Helm chart output)
-k8s_resource('somafractalmemory-somafractalmemory', port_forwards=['9595:9595'], labels=['storage'])
-k8s_resource('somafractalmemory-postgres', port_forwards=['9432:5432'], labels=['storage'])
-k8s_resource('somafractalmemory-redis', port_forwards=['9379:6379'], labels=['storage'])
+k8s_resource('somafractalmemory-somafractalmemory', port_forwards=['10595:9595'], labels=['storage'])
+k8s_resource('somafractalmemory-postgres', port_forwards=['10432:5432'], labels=['storage'])
+k8s_resource('somafractalmemory-redis', port_forwards=['10379:6379'], labels=['storage'])
 
 # Database migrations
 local_resource(
