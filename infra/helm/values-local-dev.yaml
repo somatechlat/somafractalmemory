@@ -1,25 +1,71 @@
 # values-local-dev.yaml
-# Overrides for local development.
+# Overrides for local development - matches docker-compose.yml settings exactly
+# TOTAL MEMORY BUDGET: 15GB for SomaStack cluster
 
 replicaCount: 1
 
+# API resources (matches docker-compose 1GB limit)
 resources:
   limits:
-    cpu: "500m"
+    cpu: "1"
     memory: "1Gi"
   requests:
-    cpu: "100m"
+    cpu: "20m"
     memory: "256Mi"
 
 service:
   port: 9595
   targetPort: 9595
 
+# PostgreSQL (matches docker-compose 1.5GB limit)
 postgres:
+  enabled: true
   replicaCount: 1
   persistence:
-    enabled: false
+    enabled: true
+    size: 1Gi
+  resources:
+    limits:
+      memory: "1536Mi"
+      cpu: "500m"
+    requests:
+      memory: "768Mi"
+      cpu: "20m"
+  env:
+    POSTGRES_USER: soma
+    POSTGRES_DB: somamemory
 
+# Redis (matches docker-compose 512MB limit)
+redis:
+  enabled: true
+  replicaCount: 1
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+    requests:
+      memory: "256Mi"
+      cpu: "10m"
+
+# Qdrant (vector DB for locally dev)
+qdrant:
+  enabled: true
+  replicaCount: 1
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+    requests:
+      memory: "256Mi"
+      cpu: "20m"
+
+# Secrets - loaded from Vault (Rule 100)
 secrets:
   create: false
   apiTokenSecretName: "soma-api-token"
@@ -27,12 +73,6 @@ secrets:
   apiTokenLiteral: ""
   postgresPasswordLiteral: ""
 
-redis:
-  replicaCount: 1
-  persistence:
-    enabled: false
-
-qdrant:
-  replicaCount: 1
-  persistence:
-    enabled: false
+# Backup disabled for local dev
+backup:
+  enabled: false
