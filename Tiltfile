@@ -1,10 +1,10 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# 🚨 ARCHITECTURE: COLIMA + TILT + MINIKUBE 🚨
+# 🚨 ARCHITECTURE: TILT + MINIKUBE (VFKIT) + KUBERNETES 🚨
 # ═══════════════════════════════════════════════════════════════════════════════
 # SomaFractalMemory Tilt Development Configuration
 # VIBE Rule 113: Port Sovereignty - 10xxx Range (Storage Tier L2)
 # VIBE Rule 102: Shared-Nothing Architecture (Island Mandate)
-# RAM BUDGET: 8GB Maximum (VIBE Rule 108)
+# RAM BUDGET: 5GB Maximum (VIBE Rule 108 - Ultra Lean)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 print("""
@@ -15,21 +15,30 @@ print("""
 |  SFM API:          http://localhost:10101 (NodePort 30101)   |
 |  Minikube Profile: sfm                                       |
 +==============================================================+
-|  RAM BUDGET: 8GB Maximum | ARCHITECTURE: Colima+Tilt+Minikube|
+|  RAM BUDGET: 5GB Maximum | ARCHITECTURE: Tilt+Minikube(vfkit)+K8s|
 +==============================================================+
 """)
 
 # Ensure we're using the sfm minikube profile
 allow_k8s_contexts('sfm')
 
-# Build the SFM API image
-docker_build(
+DOCKERFILE_CONTENT = '''
+FROM python:3.10-slim
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir -r api-requirements.txt
+EXPOSE 10101
+CMD ["python", "manage.py", "runserver", "0.0.0.0:10101"]
+'''
+
+# Build using Minikube's internal Docker daemon (vfkit driver)
+custom_build(
     'sfm-api',
-    '.',
-    dockerfile='Dockerfile',
+    'eval $(minikube docker-env -p sfm) && printf "%s" "$DOCKERFILE_CONTENT" | docker build -t $EXPECTED_REF -f - .',
+    ['.'],
+    env={'DOCKERFILE_CONTENT': DOCKERFILE_CONTENT},
     live_update=[
         sync('.', '/app'),
-        run('pip install -r api-requirements.txt', trigger=['api-requirements.txt']),
     ]
 )
 
