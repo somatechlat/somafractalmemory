@@ -29,7 +29,10 @@ data:
   SOMA_REDIS_PORT: "6379"
   SOMA_MILVUS_HOST: "milvus"
   SOMA_MILVUS_PORT: "19530"
+  SOMA_API_TOKEN: "dev-token-somastack2024"
   PYTHONUNBUFFERED: "1"
+  # Allow K8s health probes from any pod IP
+  ALLOWED_HOSTS: "*"
 ---
 # Migration Job - runs before API deployment
 apiVersion: batch/v1
@@ -281,13 +284,24 @@ spec:
               value: "true"
             - name: ETCD_DATA_DIR
               value: "/var/lib/milvus/etcd"
+            - name: COMMON_STORAGETYPE
+              value: "local"
+            - name: MINIO_ADDRESS
+              value: ""
+          volumeMounts:
+            - name: milvus-data
+              mountPath: /var/lib/milvus
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "250m"
-            limits:
               memory: "2Gi"
               cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "1000m"
+      volumes:
+        - name: milvus-data
+          emptyDir:
+            sizeLimit: 5Gi
 ---
 apiVersion: v1
 kind: Service
