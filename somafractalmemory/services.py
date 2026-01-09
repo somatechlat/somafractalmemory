@@ -62,6 +62,25 @@ class MemoryService:
 
         return memory
 
+    async def aremember(
+        self,
+        coordinate: tuple[float, ...],
+        payload: dict[str, Any],
+        memory_type: str = "episodic",
+        tenant: str = "default",
+        metadata: dict[str, Any] | None = None,
+    ) -> Memory:
+        """Async store a memory using Django ORM (SRS FR-1)."""
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(self.store)(
+            coordinate=coordinate,
+            payload=payload,
+            memory_type=memory_type,
+            tenant=tenant,
+            metadata=metadata,
+        )
+
     def retrieve(
         self,
         coordinate: tuple[float, ...],
