@@ -1,25 +1,65 @@
-# SFM API Dockerfile for Docker Compose deployment
-FROM python:3.10-slim
+# syntax=docker/dockerfile:1.6
+# ═══════════════════════════════════════════════════════════════════════════════
+# ██████╗  ██████╗ ███╗   ██╗ ██████╗ ████████╗    ██╗   ██╗███████╗███████╗
+# ██╔══██╗██╔═══██╗████╗  ██║██╔═══██╗╚══██╔══╝    ██║   ██║██╔════╝██╔════╝
+# ██║  ██║██║   ██║██╔██╗ ██║██║   ██║   ██║       ██║   ██║███████╗█████╗
+# ██║  ██║██║   ██║██║╚██╗██║██║   ██║   ██║       ██║   ██║╚════██║██╔══╝
+# ██████╔╝╚██████╔╝██║ ╚████║╚██████╔╝   ██║       ╚██████╔╝███████║███████╗
+# ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝    ╚═╝        ╚═════╝ ╚══════╝╚══════╝
+#                    ██████╗  ██████╗  ██████╗██╗  ██╗███████╗██████╗
+#                    ██╔══██╗██╔═══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗
+#                    ██║  ██║██║   ██║██║     █████╔╝ █████╗  ██████╔╝
+#                    ██║  ██║██║   ██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗
+#                    ██████╔╝╚██████╔╝╚██████╗██║  ██╗███████╗██║  ██║
+#                    ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🚨 ARCHITECTURE: COLIMA + TILT + MINIKUBE 🚨
+# ═══════════════════════════════════════════════════════════════════════════════
+# This project uses:
+#   ✅ COLIMA   - Docker runtime (NOT Docker Desktop)
+#   ✅ TILT     - Development orchestration
+#   ✅ MINIKUBE - Kubernetes cluster
+#
+# ❌ DO NOT USE DOCKER DESKTOP
+# ❌ DO NOT USE docker-compose directly
+#
+# Start with: tilt up --port <port>
+# ═══════════════════════════════════════════════════════════════════════════════
+# LIGHTWEIGHT Django-only Dockerfile for SomaFractalMemory
+FROM python:3.10-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Minimal system deps (no build-essential - use precompiled wheels)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    build-essential \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for layer caching
-COPY api-requirements.txt .
+# Install dependencies directly with pip
+COPY api-requirements.txt /app/
+
 RUN pip install --no-cache-dir -r api-requirements.txt
 RUN pip install --no-cache-dir uvicorn[standard]
 
-# Copy application code
-COPY manage.py .
-COPY somafractalmemory/ somafractalmemory/
-COPY common/ common/
+# Copy application source - ONLY essential files
+COPY somafractalmemory/ ./somafractalmemory/
+COPY common/ ./common/
+COPY scripts/ ./scripts/
+COPY manage.py ./
+
+RUN chmod +x /app/scripts/docker-entrypoint.sh || true
+RUN chmod +x /app/scripts/bootstrap.sh
+
+# Create non-root user
+RUN useradd --create-home --uid 1000 appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 10101
 
-# Use uvicorn for production ASGI
-CMD ["python", "-m", "uvicorn", "somafractalmemory.asgi:application", "--host", "0.0.0.0", "--port", "10101"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:10101"]

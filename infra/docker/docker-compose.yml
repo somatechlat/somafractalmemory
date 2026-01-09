@@ -1,99 +1,246 @@
-# SomaFractalMemory Docker Compose (Mirrors K8s sfm-resilient.yaml)
-# VIBE Rule 107: Legacy Parity Mandate
-# VIBE Rule 113: Port Sovereignty - SFM uses 10xxx range
+# =============================================================================
+# PRODUCTION-GRADE DOCKER COMPOSE - SomaFractalMemory
+# =============================================================================
+# VIBE Rule 113: Port Sovereignty - 10xxx Range (Storage Tier L2)
+# PORT RANGE: 10xxx (Island Isolation)
+#   10101 - API (Django + uvicorn)
+#   10432 - PostgreSQL
+#   10379 - Redis
+#   10530 - Milvus gRPC
+#   10531 - Milvus HTTP/metrics
+#
+# MEMORY BUDGET: 8GB total (VIBE Rule 108)
+#   PostgreSQL: 1.5GB | Redis: 512MB | etcd: 256MB | MinIO: 256MB | Milvus: 4GB | API: 1GB
+# =============================================================================
 
 services:
-  sfm-api:
-    build:
-      context: ../..
-      dockerfile: infra/docker/Dockerfile
-    ports:
-      - "10101:10101"
+  postgres:
+    image: postgres:15
+    container_name: somafractalmemory_postgres
     environment:
-      # From ConfigMap sfm-config
-      - DJANGO_ENV=production
-      - DJANGO_SETTINGS_MODULE=somafractalmemory.settings
-      - SOMA_API_PORT=10101
-      - SOMA_DB_NAME=somamemory
-      - SOMA_POSTGRES_URL=postgresql://soma:soma@postgres:5432/somamemory
-      - SOMA_REDIS_HOST=redis
-      - SOMA_REDIS_PORT=6379
-      - SOMA_MILVUS_HOST=milvus
-      - SOMA_MILVUS_PORT=19530
-      - SOMA_API_TOKEN=dev-token-somastack2024
-      - PYTHONUNBUFFERED=1
-      - ALLOWED_HOSTS=*
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
-      milvus:
-        condition: service_started
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:10101/healthz" ]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soma}
+      POSTGRES_DB: somamemory
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_HOST_PORT:-10432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command: >
+      postgres -c max_connections=100 -c shared_buffers=384MB -c effective_cache_size=1024MB -c maintenance_work_mem=64MB -c work_mem=4MB -c wal_buffers=8MB -c checkpoint_completion_target=0.9 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c min_wal_size=512MB -c max_wal_size=2GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1 -c log_min_duration_statement=1000 -c log_checkpoints=on -c log_connections=on -c log_disconnections=on -c log_lock_waits=on -c idle_in_transaction_session_timeout=60000 -c statement_timeout=300000
+    restart: always
     deploy:
       resources:
         limits:
-          memory: 384M
-          cpus: '1'
-
-  postgres:
-    image: postgres:15-alpine
-    ports:
-      - "30201:5432"
-    environment:
-      - POSTGRES_USER=soma
-      - POSTGRES_PASSWORD=soma
-      - POSTGRES_DB=somamemory
-      - POSTGRES_HOST_AUTH_METHOD=trust
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+          memory: 1536M
+        reservations:
+          memory: 768M
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U soma -d somamemory" ]
+      test: [ "CMD-SHELL", "pg_isready -h localhost -p 5432 -U soma" ]
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - postgres
+          - somabrain_postgres
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:7
+    container_name: somafractalmemory_redis
+    ports:
+      - "${REDIS_HOST_PORT:-10379}:6379"
+    volumes:
+      - redisdata:/data
+    command: >
+      redis-server --maxmemory 400mb --maxmemory-policy allkeys-lru --maxclients 5000 --tcp-backlog 511 --timeout 0 --tcp-keepalive 300 --save 900 1 --save 300 10 --save 60 10000 --appendonly yes --appendfsync everysec --no-appendfsync-on-rewrite no --auto-aof-rewrite-percentage 100 --auto-aof-rewrite-min-size 64mb --activerehashing yes --hz 10 --dynamic-hz yes --lazyfree-lazy-eviction yes --lazyfree-lazy-expire yes --lazyfree-lazy-server-del yes --replica-lazy-flush yes
+    restart: always
     deploy:
       resources:
         limits:
           memory: 512M
-          cpus: '1'
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-p", "6379", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - redis
+          - somabrain_redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "30202:6379"
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: somafractalmemory_etcd
     volumes:
-      - redis-data:/data
+      - etcddata:/etcd
+    command: >
+      etcd --advertise-client-urls=http://127.0.0.1:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd --auto-compaction-mode=periodic --auto-compaction-retention=1h --quota-backend-bytes=8589934592 --snapshot-count=10000 --max-txn-ops=10000 --max-request-bytes=10485760
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: '0.5'
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - etcd
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: somafractalmemory_minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - miniodata:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - minio
 
   milvus:
-    image: milvusdb/milvus:v2.3.4
+    image: milvusdb/milvus:v2.3.3
+    container_name: somafractalmemory_milvus
     command: [ "milvus", "run", "standalone" ]
     ports:
-      - "30203:19530"
+      - "${MILVUS_HOST_PORT:-10530}:19530"
+      - "${MILVUS_GRPC_PORT:-10531}:9091"
     environment:
-      - ETCD_USE_EMBED=true
-      - ETCD_DATA_DIR=/var/lib/milvus/etcd
-      - COMMON_STORAGETYPE=local
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
     volumes:
-      - milvus-data:/var/lib/milvus
+      - milvusdata:/var/lib/milvus
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '2'
+          memory: 8G
+        reservations:
+          memory: 4G
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - milvus
+          - somabrain_milvus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    container_name: somafractalmemory_api
+    ports:
+      - "10101:10101"
+    environment:
+      SOMA_API_TOKEN: "dev-token-somastack2024"
+      SOMA_RATE_LIMIT_MAX: "0"
+      SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"
+      CONFIG_FILE: /app/config.yaml
+      SOMA_FORCE_HASH_EMBEDDINGS: "0"
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SOMA_POSTGRES_URL: postgresql://soma:soma@postgres:5432/somamemory
+      SOMA_REDIS_HOST: redis
+      SOMA_REDIS_PORT: "6379"
+      SOMA_MILVUS_HOST: milvus
+      SOMA_MILVUS_PORT: "19530"
+      DJANGO_SETTINGS_MODULE: somafractalmemory.settings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    volumes:
+      - ../..:/app:delegated
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:${SOMA_API_PORT:-10101}/healthz" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: always
+    profiles:
+      - core
+    networks:
+      smfnet:
+        aliases:
+          - api
+          - somabrain_api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   pgdata:
-  redis-data:
-  milvus-data:
+    driver: local
+  redisdata:
+    driver: local
+  milvusdata:
+    driver: local
+  etcddata:
+    driver: local
+  miniodata:
+    driver: local
+  hf_cache:
+    driver: local
+
+networks:
+  smfnet:
+    name: somafractalmemory_net
+    driver: bridge
