@@ -25,7 +25,7 @@ spec:
       containers:
         - env:
             - name: CONFIG_FILE
-              value: /app/config.yaml
+              value: /app/config/app_config.yaml
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
             - name: PYTHONUNBUFFERED

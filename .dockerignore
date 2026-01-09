@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+.gitmodules
+.github
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.venv
+venv/
+ENV/
+env/
+.env
+.env.*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Temporary
+tmp/

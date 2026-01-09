@@ -184,7 +184,7 @@ services:
       SOMA_API_TOKEN: "dev-token-somastack2024"
       SOMA_RATE_LIMIT_MAX: "0"
       SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"
-      CONFIG_FILE: /app/config.yaml
+      CONFIG_FILE: /app/config/app_config.yaml
       SOMA_FORCE_HASH_EMBEDDINGS: "0"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
