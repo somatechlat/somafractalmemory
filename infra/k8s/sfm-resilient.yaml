@@ -4,6 +4,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Resilient startup with init containers and health checks
 # Port Sovereignty: SFM uses 10xxx range
+# RESOURCE LIMITS: Performance Mode for 8GB vfkit VM
+# PROBE TIMEOUTS: 5s min to handle vfkit latency
 # ═══════════════════════════════════════════════════════════════════════════════
 apiVersion: v1
 kind: Namespace
@@ -31,7 +33,6 @@ data:
   SOMA_MILVUS_PORT: "19530"
   SOMA_API_TOKEN: "dev-token-somastack2024"
   PYTHONUNBUFFERED: "1"
-  # Allow K8s health probes from any pod IP
   ALLOWED_HOSTS: "*"
 ---
 # Migration Job - runs before API deployment
@@ -107,22 +108,24 @@ spec:
             httpGet:
               path: /healthz
               port: 10101
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /healthz
               port: 10101
-            initialDelaySeconds: 10
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
           resources:
             requests:
               memory: "128Mi"
-              cpu: "100m"
+              cpu: "50m"
             limits:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "384Mi"
+              cpu: "4000m"
 ---
 # API Service
 apiVersion: v1
@@ -168,29 +171,31 @@ spec:
               value: "soma"
             - name: POSTGRES_DB
               value: "somamemory"
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: "trust"
           volumeMounts:
             - name: pgdata
               mountPath: /var/lib/postgresql/data
           livenessProbe:
             exec:
-              command: ['pg_isready', '-U', 'soma']
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+              command: ['pg_isready', '-U', 'soma', '-d', 'somamemory']
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
           readinessProbe:
             exec:
-              command: ['pg_isready', '-U', 'soma']
-            initialDelaySeconds: 15
-            periodSeconds: 5
+              command: ['pg_isready', '-U', 'soma', '-d', 'somamemory']
+            initialDelaySeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
           resources:
             requests:
               memory: "256Mi"
-              cpu: "100m"
+              cpu: "50m"
             limits:
               memory: "512Mi"
-              cpu: "250m"
+              cpu: "4000m"
       volumes:
         - name: pgdata
           persistentVolumeClaim:
@@ -232,23 +237,26 @@ spec:
           livenessProbe:
             exec:
               command: ['redis-cli', 'ping']
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
           readinessProbe:
             exec:
               command: ['redis-cli', 'ping']
-            initialDelaySeconds: 3
-            periodSeconds: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
           volumeMounts:
             - name: redis-data
               mountPath: /data
           resources:
             requests:
-              memory: "128Mi"
-              cpu: "50m"
+              memory: "64Mi"
+              cpu: "25m"
             limits:
-              memory: "128Mi"
-              cpu: "100m"
+              memory: "256Mi"
+              cpu: "4000m"
       volumes:
         - name: redis-data
           persistentVolumeClaim:
@@ -303,11 +311,11 @@ spec:
               mountPath: /var/lib/milvus
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "250m"
+              memory: "512Mi"
+              cpu: "100m"
             limits:
-              memory: "1.5Gi"
-              cpu: "500m"
+              memory: "2Gi"
+              cpu: "4000m"
       volumes:
         - name: milvus-data
           persistentVolumeClaim:

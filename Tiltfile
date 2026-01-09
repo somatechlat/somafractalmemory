@@ -22,21 +22,11 @@ print("""
 # Ensure we're using the sfm minikube profile
 allow_k8s_contexts('sfm')
 
-DOCKERFILE_CONTENT = '''
-FROM python:3.10-slim
-WORKDIR /app
-COPY . .
-RUN pip install --no-cache-dir -r api-requirements.txt
-EXPOSE 10101
-CMD ["python", "manage.py", "runserver", "0.0.0.0:10101"]
-'''
-
-# Build using Minikube's internal Docker daemon (vfkit driver)
+# Build using Minikube's image build (vfkit driver compatible)
 custom_build(
     'sfm-api',
-    'eval $(minikube docker-env -p sfm) && printf "%s" "$DOCKERFILE_CONTENT" | docker build -t $EXPECTED_REF -f - .',
+    'minikube image build -p sfm -t $EXPECTED_REF -f Dockerfile.api .',
     ['.'],
-    env={'DOCKERFILE_CONTENT': DOCKERFILE_CONTENT},
     live_update=[
         sync('.', '/app'),
     ]
