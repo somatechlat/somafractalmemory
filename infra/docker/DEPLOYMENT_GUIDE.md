@@ -1,300 +1,216 @@
 # SomaFractalMemory Docker Deployment Guide
 
-**Document ID**: SFM-DEPLOY-DOCKER-001
-**Version**: 1.0.0
-**Last Updated**: 2026-01-09
-**Status**: Verified ✅
+> **Document Version**: 2.0.0
+> **Last Updated**: 2026-01-09
+> **Status**: ✅ Verified 100% Healthy
+
+This guide provides step-by-step instructions for deploying SomaFractalMemory (SFM).
 
 ---
 
-## 1. Overview
+## Quick Start
 
-This guide provides step-by-step instructions for deploying SomaFractalMemory (SFM) using Docker Compose. SFM provides the hierarchical memory persistence layer for the SOMA cognitive architecture.
+```bash
+# 1. Clone and navigate
+cd /path/to/somafractalmemory
 
-### 1.1 Prerequisites
+# 2. Start all services
+cd infra/docker
+docker compose --profile core up -d
+
+# 3. Apply migrations
+docker exec somafractalmemory_api python manage.py migrate
+
+# 4. Verify health (all 6 services should be healthy)
+docker ps --format "table {{.Names}}\t{{.Status}}"
+```
+
+---
+
+## Prerequisites
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| Docker | 24.0+ | 25.0+ |
-| Docker Compose | v2.20+ | v2.24+ |
+| Docker | 24.0+ | Latest |
+| Docker Compose | 2.20+ | Latest |
 | RAM | 4GB | 8GB |
-| Disk | 10GB | 20GB |
-| CPU | 2 cores | 4 cores |
-
-### 1.2 Architecture Overview
-
-```
-┌────────────────────────────────────────────────┐
-│            SomaFractalMemory Stack             │
-├────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────┐   │
-│  │         SFM API (Django)                │   │
-│  │           :10101                        │   │
-│  └──────────────────┬──────────────────────┘   │
-│                     │                           │
-│  ┌──────────────────▼──────────────────────┐   │
-│  │          Storage Layer                   │   │
-│  │  PostgreSQL │ Redis │ Milvus            │   │
-│  │   :25432    │:26379 │ :29530            │   │
-│  └──────────────────────────────────────────┘  │
-└────────────────────────────────────────────────┘
-```
+| Disk | 5GB | 10GB |
 
 ---
 
-## 2. Quick Start (3 Minutes)
+## Step-by-Step Deployment
 
-### Step 1: Navigate to Infrastructure Directory
-
-```bash
-cd /path/to/somafractalmemory/infra/docker
-```
-
-### Step 2: Start All Services
+### Step 1: Environment Setup
 
 ```bash
-docker compose -p sfm up -d
+# Copy example environment file (if exists)
+cp .env.example .env 2>/dev/null || true
+
+# Default environment is suitable for local development
 ```
 
-### Step 3: Verify Deployment
-
-```bash
-# Check container status
-docker compose -p sfm ps
-
-# Verify health endpoint
-curl http://localhost:10101/healthz
-# Expected: {"kv_store": true, "vector_store": true, "graph_store": true}
-```
-
----
-
-## 3. Detailed Deployment Steps
-
-### 3.1 Clone Repository
-
-```bash
-git clone https://github.com/somatechlat/somafractalmemory.git
-cd somafractalmemory
-git checkout SAAS-PRODUCTIONREADY
-```
-
-### 3.2 Build and Start Services
+### Step 2: Start Core Services
 
 ```bash
 cd infra/docker
 
-# Build images
-docker compose -p sfm build
+# Start with core profile
+docker compose --profile core up -d
 
-# Start all services
-docker compose -p sfm up -d
-
-# View logs
-docker compose -p sfm logs -f sfm_api
+# Wait for services to initialize
+sleep 20
 ```
 
-### 3.3 Wait for Health Checks
+### Step 3: Apply Database Migrations
 
 ```bash
-# Wait for all services to be healthy
-watch -n 5 'docker compose -p sfm ps'
-```
-
----
-
-## 4. Service Reference
-
-### 4.1 Port Mapping
-
-| Service | Host Port | Container Port | Purpose |
-|---------|-----------|----------------|---------|
-| sfm_api | 10101 | 10101 | Main API |
-| postgres | 25432 | 5432 | Database |
-| redis | 26379 | 6379 | Cache/KV |
-| milvus | 29530 | 19530 | Vector store |
-
-### 4.2 Default Configuration
-
-```yaml
-# API Configuration
-SOMA_API_TOKEN: "dev-token-somastack2024"
-
-# Database Configuration
-SOMA_POSTGRES_URL: "postgres://somafractal:somafractal@sfm_postgres:5432/somafractal"
-SOMA_REDIS_HOST: "sfm_redis"
-SOMA_REDIS_PORT: "6379"
-SOMA_MILVUS_HOST: "sfm_milvus"
-SOMA_MILVUS_PORT: "19530"
-```
-
----
-
-## 5. API Endpoints
-
-### 5.1 Health Check
-
-```bash
-curl http://localhost:10101/healthz
-```
-
-**Response:**
-```json
-{
-  "kv_store": true,
-  "vector_store": true,
-  "graph_store": true
-}
-```
-
-### 5.2 Memory Operations
-
-```bash
-# Store memory
-curl -X POST http://localhost:10101/api/v1/memory \
-  -H "Authorization: Bearer dev-token-somastack2024" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "test", "value": {"content": "Hello"}, "namespace": "default"}'
-
-# Recall memory
-curl http://localhost:10101/api/v1/memory/test \
-  -H "Authorization: Bearer dev-token-somastack2024"
-```
-
----
-
-## 6. E2E Verification
-
-### 6.1 Run E2E Test
-
-```bash
-# From project root
-cd /path/to/somafractalmemory
-
-# Activate virtual environment
-source .venv/bin/activate
-
-# Run E2E test
-python -m pytest tests/integration/test_end_to_end_memory.py -v
-```
-
-### 6.2 Expected Output
-
-```
-tests/integration/test_end_to_end_memory.py::test_save_and_retrieve_memory PASSED
-```
-
----
-
-## 7. Operations
-
-### 7.1 Stopping Services
-
-```bash
-# Stop all services (preserve data)
-docker compose -p sfm down
-
-# Stop and remove volumes (DESTRUCTIVE)
-docker compose -p sfm down -v
-```
-
-### 7.2 Viewing Logs
-
-```bash
-# All services
-docker compose -p sfm logs -f
-
-# Specific service
-docker compose -p sfm logs -f sfm_api
-```
-
----
-
-## 8. Tilt Deployment (Development)
-
-### Prerequisites
-
-```bash
-# Install Tilt
-brew install tilt-dev/tap/tilt
-
-# Start Minikube
-minikube start --cpus=2 --memory=8g --profile sfm
-```
-
-### Deploy with Tilt
-
-```bash
-cd somafractalmemory
-
-# Start Tilt
-tilt up --port 10351
-
-# Dashboard opens at http://localhost:10351
-```
-
----
-
-## 9. Kubernetes Deployment
-
-### Deploy to K8s
-
-```bash
-cd somafractalmemory/infra/k8s
-
-# Create namespace
-kubectl create namespace sfm
-
-# Apply manifests
-kubectl apply -f . -n sfm
-
-# Wait for pods
-kubectl wait --for=condition=ready pod -l app=sfm-api -n sfm --timeout=180s
-
-# Port forward for testing
-kubectl port-forward svc/sfm-api 10101:10101 -n sfm
-```
-
----
-
-## 10. Troubleshooting
-
-### 10.1 Common Issues
-
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| API returns 401 | Wrong token | Use `dev-token-somastack2024` |
-| Database connection failed | Postgres not ready | Wait 30s and retry |
-| Milvus connection refused | Container starting | Check `docker ps` for health |
-| Migration error | Tables missing | Run `docker exec somafractalmemory_api python manage.py migrate` |
-
-### 10.2 Reset Everything
-
-```bash
-docker compose -f infra/docker/docker-compose.yml --profile core down -v --remove-orphans
-docker compose -f infra/docker/docker-compose.yml --profile core up -d
+# Apply Django migrations
 docker exec somafractalmemory_api python manage.py migrate
 ```
 
+### Step 4: Verify Health
+
+```bash
+# Check all containers are healthy
+docker compose ps
+
+# Expected: 6 services, all (healthy)
+# - somafractalmemory_api
+# - somafractalmemory_postgres
+# - somafractalmemory_redis
+# - somafractalmemory_milvus
+# - somafractalmemory_etcd
+# - somafractalmemory_minio
+```
+
+### Step 5: Test API
+
+```bash
+# Basic health check
+curl -s http://localhost:10101/healthz
+
+# Expected: {"kv_store": true, "vector_store": true, "graph_store": true}
+
+# Search test (empty results expected)
+curl -s -X POST http://localhost:10101/memories/search \
+  -H "Authorization: Bearer dev-token-somastack2024" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "test", "limit": 5}'
+
+# Expected: {"memories": []}
+```
+
 ---
 
-## Appendix: File Structure
+## Services Overview
 
+| Service | Port | Purpose |
+|---------|------|---------|
+| somafractalmemory_api | 10101 | Main API service |
+| somafractalmemory_postgres | 5432 | PostgreSQL database |
+| somafractalmemory_redis | 6379 | KV store + cache |
+| somafractalmemory_milvus | 19530 | Vector database |
+| somafractalmemory_etcd | 2379 | Milvus metadata |
+| somafractalmemory_minio | 9000 | Milvus object storage |
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/healthz` | GET | Basic health check |
+| `/health` | GET | Detailed health with store status |
+| `/memories` | POST | Store a memory |
+| `/memories/<coord>` | GET | Fetch a memory |
+| `/memories/<coord>` | DELETE | Delete a memory |
+| `/memories/search` | POST | Vector similarity search |
+| `/stats` | GET | Memory statistics |
+| `/docs` | GET | OpenAPI documentation |
+
+---
+
+## Running Tests
+
+### Integration Tests (from host)
+```bash
+cd /path/to/somafractalmemory
+source .venv/bin/activate
+python -m pytest tests/integration/ -v
 ```
-infra/docker/
-├── docker-compose.yml      # Main orchestration
-├── Dockerfile              # Python app build
-├── docker-entrypoint.sh    # Startup script
-├── .dockerignore           # Build exclusions
-├── README.md               # Quick reference
-└── DEPLOYMENT_GUIDE.md     # This file
+
+### API Tests
+```bash
+# Store + Search flow test
+curl -X POST http://localhost:10101/memories/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "test memory", "limit": 5}'
 ```
 
 ---
 
-**Document Control**
+## Troubleshooting
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 2.0.0 | 2026-01-09 | Vibe Collective | Added Tilt, K8s, migrations |
-| 1.0.0 | 2026-01-08 | Vibe Collective | Initial verified deployment |
+### Container Restarting
+```bash
+# Check logs
+docker logs somafractalmemory_api --tail 50
+
+# Verify Milvus dependencies (etcd, minio) are healthy first
+docker logs somafractalmemory_milvus --tail 50
+```
+
+### Migration Errors
+```bash
+# Run migrations manually
+docker exec somafractalmemory_api python manage.py migrate --run-syncdb
+
+# If tables exist, reset database (DESTRUCTIVE)
+docker compose down -v && docker compose up -d
+```
+
+### Milvus Connection Issues
+```bash
+# Verify Milvus is ready
+curl -s http://localhost:9091/healthz
+
+# Check etcd health
+docker exec somafractalmemory_etcd etcdctl endpoint health
+```
+
+---
+
+## Integration with SomaBrain
+
+SomaFractalMemory serves as the persistent memory layer for SomaBrain:
+
+```bash
+# Both clusters should be running:
+# SomaBrain: 16 services on ports 30101+
+# SFM: 6 services on port 10101
+
+# Configure SomaBrain to use SFM
+export SOMABRAIN_MEMORY_HTTP_ENDPOINT=http://localhost:10101
+```
+
+---
+
+## Production Deployment
+
+For Kubernetes deployment:
+```bash
+# See Kubernetes manifests
+ls infra/k8s/
+
+# Apply with kubectl
+kubectl apply -f infra/k8s/sfm-resilient.yaml
+```
+
+---
+
+## Document History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 2.0.0 | 2026-01-09 | 6-service verification, API reference, troubleshooting |
+| 1.0.0 | 2026-01-08 | Initial deployment guide |
