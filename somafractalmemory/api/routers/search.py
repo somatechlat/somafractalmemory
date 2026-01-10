@@ -91,13 +91,15 @@ def search_memories(request: HttpRequest, req: MemorySearchRequest) -> MemorySea
     _check_auth(request)
 
     service = _get_service()
-    tenant = _get_tenant_from_request(request)
+    # Prioritize tenant from body, fallback to header
+    tenant = req.tenant or _get_tenant_from_request(request)
 
     results = service.search(
         query=req.query,
         top_k=req.top_k,
         tenant=tenant,
         filters=req.filters,
+        namespace=req.namespace,
     )
 
     return MemorySearchResponse(memories=results)

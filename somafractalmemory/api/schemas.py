@@ -52,6 +52,8 @@ class MemorySearchRequest(BaseModel):
     top_k: int = 5
     memory_type: str | None = None
     filters: dict[str, Any] | None = None
+    tenant: str | None = None
+    namespace: str | None = None
 
 
 class MemorySearchResponse(BaseModel):

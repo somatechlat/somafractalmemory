@@ -27,6 +27,61 @@ class MemoryService:
 
         self.namespace = namespace
 
+    def _save_to_milvus(self, memory: Memory) -> None:
+        """Save memory vector to Milvus.
+
+        This method is fail-safe: it checks for pymilvus presence and connection health.
+        """
+        from django.conf import settings
+
+        from .models import VectorEmbedding
+
+        try:
+            from pymilvus import Collection, connections, utility
+        except ImportError:
+            logger.warning("pymilvus not installed. Skipping vector store.")
+            return
+
+        milvus_host = getattr(settings, "SOMA_MILVUS_HOST", "somastack_milvus")
+        milvus_port = getattr(settings, "SOMA_MILVUS_PORT", "19530")
+        collection_name = getattr(settings, "SFM_COLLECTION", "somamemory_vectors")
+
+        # Connect
+        try:
+            connections.connect(alias="default", host=milvus_host, port=milvus_port, timeout=2.0)
+        except Exception as e:
+            raise ConnectionError(
+                f"Could not connect to Milvus at {milvus_host}:{milvus_port}: {e}"
+            )
+
+        try:
+            # Check if collection exists
+            # Note: utility.has_collection might block or fail if connection is bad
+            if not utility.has_collection(collection_name):
+                logger.warning(f"Milvus collection {collection_name} does not exist.")
+                return
+
+            collection = Collection(collection_name)
+
+            # Insert vector: [[float, float, ...]]
+            mr = collection.insert([[list(memory.coordinate)]])
+
+            if mr.primary_keys:
+                milvus_id = mr.primary_keys[0]
+                VectorEmbedding.objects.create(
+                    memory=memory,
+                    collection_name=collection_name,
+                    milvus_id=milvus_id,
+                    vector_dim=len(memory.coordinate),
+                )
+                logger.info(f"Saved to Milvus: {milvus_id}")
+
+        finally:
+            try:
+                connections.disconnect("default")
+            except:
+                pass
+
     @transaction.atomic
     def store(
         self,
@@ -59,6 +114,12 @@ class MemoryService:
             tenant=tenant,
             details={"memory_type": memory_type},
         )
+
+        # Try to save to Milvus (Degradation Mode)
+        try:
+            self._save_to_milvus(memory)
+        except Exception as e:
+            logger.error(f"Milvus store failed (DEGRADED MODE): {e}")
 
         return memory
 
@@ -145,16 +206,28 @@ class MemoryService:
         memory_type: str | None = None,
         tenant: str = "default",
         filters: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> list[dict[str, Any]]:
         """Search memories using Django ORM.
 
         For vector similarity search, this delegates to Milvus.
         For metadata/payload search, uses Django ORM.
         """
-        queryset = Memory.objects.filter(
-            namespace=self.namespace,
-            tenant=tenant,
-        )
+        # Use provided namespace or fall back to instance namespace
+        # Ignore "default" as it's a common placeholder that doesn't match actual DB values
+        search_namespace = namespace if (namespace and namespace != "default") else self.namespace
+
+        # Start with base queryset - filter by namespace only if specific
+        if search_namespace and search_namespace != "default":
+            queryset = Memory.objects.filter(namespace=search_namespace)
+        else:
+            queryset = Memory.objects.all()
+
+        # CRITICAL: Strict tenant filtering for security
+        # Filter by BOTH DB column AND payload tenant to ensure isolation
+        if tenant and tenant != "default":
+            # Must match tenant in payload (the authoritative source)
+            queryset = queryset.filter(Q(payload__tenant=tenant) | Q(payload__tenant_id=tenant))
 
         if memory_type:
             queryset = queryset.filter(memory_type=memory_type)
@@ -171,7 +244,7 @@ class MemoryService:
 
         AuditLog.objects.create(
             action=AuditLog.Action.SEARCH,
-            namespace=self.namespace,
+            namespace=search_namespace,
             tenant=tenant,
             details={"query": query, "top_k": top_k, "filters": filters},
         )
