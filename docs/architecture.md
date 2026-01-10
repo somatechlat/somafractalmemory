@@ -1,267 +1,263 @@
-# Architecture
+# SomaFractalMemory Architecture
 
-This document describes the architecture of SomaFractalMemory.
+> **SOMA Stack Memory Core** — Django Ninja API for fractal memory storage, vector search, and graph operations.
 
-## System Overview
+## Overview
 
-SomaFractalMemory is a fractal memory system that stores and retrieves data using coordinate-based addressing. The system is built entirely on Django and Django Ninja.
+SomaFractalMemory (SFM) is the persistent memory layer of the SOMA Stack. It provides:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Clients                               │
-│                    (HTTP Requests)                           │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Django + gunicorn                          │
-│                   (WSGI Server)                              │
-│                   Port: 10101                                 │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Django Ninja API                           │
-│              (Request Routing & Validation)                  │
-├──────────────┬──────────────┬──────────────┬───────────────┤
-│    Health    │   Memory     │   Search     │    Graph      │
-│   Router     │   Router     │   Router     │   Router      │
-└──────────────┴──────────────┴──────────────┴───────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Service Layer                              │
-│              (MemoryService - Business Logic)                │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│  PostgreSQL  │  │    Redis     │  │    Milvus    │
-│  (Django ORM)│  │   (Cache)    │  │  (Vectors)   │
-│  Port: 5432  │  │  Port: 6379  │  │ Port: 19530  │
-└──────────────┘  └──────────────┘  └──────────────┘
-```
+- **Vector Storage** — High-dimensional embedding storage via Milvus
+- **Graph Operations** — Entity relationships and semantic linking
+- **Hybrid Search** — Combined vector + keyword search
+- **Multi-Tenant Isolation** — Namespace-based data separation
 
-## Component Details
-
-### API Layer
-
-The API is built with Django Ninja, which provides:
-- Automatic OpenAPI schema generation
-- Pydantic-based request/response validation
-- Type-safe route handlers
-
-**Location**: `somafractalmemory/api/`
-
-| File | Purpose |
-|------|---------|
-| `core.py` | API initialization, dependencies |
-| `schemas.py` | Pydantic models for requests/responses |
-| `messages.py` | Centralized i18n message strings |
-| `routers/health.py` | Health check endpoints |
-| `routers/memory.py` | Memory CRUD operations |
-| `routers/search.py` | Vector search endpoints |
-| `routers/graph.py` | Graph traversal endpoints |
-
-### Service Layer
-
-Business logic is centralized in the service layer.
-
-**Location**: `somafractalmemory/services.py`
-
-The `MemoryService` class provides:
-- `store()` - Store a memory with coordinate addressing
-- `retrieve()` - Fetch memory by coordinate
-- `delete()` - Remove a memory
-- `search()` - Vector similarity search
-- `health_check()` - Backend health status
-- `stats()` - Memory statistics
-
-### Data Layer
-
-All database access uses Django ORM.
-
-**Location**: `somafractalmemory/models.py`
-
-| Model | Table | Description |
-|-------|-------|-------------|
-| `Memory` | `sfm_memories` | Memory storage |
-| `GraphLink` | `sfm_graph_links` | Graph relationships |
-| `VectorEmbedding` | `sfm_vector_embeddings` | Vector metadata |
-| `MemoryNamespace` | `sfm_namespaces` | Namespace tracking |
-| `AuditLog` | `sfm_audit_log` | Audit trail |
-
-### Configuration
-
-Django settings handle all configuration.
-
-**Location**: `somafractalmemory/settings.py`
-
-Key configurations:
-- Database connection (PostgreSQL)
-- Cache backend (Redis)
-- Installed apps
-- Middleware
-- Logging
-
-## Request Flow
-
-### Store Memory
+## Architecture
 
 ```
-1. Client POST /memories
-   └── Request body: {coord, payload, memory_type}
-
-2. Django Ninja validates request
-   └── Pydantic schema: MemoryStoreRequest
-
-3. Memory router handles request
-   └── routers/memory.py:store_memory()
-
-4. Service layer processes
-   └── services.py:MemoryService.store()
-
-5. Django ORM persists to PostgreSQL
-   └── models.py:Memory.objects.create()
-
-6. Response returned
-   └── {coord, memory_type}
+┌─────────────────────────────────────────────────────────────────┐
+│                   SOMAFRACTALMEMORY                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  Django Ninja│  │  Settings    │  │  Auth Middleware    │  │
+│  │  API         │  │  (config)    │  │  (Bearer Token)      │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
+│         │                 │                      │              │
+│  ┌──────▼─────────────────▼──────────────────────▼───────────┐  │
+│  │                    STORES LAYER                           │  │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐  │  │
+│  │  │VectorStore  │ │GraphStore   │ │MetadataStore        │  │  │
+│  │  │(Milvus)     │ │(PostgreSQL) │ │(PostgreSQL)         │  │  │
+│  │  └─────────────┘ └─────────────┘ └─────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│  ┌───────────────────────────▼───────────────────────────────┐  │
+│  │                    COMMON LAYER                           │  │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐  │  │
+│  │  │Embeddings   │ │Serialization│ │Config               │  │  │
+│  │  │(Hash/Model) │ │(JSON)       │ │(settings.py)        │  │  │
+│  │  └─────────────┘ └─────────────┘ └─────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  PostgreSQL   │    │    Milvus     │    │    Redis      │
+│  (Metadata)   │    │  (Vectors)    │    │  (WM Cache)   │
+└───────────────┘    └───────────────┘    └───────────────┘
 ```
 
-### Retrieve Memory
+## Deployment Model
 
-```
-1. Client GET /memories/{coord}
+**SaaS Only** — Deployed as part of the unified `somastack_saas` container.
 
-2. Memory router parses coordinate
-   └── Parse "1.0,2.0,3.0" → (1.0, 2.0, 3.0)
-
-3. Service layer retrieves
-   └── MemoryService.retrieve(coordinate)
-
-4. Django ORM queries PostgreSQL
-   └── Memory.objects.filter(coordinate_key=...)
-
-5. Response with full memory data
-   └── {coordinate, payload, memory_type, ...}
+```yaml
+# docker-compose.yml
+somastack_saas:
+  ports:
+    - "63901:10101"  # Memory API
 ```
 
-## Database Schema
+## Technology Stack
 
-### sfm_memories
+| Component | Technology |
+|-----------|------------|
+| **API Framework** | Django Ninja |
+| **ORM** | Django ORM |
+| **Settings** | django-environ |
+| **Metadata DB** | PostgreSQL 15 |
+| **Vector DB** | Milvus 2.3 |
+| **Working Memory** | Redis 7.2 |
+| **Object Storage** | MinIO |
 
-```sql
-CREATE TABLE sfm_memories (
-    id UUID PRIMARY KEY,
-    namespace VARCHAR(255) NOT NULL,
-    coordinate DOUBLE PRECISION[] NOT NULL,
-    coordinate_key VARCHAR(512) NOT NULL,
-    payload JSONB NOT NULL,
-    memory_type VARCHAR(20) NOT NULL,
-    metadata JSONB NOT NULL DEFAULT '{}',
-    importance DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-    tenant VARCHAR(255) NOT NULL DEFAULT 'default',
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
--- Indexes
-CREATE UNIQUE INDEX ON sfm_memories(namespace, coordinate_key);
-CREATE INDEX ON sfm_memories(tenant, namespace);
-CREATE INDEX ON sfm_memories(memory_type);
-```
-
-### sfm_graph_links
-
-```sql
-CREATE TABLE sfm_graph_links (
-    id UUID PRIMARY KEY,
-    namespace VARCHAR(255) NOT NULL,
-    from_coordinate DOUBLE PRECISION[] NOT NULL,
-    from_coordinate_key VARCHAR(512) NOT NULL,
-    to_coordinate DOUBLE PRECISION[] NOT NULL,
-    to_coordinate_key VARCHAR(512) NOT NULL,
-    link_type VARCHAR(100) NOT NULL,
-    strength DOUBLE PRECISION NOT NULL DEFAULT 1.0,
-    metadata JSONB NOT NULL DEFAULT '{}',
-    tenant VARCHAR(255) NOT NULL DEFAULT 'default',
-    created_at TIMESTAMPTZ NOT NULL
-);
-
--- Indexes
-CREATE UNIQUE INDEX ON sfm_graph_links(namespace, from_coordinate_key, to_coordinate_key, link_type);
-CREATE INDEX ON sfm_graph_links(namespace, from_coordinate_key);
-CREATE INDEX ON sfm_graph_links(namespace, to_coordinate_key);
-CREATE INDEX ON sfm_graph_links(link_type);
-```
-
-## Service Dependencies
-
-### PostgreSQL
-
-- **Purpose**: Primary data storage
-- **Tables**: All memory and graph data
-- **Connection**: Django ORM via psycopg2
-
-### Redis
-
-- **Purpose**: Caching and rate limiting
-- **Usage**: Session cache, query cache
-- **Connection**: redis-py client
-
-### Milvus
-
-- **Purpose**: Vector similarity search
-- **Usage**: Semantic memory search
-- **Connection**: pymilvus client
-
-### etcd
-
-- **Purpose**: Milvus metadata storage
-- **Usage**: Internal to Milvus cluster
-
-### MinIO
-
-- **Purpose**: Milvus object storage
-- **Usage**: Large vector data storage
-
-## Security
-
-### Authentication
-
-Bearer token authentication via `Authorization` header:
+## Directory Structure
 
 ```
-Authorization: Bearer <token>
+somafractalmemory/
+├── somafractalmemory/
+│   ├── settings.py           # Django settings (316 lines)
+│   ├── api/                  # Django Ninja API
+│   │   ├── v1.py             # API entry point
+│   │   └── endpoints/        # 8 endpoint modules
+│   ├── stores/               # Storage backends
+│   │   ├── vector_store.py   # Milvus integration
+│   │   ├── graph_store.py    # Graph operations
+│   │   └── metadata_store.py # PostgreSQL metadata
+│   └── migrations/           # 1 Django migration
+├── common/
+│   └── config/
+│       └── settings.py       # Shared configuration
+├── Dockerfile.api            # API container
+└── .env.example              # Environment template
 ```
 
-Token is validated in each router's `_check_auth()` function.
+## API Endpoints
 
-### Multi-tenancy
+### Memory Operations
 
-All data is isolated by tenant:
-- `X-Soma-Tenant` header sets tenant context
-- All queries filter by `tenant` field
-- Default tenant: "default"
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/store` | Store memory item |
+| POST | `/recall` | Recall by query |
+| POST | `/search` | Vector similarity search |
+| DELETE | `/delete/{id}` | Delete memory item |
+
+### Graph Operations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/graph/link` | Create entity link |
+| GET | `/graph/neighbors/{id}` | Get neighbors |
+| DELETE | `/graph/link/{id}` | Delete link |
+
+### Health
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/healthz` | Kubernetes probe |
+| GET | `/health` | Detailed health |
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# PostgreSQL
+SOMA_POSTGRES_URL=postgresql://soma:soma@somastack_postgres:5432/somamemory
+SOMA_DB_HOST=somastack_postgres
+SOMA_DB_PORT=5432
+SOMA_DB_NAME=somamemory
+SOMA_DB_USER=soma
+SOMA_DB_PASSWORD=soma
+
+# Redis
+SOMA_REDIS_HOST=somastack_redis
+SOMA_REDIS_PORT=6379
+
+# Milvus
+SOMA_MILVUS_HOST=somastack_milvus
+SOMA_MILVUS_PORT=19530
+
+# Collection
+SFM_COLLECTION=somamemory_vectors
+SFM_VECTOR_DIM=1536
+
+# API Security
+SOMA_API_TOKEN=your_secret_token
+
+# Embedding
+SOMA_FORCE_HASH_EMBEDDINGS=false
+```
+
+## Memory Model
+
+### Vector Storage (Milvus)
+
+```python
+# Collection schema
+collection = {
+    "name": "somamemory_vectors",
+    "fields": [
+        {"name": "id", "type": "VARCHAR", "max_length": 64, "is_primary": True},
+        {"name": "tenant_id", "type": "VARCHAR", "max_length": 64},
+        {"name": "namespace", "type": "VARCHAR", "max_length": 128},
+        {"name": "vector", "type": "FLOAT_VECTOR", "dim": 1536},
+        {"name": "content", "type": "VARCHAR", "max_length": 65535},
+        {"name": "importance", "type": "FLOAT"},
+        {"name": "created_at", "type": "INT64"},
+    ],
+    "index": {"type": "IVF_FLAT", "metric": "COSINE", "nlist": 128}
+}
+```
+
+### Metadata (PostgreSQL)
+
+```python
+class MemoryItem(models.Model):
+    id = models.CharField(max_length=64, primary_key=True)
+    tenant_id = models.CharField(max_length=64)
+    namespace = models.CharField(max_length=128)
+    content = models.TextField()
+    payload = models.JSONField()
+    importance = models.FloatField(default=0.5)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["tenant_id", "namespace"]),
+        ]
+```
+
+## Hybrid Search
+
+SFM supports hybrid search combining:
+
+1. **Vector Similarity** — Cosine similarity in Milvus
+2. **Keyword Search** — Full-text search in PostgreSQL
+3. **Importance Weighting** — Score adjustment based on importance
+
+```python
+# Hybrid recall
+results = await sfm.recall(
+    query="What is the capital of France?",
+    top_k=10,
+    hybrid=True,
+    importance_weight=0.3
+)
+```
+
+## Integration
+
+### With SomaBrain
+- HTTP client via `SOMABRAIN_MEMORY_HTTP_ENDPOINT`
+- Token authentication via `SOMA_API_TOKEN`
+- In-process bridge in SaaS mode
+
+### Milvus Stack (Dependencies)
+- **etcd** — Milvus coordination
+- **MinIO** — Object storage for large vectors
 
 ## Performance
 
-### Connection Pooling
+### Importance Normalization
 
-PostgreSQL connections are pooled by Django's connection handler.
+```python
+# Reservoir sampling for stable P95
+SOMA_IMPORTANCE_RESERVOIR_MAX=512
+SOMA_IMPORTANCE_MIN_SAMPLES=32
+SOMA_IMPORTANCE_DECAY=0.99
+```
 
-### Caching
+### Batch Processing
 
-Redis provides:
-- Query result caching
-- Rate limit counters
-- Session storage
+```python
+# Enable for bulk operations
+SOMA_ENABLE_BATCH_UPSERT=true
+SOMA_BATCH_SIZE=100
+SOMA_BATCH_TIMEOUT_MS=1000
+```
 
-### Worker Configuration
+## VIBE Compliance
 
-gunicorn runs with:
-- 2 workers (configurable via `GUNICORN_WORKERS`)
-- 2 threads per worker
-- 120 second timeout
-- 1000 max requests per worker (recycling)
+- **Rule 82**: Modularity — Clean store abstraction
+- **Rule 84**: No Stubs — Real Milvus/PostgreSQL
+- **Rule 86**: Purity — Django Ninja only
+- **Rule 103**: Real Infrastructure — Docker Compose
+
+## Development
+
+```bash
+# Run locally with Django
+cd somafractalmemory
+python manage.py runserver 0.0.0.0:10101
+
+# Run via Docker (SaaS mode)
+cd ../somaAgent01/infra/saas
+docker-compose up -d
+```
+
+## License
+
+Proprietary — SomaTech.lat
