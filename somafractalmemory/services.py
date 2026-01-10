@@ -52,7 +52,7 @@ class MemoryService:
         except Exception as e:
             raise ConnectionError(
                 f"Could not connect to Milvus at {milvus_host}:{milvus_port}: {e}"
-            )
+            ) from e
 
         try:
             # Check if collection exists
@@ -79,7 +79,7 @@ class MemoryService:
         finally:
             try:
                 connections.disconnect("default")
-            except:
+            except Exception:
                 pass
 
     @transaction.atomic
