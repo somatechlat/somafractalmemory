@@ -1,6 +1,6 @@
 # SFM Resilient K8s Deployment
 # ═══════════════════════════════════════════════════════════════════════════════
-# 🚨 ARCHITECTURE: COLIMA + TILT + MINIKUBE 🚨
+# 🚨 ARCHITECTURE: TILT + MINIKUBE (VFKIT) + KUBERNETES 🚨
 # ═══════════════════════════════════════════════════════════════════════════════
 # Resilient startup with init containers and health checks
 # Port Sovereignty: SFM uses 10xxx range
@@ -118,11 +118,11 @@ spec:
             periodSeconds: 5
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "250m"
+              memory: "128Mi"
+              cpu: "100m"
             limits:
-              memory: "1Gi"
-              cpu: "500m"
+              memory: "256Mi"
+              cpu: "250m"
 ---
 # API Service
 apiVersion: v1
@@ -174,13 +174,16 @@ spec:
           livenessProbe:
             exec:
               command: ['pg_isready', '-U', 'soma']
-            initialDelaySeconds: 10
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             exec:
               command: ['pg_isready', '-U', 'soma']
-            initialDelaySeconds: 5
-            periodSeconds: 3
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
           resources:
             requests:
               memory: "256Mi"
@@ -236,13 +239,20 @@ spec:
               command: ['redis-cli', 'ping']
             initialDelaySeconds: 3
             periodSeconds: 3
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
           resources:
             requests:
               memory: "128Mi"
               cpu: "50m"
             limits:
-              memory: "256Mi"
+              memory: "128Mi"
               cpu: "100m"
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data
 ---
 apiVersion: v1
 kind: Service
@@ -293,15 +303,15 @@ spec:
               mountPath: /var/lib/milvus
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "500m"
+              memory: "1Gi"
+              cpu: "250m"
             limits:
-              memory: "4Gi"
-              cpu: "1000m"
+              memory: "1.5Gi"
+              cpu: "500m"
       volumes:
         - name: milvus-data
-          emptyDir:
-            sizeLimit: 5Gi
+          persistentVolumeClaim:
+            claimName: milvus-data
 ---
 apiVersion: v1
 kind: Service
@@ -324,6 +334,30 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: pgdata
+  namespace: sfm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: milvus-data
+  namespace: sfm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
   namespace: sfm
 spec:
   accessModes:

@@ -175,19 +175,25 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
     container_name: somafractalmemory_api
     ports:
       - "10101:10101"
     environment:
-      SOMA_API_TOKEN: "dev-032f8d463c84e7ef0d834c3a"
+      SOMA_API_TOKEN: "dev-token-somastack2024"
       SOMA_RATE_LIMIT_MAX: "0"
       SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"
       CONFIG_FILE: /app/config.yaml
       SOMA_FORCE_HASH_EMBEDDINGS: "0"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+      SOMA_POSTGRES_URL: postgresql://soma:soma@postgres:5432/somamemory
+      SOMA_REDIS_HOST: redis
+      SOMA_REDIS_PORT: "6379"
+      SOMA_MILVUS_HOST: milvus
+      SOMA_MILVUS_PORT: "19530"
+      DJANGO_SETTINGS_MODULE: somafractalmemory.settings
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,7 +202,7 @@ services:
       milvus:
         condition: service_healthy
     volumes:
-      - ./:/app:delegated
+      - ../..:/app:delegated
       - hf_cache:/root/.cache/huggingface
     deploy:
       resources:

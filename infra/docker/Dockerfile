@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY api-requirements.txt /app/
 
 RUN pip install --no-cache-dir -r api-requirements.txt
+RUN pip install --no-cache-dir uvicorn[standard]
 
 # Copy application source - ONLY essential files
 COPY somafractalmemory/ ./somafractalmemory/
@@ -61,4 +62,4 @@ USER appuser
 
 EXPOSE 10101
 
-CMD ["bash", "/app/scripts/bootstrap.sh"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:10101"]
