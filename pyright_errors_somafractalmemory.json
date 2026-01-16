@@ -1,0 +1,109 @@
+{
+    "version": "1.1.408",
+    "time": "1768570663954",
+    "generalDiagnostics": [
+        {
+            "file": "/Users/macbookpro201916i964gb1tb/Documents/GitHub/somafractalmemory/auto_doc.py",
+            "severity": "error",
+            "message": "Argument of type \"AsyncFunctionDef\" cannot be assigned to parameter \"node\" of type \"FunctionDef\" in function \"visit_FunctionDef\"\n  \"AsyncFunctionDef\" is not assignable to \"FunctionDef\"",
+            "range": {
+                "start": {
+                    "line": 125,
+                    "character": 31
+                },
+                "end": {
+                    "line": 125,
+                    "character": 35
+                }
+            },
+            "rule": "reportArgumentType"
+        },
+        {
+            "file": "/Users/macbookpro201916i964gb1tb/Documents/GitHub/somafractalmemory/common/utils/redis_cache.py",
+            "severity": "error",
+            "message": "Variable not allowed in type expression",
+            "range": {
+                "start": {
+                    "line": 64,
+                    "character": 31
+                },
+                "end": {
+                    "line": 64,
+                    "character": 36
+                }
+            },
+            "rule": "reportInvalidTypeForm"
+        },
+        {
+            "file": "/Users/macbookpro201916i964gb1tb/Documents/GitHub/somafractalmemory/typings/django-stubs.pyi",
+            "severity": "error",
+            "message": "Type \"_T@Manager\" cannot be assigned to type variable \"_Model@QuerySet\"\n  Type \"object*\" is not assignable to upper bound \"Model\" for type variable \"_Model@QuerySet\"\n    \"object*\" is not assignable to \"Model\"",
+            "range": {
+                "start": {
+                    "line": 15,
+                    "character": 41
+                },
+                "end": {
+                    "line": 15,
+                    "character": 43
+                }
+            },
+            "rule": "reportInvalidTypeArguments"
+        },
+        {
+            "file": "/Users/macbookpro201916i964gb1tb/Documents/GitHub/somafractalmemory/typings/django-stubs.pyi",
+            "severity": "error",
+            "message": "Type \"_T@Manager\" cannot be assigned to type variable \"_Model@QuerySet\"\n  Type \"object*\" is not assignable to upper bound \"Model\" for type variable \"_Model@QuerySet\"\n    \"object*\" is not assignable to \"Model\"",
+            "range": {
+                "start": {
+                    "line": 16,
+                    "character": 62
+                },
+                "end": {
+                    "line": 16,
+                    "character": 64
+                }
+            },
+            "rule": "reportInvalidTypeArguments"
+        },
+        {
+            "file": "/Users/macbookpro201916i964gb1tb/Documents/GitHub/somafractalmemory/typings/django-stubs.pyi",
+            "severity": "error",
+            "message": "Type \"_T@QuerySet\" cannot be assigned to type variable \"_Model@QuerySet\"\n  Type \"object*\" is not assignable to upper bound \"Model\" for type variable \"_Model@QuerySet\"\n    \"object*\" is not assignable to \"Model\"",
+            "range": {
+                "start": {
+                    "line": 26,
+                    "character": 41
+                },
+                "end": {
+                    "line": 26,
+                    "character": 43
+                }
+            },
+            "rule": "reportInvalidTypeArguments"
+        },
+        {
+            "file": "/Users/macbookpro201916i964gb1tb/Documents/GitHub/somafractalmemory/typings/django-stubs.pyi",
+            "severity": "error",
+            "message": "Type \"_T@QuerySet\" cannot be assigned to type variable \"_Model@QuerySet\"\n  Type \"object*\" is not assignable to upper bound \"Model\" for type variable \"_Model@QuerySet\"\n    \"object*\" is not assignable to \"Model\"",
+            "range": {
+                "start": {
+                    "line": 27,
+                    "character": 62
+                },
+                "end": {
+                    "line": 27,
+                    "character": 64
+                }
+            },
+            "rule": "reportInvalidTypeArguments"
+        }
+    ],
+    "summary": {
+        "filesAnalyzed": 47,
+        "errorCount": 6,
+        "warningCount": 0,
+        "informationCount": 0,
+        "timeInSec": 3.569
+    }
+}
