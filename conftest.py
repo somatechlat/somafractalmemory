@@ -8,14 +8,13 @@ import time
 
 import django
 import pytest
-from django.conf import settings
 
 # Force Setup
+from django.conf import settings
+
 if not settings.configured:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
 django.setup()
-
-from django.conf import settings
 
 # Ensure FastAPI surface can import with mandatory auth in test runs.
 os.environ.setdefault("SOMA_API_TOKEN", "test-token")
@@ -121,6 +120,7 @@ def pytest_sessionstart(session):
     # Connectivity check with small retry if needed.
     deadline = time.time() + 10
     ok_pg = ok_redis = ok_milvus = False
+    pg_host, pg_port = "localhost", 5432
     while time.time() < deadline:
         # Parse pg host/port from URL for reachability
         try:

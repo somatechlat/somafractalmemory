@@ -1,8 +1,8 @@
 # SomaFractalMemory — Merged Tasks & Requirements
 
-**Document:** TASKS-MERGED-SOMAFRACTALMEMORY.md  
-**Version:** 1.0.0  
-**Date:** 2026-01-03  
+**Document:** TASKS-MERGED-SOMAFRACTALMEMORY.md
+**Version:** 1.0.0
+**Date:** 2026-01-03
 **Source:** Merged from SRS-SOMAFRACTALMEMORY-MASTER.md and AGENT.md
 
 ---

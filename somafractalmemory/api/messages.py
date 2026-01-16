@@ -104,7 +104,7 @@ def get_message(code: str | SuccessCode | ErrorCode, **kwargs: Any) -> str:
         'Invalid coordinate format: abc'
     """
     # Convert enum to string if needed
-    if isinstance(code, (SuccessCode, ErrorCode)):
+    if isinstance(code, SuccessCode | ErrorCode):
         code_str = code.value
     else:
         code_str = str(code)
