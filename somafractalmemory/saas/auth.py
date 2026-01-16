@@ -107,7 +107,7 @@ class APIKeyAuth(HttpBearer):
                 return None
 
             # Update usage
-            ip_address = self._get_client_ip(request)
+            ip_address = self._get_client_ip(request) or ""
             api_key.touch(ip_address)
 
             logger.info(

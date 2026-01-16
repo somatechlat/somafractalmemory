@@ -74,7 +74,7 @@ class UsageBuffer:
         operation: str,
         count: int = 1,
         bytes_processed: int = 0,
-        api_key_id: str = None,
+        api_key_id: str | None = None,
     ):
         """Add a usage event to the buffer."""
         with self._lock:
@@ -212,7 +212,7 @@ class UsageTrackingMiddleware(MiddlewareMixin):
                 operation=operation,
                 count=1,
                 bytes_processed=content_length,
-                api_key_id=auth.get("api_key_id"),
+                api_key_id=auth.get("api_key_id") or "",
             )
         except Exception as e:
             logger.warning(f"Failed to record usage: {e}")
@@ -240,7 +240,7 @@ def track_usage(
     operation: str,
     count: int = 1,
     bytes_processed: int = 0,
-    api_key_id: str = None,
+    api_key_id: str | None = None,
 ):
     """
     Manually track a usage event.

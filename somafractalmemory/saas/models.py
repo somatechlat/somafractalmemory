@@ -95,11 +95,11 @@ class APIKey(models.Model):
         except cls.DoesNotExist:
             return None
 
-    def touch(self, ip_address: str = None):
+    def touch(self, ip_address: str | None = None):
         """Update usage stats."""
         self.last_used_at = datetime.now(timezone.utc)
         if ip_address:
-            self.last_used_ip = ip_address
+            self.last_used_ip = str(ip_address)
         self.usage_count += 1
         self.save(update_fields=["last_used_at", "last_used_ip", "usage_count"])
 
