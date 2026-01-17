@@ -19,17 +19,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # -----------------------------------------------------------------------------
 # Security Settings
 # -----------------------------------------------------------------------------
-SECRET_KEY = os.environ.get(
-    "SOMA_SECRET_KEY", os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-in-production")
-)
+SECRET_KEY = os.environ.get("SOMA_SECRET_KEY") or os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SOMA_SECRET_KEY or DJANGO_SECRET_KEY must be set")
 DEBUG = os.environ.get("SOMA_DEBUG", "false").lower() in ("true", "1", "yes")
-ALLOWED_HOSTS = [
-    h.strip()
-    for h in os.environ.get("SOMA_ALLOWED_HOSTS", "localhost,127.0.0.1,host.docker.internal").split(
-        ","
-    )
-    if h.strip()
-]
+ALLOWED_HOSTS_STR = os.environ.get("SOMA_ALLOWED_HOSTS")
+if not ALLOWED_HOSTS_STR:
+    raise ValueError("SOMA_ALLOWED_HOSTS must be set")
+ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS_STR.split(",") if h.strip()]
 
 # API Authentication Token
 SOMA_API_TOKEN = os.environ.get("SOMA_API_TOKEN")
@@ -59,17 +56,15 @@ ROOT_URLCONF = "somafractalmemory.urls"
 # -----------------------------------------------------------------------------
 # Database Configuration (PostgreSQL)
 # -----------------------------------------------------------------------------
-print(f"DEBUG: SOMA_DB_NAME from env: {os.environ.get('SOMA_DB_NAME')}")
-print(f"DEBUG: SOMA_DB_USER from env: {os.environ.get('SOMA_DB_USER')}")
 
 # Primary database for Django ORM (not used by SomaFractalMemory stores directly)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "somafractalmemory",  # os.environ.get("SOMA_DB_NAME", "somamemory"),
-        "USER": os.environ.get("SOMA_DB_USER", "soma"),
-        "PASSWORD": os.environ.get("SOMA_DB_PASSWORD", "soma"),
-        "HOST": os.environ.get("SOMA_DB_HOST", os.environ.get("SOMA_INFRA__POSTGRES", "postgres")),
+        "NAME": os.environ.get("SOMA_DB_NAME"),
+        "USER": os.environ.get("SOMA_DB_USER"),
+        "PASSWORD": os.environ.get("SOMA_DB_PASSWORD"),
+        "HOST": os.environ.get("SOMA_DB_HOST"),
         "PORT": os.environ.get("SOMA_DB_PORT", "5432"),
     }
 }
@@ -93,18 +88,16 @@ SOMA_POSTGRES_SSL_KEY = os.environ.get("SOMA_POSTGRES_SSL_KEY")
 # -----------------------------------------------------------------------------
 # Redis Configuration
 # -----------------------------------------------------------------------------
-SOMA_REDIS_HOST = os.environ.get("SOMA_INFRA__REDIS", os.environ.get("REDIS_HOST", "redis"))
-SOMA_REDIS_PORT = int(os.environ.get("SOMA_REDIS_PORT", os.environ.get("REDIS_PORT", "6379")))
-SOMA_REDIS_DB = int(os.environ.get("SOMA_REDIS_DB", "0"))
+SOMA_REDIS_HOST = os.environ.get("SOMA_REDIS_HOST")
+SOMA_REDIS_PORT = os.environ.get("SOMA_REDIS_PORT")
+SOMA_REDIS_DB = os.environ.get("SOMA_REDIS_DB", "0")
 SOMA_REDIS_PASSWORD = os.environ.get("SOMA_REDIS_PASSWORD")
 
 # -----------------------------------------------------------------------------
 # Milvus Vector Store Configuration
 # -----------------------------------------------------------------------------
-SOMA_MILVUS_HOST = os.environ.get(
-    "SOMA_MILVUS_HOST", os.environ.get("SOMA_INFRA__MILVUS", "milvus")
-)
-SOMA_MILVUS_PORT = int(os.environ.get("SOMA_MILVUS_PORT", "19530"))
+SOMA_MILVUS_HOST = os.environ.get("SOMA_MILVUS_HOST")
+SOMA_MILVUS_PORT = os.environ.get("SOMA_MILVUS_PORT")
 
 # -----------------------------------------------------------------------------
 # Memory System Configuration

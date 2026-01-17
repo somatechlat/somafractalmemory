@@ -131,7 +131,10 @@ class APIKeyAuth(HttpBearer):
         """Validate sbk_* key via SomaBrain central auth (async)."""
         import httpx
 
-        somabrain_url = getattr(settings, "SOMABRAIN_URL", "http://localhost:9696")
+        somabrain_url = getattr(settings, "SOMABRAIN_URL", None)
+        if not somabrain_url:
+            logger.error("SOMABRAIN_URL not configured - cannot validate central key")
+            return None
 
         try:
             # Synchronous call to SomaBrain auth endpoint

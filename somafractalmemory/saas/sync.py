@@ -45,7 +45,7 @@ class UsageSyncClient:
     def __init__(self):
         """Initialize the instance."""
 
-        self.somabrain_url = getattr(settings, "SOMABRAIN_URL", "http://localhost:9696")
+        self.somabrain_url = getattr(settings, "SOMABRAIN_URL", None)
         self.api_token = getattr(settings, "SOMABRAIN_API_TOKEN", "")
 
     @property
@@ -73,6 +73,10 @@ class UsageSyncClient:
         """
         if not self.api_token:
             logger.warning("SOMABRAIN_API_TOKEN not configured - skipping sync")
+            return False
+
+        if not self.somabrain_url:
+            logger.error("SOMABRAIN_URL not configured in Django settings - cannot sync")
             return False
 
         try:
