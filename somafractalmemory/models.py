@@ -13,7 +13,7 @@ from django.db import models
 
 
 class Memory(models.Model):
-    """Memory storage model - replaces PostgresKeyValueStore.
+    """Memory storage model.
 
     Stores episodic and semantic memories with coordinates and payloads.
     """
@@ -85,7 +85,7 @@ class Memory(models.Model):
 
 
 class GraphLink(models.Model):
-    """Graph link model - replaces PostgresGraphStore.
+    """Graph link model.
 
     Stores relationships between memory coordinates.
     """
