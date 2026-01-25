@@ -68,9 +68,8 @@ class APIKey(models.Model):
             models.Index(fields=["key_prefix", "key_hash"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
-
         return f"{self.name} ({self.key_prefix}...)"
 
     @classmethod
@@ -95,7 +94,7 @@ class APIKey(models.Model):
         except cls.DoesNotExist:
             return None
 
-    def touch(self, ip_address: str | None = None):
+    def touch(self, ip_address: str | None = None) -> None:
         """Update usage stats."""
         self.last_used_at = datetime.now(timezone.utc)
         if ip_address:
@@ -146,15 +145,19 @@ class UsageRecord(models.Model):
             models.Index(fields=["tenant", "operation", "hour_bucket"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
-
         return f"{self.tenant}:{self.operation} ({self.count})"
 
     @classmethod
     def record(
-        cls, tenant: str, operation: str, count: int = 1, bytes_processed: int = 0, api_key_id=None
-    ):
+        cls,
+        tenant: str,
+        operation: str,
+        count: int = 1,
+        bytes_processed: int = 0,
+        api_key_id: "str | None" = None,
+    ) -> "UsageRecord":
         """Record a usage event."""
         now = datetime.now(timezone.utc)
         hour_bucket = now.replace(minute=0, second=0, microsecond=0)

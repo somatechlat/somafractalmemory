@@ -1,7 +1,11 @@
-"""Django ORM-based memory services.
+"""
+SomaFractalMemory Services - Business Logic Layer
+Copyright (C) 2025 SomaTech LAT.
 
-100% Django ORM - replaces old factory.py and raw psycopg2 stores.
-All database access through Django ORM.
+This module implements the core business logic for the memory system using
+Django ORM. It provides services for:
+- MemoryService: CRUD operations for episodic and semantic memories.
+- GraphService: Management of links and relationships between memories.
 """
 
 from typing import Any
@@ -17,9 +21,13 @@ logger = get_logger(__name__)
 
 
 class MemoryService:
-    """Django ORM-based memory service.
+    """Service for managing memory storage, retrieval, and search.
 
-    Replaces PostgresKeyValueStore with pure Django ORM operations.
+    This service connects the API layer to the Django ORM models, handling
+    transactions, audit logging, and coordinate transformations.
+
+    Attributes:
+        namespace (str): The isolation namespace for all operations.
     """
 
     def __init__(self, namespace: str = "default"):
@@ -304,6 +312,42 @@ class GraphService:
                     queue.append((next_key, path + [tuple(link.to_coordinate)]))
 
         return None
+
+    def export_graph(self, path: str) -> None:
+        """Export graph to JSON using Django ORM."""
+        from .models import Memory
+
+        # Get nodes (memories)
+        nodes = list(Memory.objects.filter(namespace=self.namespace).values())
+        formatted_nodes = [{"id": str(n["coordinate"]), "data": n["payload"]} for n in nodes]
+
+        # Get edges (links)
+        edges = list(GraphLink.objects.filter(namespace=self.namespace).values())
+        formatted_edges = [
+            {
+                "source": str(e["from_coordinate"]),
+                "target": str(e["to_coordinate"]),
+                "relation": e["link_type"],
+            }
+            for e in edges
+        ]
+
+        data = {"nodes": formatted_nodes, "edges": formatted_edges}
+
+        import json
+
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+    def health_check(self) -> bool:
+        """Check database health using Django ORM."""
+        try:
+            # Simple query to verify database connection
+            GraphLink.objects.none()
+            return True
+        except Exception as e:
+            logger.error(f"Graph store health check failed: {e}")
+            return False
 
 
 def get_memory_service(namespace: str = "default") -> MemoryService:

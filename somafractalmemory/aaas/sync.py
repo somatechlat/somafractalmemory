@@ -130,7 +130,7 @@ class UsageSyncService:
         self._running = False
         self._last_sync: datetime | None = None
 
-    def start(self):
+    def start(self) -> None:
         """Start the background sync thread."""
         if self._thread is None:
             self._running = True
@@ -138,24 +138,24 @@ class UsageSyncService:
             self._thread.start()
             logger.info("Usage sync service started")
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the background sync thread."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=10)
             logger.info("Usage sync service stopped")
 
-    def sync_now(self):
+    def sync_now(self) -> None:
         """Force an immediate sync."""
         self._do_sync()
 
-    def _sync_loop(self):
+    def _sync_loop(self) -> None:
         """Background loop for periodic syncing."""
         while self._running:
             time.sleep(self._sync_interval)
             self._do_sync()
 
-    def _do_sync(self):
+    def _do_sync(self) -> None:
         """Perform the actual sync operation."""
         try:
             # Get unsynced records grouped by tenant
@@ -176,7 +176,7 @@ class UsageSyncService:
         except Exception as e:
             logger.exception(f"Sync loop error: {e}")
 
-    def _sync_tenant(self, tenant: str, cutoff: datetime):
+    def _sync_tenant(self, tenant: str, cutoff: datetime) -> None:
         """Sync usage records for a specific tenant."""
         # Aggregate records by operation
         records = (
@@ -233,13 +233,13 @@ def get_sync_service() -> UsageSyncService:
     return _sync_service
 
 
-def start_usage_sync():
+def start_usage_sync() -> None:
     """Start the usage sync service."""
     service = get_sync_service()
     service.start()
 
 
-def stop_usage_sync():
+def stop_usage_sync() -> None:
     """Stop the usage sync service."""
     if _sync_service:
         _sync_service.stop()

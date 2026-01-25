@@ -83,3 +83,7 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 addopts = "-q -ra --maxfail=1"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]

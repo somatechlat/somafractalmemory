@@ -1,6 +1,8 @@
-"""Django ORM models for SomaFractalMemory.
+"""
+SomaFractalMemory Models - Data Persistence Layer
+Copyright (C) 2025 SomaTech LAT.
 
-100% Django ORM - replaces raw psycopg2.
+This module defines the Django ORM models for the memory system.
 All database access goes through these models.
 """
 
@@ -24,23 +26,25 @@ class Memory(models.Model):
         EPISODIC = "episodic", "Episodic"
         SEMANTIC = "semantic", "Semantic"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    namespace = models.CharField(max_length=255, db_index=True)
-    coordinate = ArrayField(models.FloatField(), help_text="Memory coordinate as float array")
-    coordinate_key = models.CharField(
+    id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    namespace: models.CharField = models.CharField(max_length=255, db_index=True)
+    coordinate: ArrayField = ArrayField(
+        models.FloatField(), help_text="Memory coordinate as float array"
+    )
+    coordinate_key: models.CharField = models.CharField(
         max_length=512, db_index=True, help_text="Stringified coordinate for lookups"
     )
-    memory_type = models.CharField(
+    memory_type: models.CharField = models.CharField(
         max_length=20, choices=MemoryType.choices, default=MemoryType.EPISODIC
     )
-    payload = models.JSONField(default=dict)
-    metadata = models.JSONField(default=dict, blank=True)
-    tenant = models.CharField(max_length=255, default="default", db_index=True)
-    importance = models.FloatField(default=0.0, db_index=True)
-    access_count = models.IntegerField(default=0)
-    last_accessed = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    payload: models.JSONField = models.JSONField(default=dict)
+    metadata: models.JSONField = models.JSONField(default=dict, blank=True)
+    tenant: models.CharField = models.CharField(max_length=255, default="default", db_index=True)
+    importance: models.FloatField = models.FloatField(default=0.0, db_index=True)
+    access_count: models.IntegerField = models.IntegerField(default=0)
+    last_accessed: models.DateTimeField = models.DateTimeField(null=True, blank=True)
+    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at: models.DateTimeField = models.DateTimeField(auto_now=True)
 
     class Meta:
         """Meta class implementation."""
@@ -62,7 +66,7 @@ class Memory(models.Model):
             ),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
 
         return f"Memory({self.coordinate_key}, {self.memory_type})"
@@ -77,7 +81,7 @@ class Memory(models.Model):
         """Convert string key to coordinate tuple."""
         return tuple(float(p.strip()) for p in key.split(",") if p.strip())
 
-    def touch(self):
+    def touch(self) -> None:
         """Update access count and timestamp."""
         self.access_count += 1
         self.last_accessed = datetime.now(timezone.utc)
@@ -90,17 +94,17 @@ class GraphLink(models.Model):
     Stores relationships between memory coordinates.
     """
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    namespace = models.CharField(max_length=255, db_index=True)
-    from_coordinate = ArrayField(models.FloatField())
-    from_coordinate_key = models.CharField(max_length=512)
-    to_coordinate = ArrayField(models.FloatField())
-    to_coordinate_key = models.CharField(max_length=512)
-    link_type = models.CharField(max_length=100, default="related", db_index=True)
-    strength = models.FloatField(default=1.0)
-    metadata = models.JSONField(default=dict, blank=True)
-    tenant = models.CharField(max_length=255, default="default", db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    namespace: models.CharField = models.CharField(max_length=255, db_index=True)
+    from_coordinate: ArrayField = ArrayField(models.FloatField())
+    from_coordinate_key: models.CharField = models.CharField(max_length=512)
+    to_coordinate: ArrayField = ArrayField(models.FloatField())
+    to_coordinate_key: models.CharField = models.CharField(max_length=512)
+    link_type: models.CharField = models.CharField(max_length=100, default="related", db_index=True)
+    strength: models.FloatField = models.FloatField(default=1.0)
+    metadata: models.JSONField = models.JSONField(default=dict, blank=True)
+    tenant: models.CharField = models.CharField(max_length=255, default="default", db_index=True)
+    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         """Meta class implementation."""
@@ -122,7 +126,7 @@ class GraphLink(models.Model):
             ),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
 
         return f"Link({self.from_coordinate_key} -> {self.to_coordinate_key}, {self.link_type})"
@@ -135,13 +139,19 @@ class VectorEmbedding(models.Model):
     Metadata is stored here, vectors are in Milvus.
     """
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    memory = models.ForeignKey(Memory, on_delete=models.CASCADE, related_name="embeddings")
-    collection_name = models.CharField(max_length=255)
-    milvus_id = models.BigIntegerField(null=True, help_text="ID in Milvus collection")
-    vector_dim = models.IntegerField(default=768)
-    model_name = models.CharField(max_length=255, default="microsoft/codebert-base")
-    created_at = models.DateTimeField(auto_now_add=True)
+    id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    memory: models.ForeignKey = models.ForeignKey(
+        Memory, on_delete=models.CASCADE, related_name="embeddings"
+    )
+    collection_name: models.CharField = models.CharField(max_length=255)
+    milvus_id: models.BigIntegerField = models.BigIntegerField(
+        null=True, help_text="ID in Milvus collection"
+    )
+    vector_dim: models.IntegerField = models.IntegerField(default=768)
+    model_name: models.CharField = models.CharField(
+        max_length=255, default="microsoft/codebert-base"
+    )
+    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         """Meta class implementation."""
@@ -153,7 +163,7 @@ class VectorEmbedding(models.Model):
             models.Index(fields=["collection_name", "milvus_id"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
 
         return f"Embedding({self.memory_id}, milvus={self.milvus_id})"
@@ -165,16 +175,18 @@ class MemoryNamespace(models.Model):
     Stores namespace-level settings and statistics.
     """
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, unique=True)
-    tenant = models.CharField(max_length=255, default="default", db_index=True)
-    description = models.TextField(blank=True)
-    config = models.JSONField(default=dict, help_text="Namespace-specific configuration")
-    total_memories = models.IntegerField(default=0)
-    episodic_count = models.IntegerField(default=0)
-    semantic_count = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name: models.CharField = models.CharField(max_length=255, unique=True)
+    tenant: models.CharField = models.CharField(max_length=255, default="default", db_index=True)
+    description: models.TextField = models.TextField(blank=True)
+    config: models.JSONField = models.JSONField(
+        default=dict, help_text="Namespace-specific configuration"
+    )
+    total_memories: models.IntegerField = models.IntegerField(default=0)
+    episodic_count: models.IntegerField = models.IntegerField(default=0)
+    semantic_count: models.IntegerField = models.IntegerField(default=0)
+    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
+    updated_at: models.DateTimeField = models.DateTimeField(auto_now=True)
 
     class Meta:
         """Meta class implementation."""
@@ -183,12 +195,12 @@ class MemoryNamespace(models.Model):
         verbose_name = "Memory Namespace"
         verbose_name_plural = "Memory Namespaces"
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
 
         return f"Namespace({self.name})"
 
-    def update_stats(self):
+    def update_stats(self) -> None:
         """Update namespace statistics from actual counts."""
         from django.db.models import Count, Q
 
@@ -220,15 +232,15 @@ class AuditLog(models.Model):
         DELETE = "delete", "Delete"
         SEARCH = "search", "Search"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    action = models.CharField(max_length=20, choices=Action.choices)
-    namespace = models.CharField(max_length=255, db_index=True)
-    coordinate_key = models.CharField(max_length=512, blank=True)
-    tenant = models.CharField(max_length=255, default="default", db_index=True)
-    user_id = models.CharField(max_length=255, blank=True)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    details = models.JSONField(default=dict, blank=True)
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    action: models.CharField = models.CharField(max_length=20, choices=Action.choices)
+    namespace: models.CharField = models.CharField(max_length=255, db_index=True)
+    coordinate_key: models.CharField = models.CharField(max_length=512, blank=True)
+    tenant: models.CharField = models.CharField(max_length=255, default="default", db_index=True)
+    user_id: models.CharField = models.CharField(max_length=255, blank=True)
+    ip_address: models.GenericIPAddressField = models.GenericIPAddressField(null=True, blank=True)
+    details: models.JSONField = models.JSONField(default=dict, blank=True)
+    timestamp: models.DateTimeField = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         """Meta class implementation."""
@@ -242,7 +254,7 @@ class AuditLog(models.Model):
             models.Index(fields=["tenant", "timestamp"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string representation."""
 
         return f"Audit({self.action}, {self.coordinate_key}, {self.timestamp})"

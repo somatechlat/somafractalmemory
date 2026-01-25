@@ -116,7 +116,9 @@ api:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOMA_API_TOKEN` | - | Authentication token |
+| `SOMA_API_TOKEN` | - | **Required**. Authentication token |
+| `SOMA_SECRET_KEY` | - | **Required**. Django crypto key |
+| `SOMA_ALLOWED_HOSTS` | * | **Required**. Hostname allowlist |
 | `SOMA_API_PORT` | 10101 | API port |
 | `SOMA_MEMORY_NAMESPACE` | api_ns | Default namespace |
 | `SOMA_RATE_LIMIT_MAX` | 0 | Rate limit (0=disabled) |

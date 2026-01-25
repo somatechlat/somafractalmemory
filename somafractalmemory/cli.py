@@ -9,7 +9,7 @@ import os
 import sys
 
 
-def setup_django():
+def setup_django() -> None:
     """Setup Django before any Django imports."""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
     import django

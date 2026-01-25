@@ -1,7 +1,9 @@
-"""Milvus Vector Store implementation.
+"""
+SomaFractalMemory - Milvus Vector Store Implementation
+Copyright (C) 2025 SomaTech LAT.
 
-Provides vector similarity search using Milvus.
-Used by SomaBrain for FNOM memory retrieval.
+Provides vector similarity search using Milvus 2.3+.
+Core component of the FNOM memory retrieval pipeline.
 """
 
 from __future__ import annotations

@@ -1,5 +1,7 @@
 # somafractalmemory/api/schemas.py
-"""Pydantic schemas for SomaFractalMemory API.
+"""
+SomaFractalMemory API Schemas - Pydantic Models
+Copyright (C) 2025 SomaTech LAT.
 
 100% Django + Pydantic patterns.
 """

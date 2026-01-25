@@ -1,4 +1,6 @@
-"""Centralized messages for SomaFractalMemory API.
+"""
+SomaFractalMemory API Messages - Centralized I18N
+Copyright (C) 2025 SomaTech LAT.
 
 All user-facing strings are defined here for i18n readiness.
 Use get_message(code, **kwargs) to retrieve formatted messages.

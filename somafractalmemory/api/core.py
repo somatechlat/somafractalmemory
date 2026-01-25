@@ -1,4 +1,6 @@
-"""Core API module - 100% Django + Django Ninja + Django ORM.
+"""
+SomaFractalMemory API Core - Django Ninja Integration
+Copyright (C) 2025 SomaTech LAT.
 
 This module initializes the Django Ninja API and uses Django ORM services.
 All database access through Django ORM models.
@@ -8,6 +10,7 @@ NO external frameworks - pure Django.
 # flake8: noqa: E402
 
 import os
+from typing import Any
 
 # Django setup MUST happen before any Django imports
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
@@ -17,7 +20,7 @@ import django
 django.setup()
 
 from django.conf import settings
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 
@@ -77,7 +80,7 @@ api = NinjaAPI(
 
 # Exception handlers
 @api.exception_handler(HttpError)
-def handle_http_error(request: HttpRequest, exc: HttpError):
+def handle_http_error(request: HttpRequest, exc: HttpError) -> HttpResponse:
     """Handle HttpError exceptions."""
     return api.create_response(
         request,
@@ -87,7 +90,7 @@ def handle_http_error(request: HttpRequest, exc: HttpError):
 
 
 @api.exception_handler(Exception)
-def handle_exception(request: HttpRequest, exc: Exception):
+def handle_exception(request: HttpRequest, exc: Exception) -> HttpResponse:
     """Handle unexpected exceptions."""
     logger.error(f"An unexpected error occurred: {exc}", exc_info=True)
     return api.create_response(
@@ -100,17 +103,17 @@ def handle_exception(request: HttpRequest, exc: Exception):
 # -----------------------------------------------------------------------------
 # API Accessors (for routers)
 # -----------------------------------------------------------------------------
-def get_mem():
+def get_mem() -> Any:
     """Get the memory service instance."""
     return mem_service
 
 
-def get_graph():
+def get_graph() -> Any:
     """Get the graph service instance."""
     return graph_service
 
 
-def get_rate_limiter():
+def get_rate_limiter() -> Any:
     """Get rate limiter instance.
 
     Rate limiting is implemented via Django middleware (see settings.MIDDLEWARE).

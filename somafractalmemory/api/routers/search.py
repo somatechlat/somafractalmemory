@@ -72,8 +72,8 @@ def search_memories_get(
             parsed_candidate = json.loads(filters)
             if isinstance(parsed_candidate, dict):
                 parsed_filters = parsed_candidate
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to parse search filters JSON: {e}")
 
     results = service.search(
         query=query,

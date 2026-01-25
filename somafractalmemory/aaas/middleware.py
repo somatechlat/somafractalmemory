@@ -55,14 +55,14 @@ class UsageBuffer:
         self._flush_thread = None
         self._running = False
 
-    def start(self):
+    def start(self) -> None:
         """Start the background flush thread."""
         if self._flush_thread is None:
             self._running = True
             self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
             self._flush_thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the background flush thread."""
         self._running = False
         if self._flush_thread:
@@ -75,7 +75,7 @@ class UsageBuffer:
         count: int = 1,
         bytes_processed: int = 0,
         api_key_id: str | None = None,
-    ):
+    ) -> None:
         """Add a usage event to the buffer."""
         with self._lock:
             self._buffer.append(
@@ -93,7 +93,7 @@ class UsageBuffer:
             if len(self._buffer) >= self._max_size:
                 self._flush()
 
-    def _flush_loop(self):
+    def _flush_loop(self) -> None:
         """Background loop to periodically flush buffer."""
         while self._running:
             time.sleep(self._flush_interval)
@@ -101,7 +101,7 @@ class UsageBuffer:
                 if self._buffer:
                     self._flush()
 
-    def _flush(self):
+    def _flush(self) -> None:
         """Flush buffer to database."""
         if not self._buffer:
             return
@@ -241,7 +241,7 @@ def track_usage(
     count: int = 1,
     bytes_processed: int = 0,
     api_key_id: str | None = None,
-):
+) -> None:
     """
     Manually track a usage event.
 
@@ -261,7 +261,7 @@ def track_usage(
         logger.warning(f"Failed to track usage: {e}")
 
 
-def flush_usage():
+def flush_usage() -> None:
     """Force flush the usage buffer."""
     buffer = get_usage_buffer()
     buffer._flush()

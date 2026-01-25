@@ -163,18 +163,32 @@ services:
     ports:
       - "10101:10101"
     environment:
+      # Security
       SOMA_API_TOKEN: "dev-token-somastack2024"
+      SOMA_SECRET_KEY: "dev-secret-key-CHANGE-IN-PROD"
+      SOMA_ALLOWED_HOSTS: "*"
+      # Rate limiting (disabled for dev)
       SOMA_RATE_LIMIT_MAX: "0"
       SOMA_RATE_LIMIT_WINDOW_SECONDS: "0"
+      # Configuration
       CONFIG_FILE: /app/config.yaml
       SOMA_FORCE_HASH_EMBEDDINGS: "0"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+      # Database (individual settings required by Django DATABASES)
+      SOMA_DB_NAME: somamemory
+      SOMA_DB_USER: soma
+      SOMA_DB_PASSWORD: soma
+      SOMA_DB_HOST: somafractalmemory_standalone_postgres
+      SOMA_DB_PORT: "5432"
       SOMA_POSTGRES_URL: postgresql://soma:soma@somafractalmemory_standalone_postgres:5432/somamemory
+      # Redis
       SOMA_REDIS_HOST: somafractalmemory_standalone_redis
       SOMA_REDIS_PORT: "6379"
+      # Milvus
       SOMA_MILVUS_HOST: somafractalmemory_standalone_milvus
       SOMA_MILVUS_PORT: "19530"
+      # Django
       DJANGO_SETTINGS_MODULE: somafractalmemory.settings
     depends_on:
       somafractalmemory_standalone_postgres:

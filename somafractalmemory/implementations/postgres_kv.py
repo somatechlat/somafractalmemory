@@ -1,7 +1,9 @@
-"""PostgreSQL Key-Value Store implementation.
+"""
+SomaFractalMemory - Postgres Key-Value Store Implementation
+Copyright (C) 2025 SomaTech LAT.
 
-Provides key-value storage using psycopg3 (async-capable).
-Used by SomaBrain for FNOM persistent storage.
+Provides persistent key-value storage using psycopg3 (async-capable).
+Used for direct FNOM data persistence.
 """
 
 from __future__ import annotations
