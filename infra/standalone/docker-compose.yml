@@ -1,22 +1,9 @@
-# =============================================================================
-# PRODUCTION-GRADE DOCKER COMPOSE - SomaFractalMemory
-# =============================================================================
-# VIBE Rule 113: Port Sovereignty - 10xxx Range (Storage Tier L2)
-# PORT RANGE: 10xxx (Island Isolation)
-#   10101 - API (Django + uvicorn)
-#   10432 - PostgreSQL
-#   10379 - Redis
-#   10530 - Milvus gRPC
-#   10531 - Milvus HTTP/metrics
-#
-# MEMORY BUDGET: 8GB total (VIBE Rule 108)
-#   PostgreSQL: 1.5GB | Redis: 512MB | etcd: 256MB | MinIO: 256MB | Milvus: 4GB | API: 1GB
-# =============================================================================
+name: SomafractalMemoryStandAlone
 
 services:
-  postgres:
+  somafractalmemory_standalone_postgres:
     image: postgres:15
-    container_name: somafractalmemory_postgres
+    container_name: somafractalmemory_standalone_postgres
     environment:
       POSTGRES_USER: soma
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soma}
@@ -33,9 +20,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 512M
         reservations:
-          memory: 768M
+          memory: 256M
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -h localhost -p 5432 -U soma" ]
       interval: 10s
@@ -44,16 +31,13 @@ services:
     profiles:
       - core
     networks:
-      smfnet:
+      somafractalmemory_standalone_net:
         aliases:
-          - postgres
-          - somabrain_postgres
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+          - standalone_postgres
 
-  redis:
+  somafractalmemory_standalone_redis:
     image: redis:7
-    container_name: somafractalmemory_redis
+    container_name: somafractalmemory_standalone_redis
     ports:
       - "${REDIS_HOST_PORT:-10379}:6379"
     volumes:
@@ -64,9 +48,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
-        reservations:
           memory: 256M
+        reservations:
+          memory: 128M
     healthcheck:
       test: [ "CMD", "redis-cli", "-p", "6379", "ping" ]
       interval: 10s
@@ -75,16 +59,13 @@ services:
     profiles:
       - core
     networks:
-      smfnet:
+      somafractalmemory_standalone_net:
         aliases:
-          - redis
-          - somabrain_redis
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+          - standalone_redis
 
-  etcd:
+  somafractalmemory_standalone_etcd:
     image: quay.io/coreos/etcd:v3.5.5
-    container_name: somafractalmemory_etcd
+    container_name: somafractalmemory_standalone_etcd
     volumes:
       - etcddata:/etcd
     command: >
@@ -103,13 +84,13 @@ services:
     profiles:
       - core
     networks:
-      smfnet:
+      somafractalmemory_standalone_net:
         aliases:
-          - etcd
+          - standalone_etcd
 
-  minio:
+  somafractalmemory_standalone_minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
-    container_name: somafractalmemory_minio
+    container_name: somafractalmemory_standalone_minio
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -130,32 +111,36 @@ services:
     profiles:
       - core
     networks:
-      smfnet:
+      somafractalmemory_standalone_net:
         aliases:
-          - minio
+          - standalone_minio
 
-  milvus:
+  somafractalmemory_standalone_milvus:
     image: milvusdb/milvus:v2.3.3
-    container_name: somafractalmemory_milvus
+    container_name: somafractalmemory_standalone_milvus
     command: [ "milvus", "run", "standalone" ]
     ports:
       - "${MILVUS_HOST_PORT:-10530}:19530"
       - "${MILVUS_GRPC_PORT:-10531}:9091"
     environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
+      ETCD_ENDPOINTS: somafractalmemory_standalone_etcd:2379
+      MINIO_ADDRESS: somafractalmemory_standalone_minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET_NAME: "milvus-bucket"
     volumes:
       - milvusdata:/var/lib/milvus
     deploy:
       resources:
         limits:
-          memory: 8G
+          memory: 4500M
         reservations:
-          memory: 4G
+          memory: 1G
     depends_on:
-      etcd:
+      somafractalmemory_standalone_etcd:
         condition: service_healthy
-      minio:
+      somafractalmemory_standalone_minio:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1" ]
@@ -166,18 +151,15 @@ services:
     profiles:
       - core
     networks:
-      smfnet:
+      somafractalmemory_standalone_net:
         aliases:
-          - milvus
-          - somabrain_milvus
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+          - standalone_milvus
 
-  api:
+  somafractalmemory_standalone_api:
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile
-    container_name: somafractalmemory_api
+      dockerfile: infra/standalone/Dockerfile
+    container_name: somafractalmemory_standalone_api
     ports:
       - "10101:10101"
     environment:
@@ -188,19 +170,19 @@ services:
       SOMA_FORCE_HASH_EMBEDDINGS: "0"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
-      SOMA_POSTGRES_URL: postgresql://soma:soma@postgres:5432/somamemory
-      SOMA_REDIS_HOST: redis
+      SOMA_POSTGRES_URL: postgresql://soma:soma@somafractalmemory_standalone_postgres:5432/somamemory
+      SOMA_REDIS_HOST: somafractalmemory_standalone_redis
       SOMA_REDIS_PORT: "6379"
-      SOMA_MILVUS_HOST: milvus
+      SOMA_MILVUS_HOST: somafractalmemory_standalone_milvus
       SOMA_MILVUS_PORT: "19530"
       DJANGO_SETTINGS_MODULE: somafractalmemory.settings
     depends_on:
-      postgres:
+      somafractalmemory_standalone_postgres:
         condition: service_healthy
-      redis:
+      somafractalmemory_standalone_redis:
         condition: service_healthy
-      milvus:
-        condition: service_healthy
+      somafractalmemory_standalone_milvus:
+        condition: service_started
     volumes:
       - ../..:/app:delegated
       - hf_cache:/root/.cache/huggingface
@@ -219,12 +201,9 @@ services:
     profiles:
       - core
     networks:
-      smfnet:
+      somafractalmemory_standalone_net:
         aliases:
-          - api
-          - somabrain_api
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+          - standalone_api
 
 volumes:
   pgdata:
@@ -241,6 +220,6 @@ volumes:
     driver: local
 
 networks:
-  smfnet:
-    name: somafractalmemory_net
+  somafractalmemory_standalone_net:
+    name: somafractalmemory_standalone_net
     driver: bridge

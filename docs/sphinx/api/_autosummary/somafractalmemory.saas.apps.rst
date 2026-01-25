@@ -1,11 +1,11 @@
-somafractalmemory.saas.apps
+somafractalmemory.aaas.apps
 ===========================
 
-.. automodule:: somafractalmemory.saas.apps
+.. automodule:: somafractalmemory.aaas.apps
 
 
    .. rubric:: Classes
 
    .. autosummary::
 
-      SaasConfig
+      AaasConfig

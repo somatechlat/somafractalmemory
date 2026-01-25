@@ -1,7 +1,7 @@
-somafractalmemory.saas.sync
+somafractalmemory.aaas.sync
 ===========================
 
-.. automodule:: somafractalmemory.saas.sync
+.. automodule:: somafractalmemory.aaas.sync
 
 
    .. rubric:: Functions

@@ -1,7 +1,7 @@
-somafractalmemory.api.routers.saas\_admin
+somafractalmemory.api.routers.aaas\_admin
 =========================================
 
-.. automodule:: somafractalmemory.api.routers.saas_admin
+.. automodule:: somafractalmemory.api.routers.aaas_admin
 
 
    .. rubric:: Classes

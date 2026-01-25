@@ -13,5 +13,5 @@ somafractalmemory.api.routers
    graph
    health
    memory
-   saas_admin
+   aaas_admin
    search

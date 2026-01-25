@@ -1,7 +1,7 @@
-somafractalmemory.saas.models
+somafractalmemory.aaas.models
 =============================
 
-.. automodule:: somafractalmemory.saas.models
+.. automodule:: somafractalmemory.aaas.models
 
 
    .. rubric:: Classes

@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
-from somafractalmemory.saas.models import UsageRecord
+from somafractalmemory.aaas.models import UsageRecord
 
 logger = logging.getLogger(__name__)
 

@@ -40,15 +40,15 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.postgres",  # For PostgreSQL-specific fields
     "somafractalmemory",  # SomaFractalMemory Django app
-    "somafractalmemory.saas",  # SaaS: API keys, usage tracking
+    "somafractalmemory.aaas",  # AAAS: API keys, usage tracking
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
     # CORS handled via custom middleware or django-cors-headers if installed
-    # SaaS Usage Tracking (billing)
-    "somafractalmemory.saas.middleware.UsageTrackingMiddleware",
+    # AAAS Usage Tracking (billing)
+    "somafractalmemory.aaas.middleware.UsageTrackingMiddleware",
 ]
 
 ROOT_URLCONF = "somafractalmemory.urls"

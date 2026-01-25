@@ -22,4 +22,4 @@ Module Index
    somafractalmemory.services
    somafractalmemory.models
    somafractalmemory.api
-   somafractalmemory.saas
+   somafractalmemory.aaas

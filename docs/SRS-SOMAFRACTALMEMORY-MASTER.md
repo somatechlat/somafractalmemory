@@ -53,7 +53,7 @@ Complete technical specification for SomaFractalMemory, the coordinate-based sto
 somafractalmemory/
 ├── somafractalmemory/      # Main Django app (25 files)
 │   ├── api/                # Django Ninja API (10 files)
-│   ├── saas/               # Multi-tenant (6 files)
+│   ├── aaas/               # Multi-tenant (6 files)
 │   ├── models.py           # Django ORM models
 │   ├── services.py         # Memory/Graph services
 │   ├── settings.py         # Django settings

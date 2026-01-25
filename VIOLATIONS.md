@@ -32,8 +32,8 @@
 | `common/config/settings.py` | 64 | "Keeping placeholders increases the risk" | Anti-placeholder warning (compliant) |
 | `somafractalmemory/urls.py` | 4 | "no FastAPI" | Compliance statement |
 | `somafractalmemory/wsgi.py` | 3 | "NO uvicorn" | Compliance statement |
-| `somafractalmemory/saas/sync.py` | 11 | "Testable with mock clients" | QA documentation |
-| `somafractalmemory/saas/middleware.py` | 11 | "Testable with mock requests" | QA documentation |
+| `somafractalmemory/aaas/sync.py` | 11 | "Testable with mock clients" | QA documentation |
+| `somafractalmemory/aaas/middleware.py` | 11 | "Testable with mock requests" | QA documentation |
 
 ---
 

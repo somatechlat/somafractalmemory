@@ -1,4 +1,4 @@
-"""SomaFractalMemory SaaS App.
+"""SomaFractalMemory AAAS App.
 
 Provides API key authentication and usage tracking.
 

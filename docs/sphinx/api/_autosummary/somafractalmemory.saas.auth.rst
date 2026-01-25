@@ -1,7 +1,7 @@
-somafractalmemory.saas.auth
+somafractalmemory.aaas.auth
 ===========================
 
-.. automodule:: somafractalmemory.saas.auth
+.. automodule:: somafractalmemory.aaas.auth
 
 
    .. rubric:: Functions

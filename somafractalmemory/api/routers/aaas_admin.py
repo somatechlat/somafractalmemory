@@ -1,5 +1,5 @@
 """
-SaaS Admin Router for SomaFractalMemory.
+AAAS Admin Router for SomaFractalMemory.
 
 API Key management endpoints for standalone mode.
 Namespace-level access control.
@@ -14,12 +14,12 @@ from uuid import UUID
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from somafractalmemory.saas.auth import APIKeyAuth, has_permission
-from somafractalmemory.saas.models import APIKey, UsageRecord
+from somafractalmemory.aaas.auth import APIKeyAuth, has_permission
+from somafractalmemory.aaas.models import APIKey, UsageRecord
 
 logger = logging.getLogger(__name__)
 
-router = Router(tags=["SaaS Admin"])
+router = Router(tags=["AAAS Admin"])
 
 
 # =============================================================================

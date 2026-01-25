@@ -1,7 +1,7 @@
-somafractalmemory.saas.middleware
+somafractalmemory.aaas.middleware
 =================================
 
-.. automodule:: somafractalmemory.saas.middleware
+.. automodule:: somafractalmemory.aaas.middleware
 
 
    .. rubric:: Functions

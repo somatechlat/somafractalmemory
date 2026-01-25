@@ -1,7 +1,7 @@
-﻿somafractalmemory.saas
+﻿somafractalmemory.aaas
 ======================
 
-.. automodule:: somafractalmemory.saas
+.. automodule:: somafractalmemory.aaas
 
 
    .. rubric:: Functions

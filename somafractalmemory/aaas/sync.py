@@ -24,7 +24,7 @@ from django.conf import settings
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 
-from somafractalmemory.saas.models import UsageRecord
+from somafractalmemory.aaas.models import UsageRecord
 
 logger = logging.getLogger(__name__)
 

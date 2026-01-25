@@ -103,20 +103,20 @@ clean:
 # ==============================================================================
 
 compose-build: prereqs-docker ## Build images for Docker Compose
-	docker compose build --progress=plain
+	docker compose -f infra/standalone/docker-compose.yml build --progress=plain
 
 compose-up: prereqs-docker ## Start the full stack in the background
-	docker compose --profile core --profile consumer up -d
+	docker compose -f infra/standalone/docker-compose.yml --profile core --profile consumer up -d
 	@echo "→ API will be available at: http://127.0.0.1:$(API_PORT)"
 
 compose-logs: prereqs-docker ## Tail API logs
-	docker compose logs -f --tail=200 api
+	docker compose -f infra/standalone/docker-compose.yml logs -f --tail=200 api
 
 compose-ps: prereqs-docker ## Show container status
-	docker compose ps
+	docker compose -f infra/standalone/docker-compose.yml ps
 
 compose-restart: prereqs-docker ## Restart the API service
-	docker compose restart api
+	docker compose -f infra/standalone/docker-compose.yml restart api
 
 compose-health: prereqs-docker ## Wait for API /healthz to return 200
 	@echo "Waiting for API health at http://127.0.0.1:$(API_PORT)/healthz ..."; \
@@ -127,10 +127,10 @@ compose-health: prereqs-docker ## Wait for API /healthz to return 200
 	echo "✗ API did not become healthy in time"; exit 1
 
 compose-down: prereqs-docker ## Stop all services (keep volumes)
-	docker compose down
+	docker compose -f infra/standalone/docker-compose.yml down
 
 compose-down-v: prereqs-docker ## Stop all services and remove volumes (DANGEROUS)
-	docker compose down -v
+	docker compose -f infra/standalone/docker-compose.yml down -v
 
 # ==============================================================================
 # Kubernetes Workflows (via Helm)

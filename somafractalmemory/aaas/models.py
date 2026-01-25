@@ -1,5 +1,5 @@
 """
-SomaFractalMemory SaaS Models.
+SomaFractalMemory AAAS Models.
 
 API key authentication and usage tracking.
 Can work standalone or integrate with SomaBrain.
