@@ -35,10 +35,11 @@ Common variables:
 
 ## Production guidance
 
-- Never commit real secrets to the repository.
-- Use a secrets manager (e.g., AWS Secrets Manager, GCP Secret Manager, Vault) and inject at runtime (env or files).
+- **Never** commit real secrets to the repository.
+- **Mandatory in Production**: Use HashiCorp Vault.
+  - Set `SOMA_VAULT_URL` and `SOMA_VAULT_ROLE`.
+  - Secrets are injected into process memory at startup.
 - Rotate tokens regularly and audit usage.
-- Restrict `SOMA_API_TOKEN` scope by environment and role; prefer short TTL tokens or JWT with exp/iat claims.
 
 ## Rotation and audit
 

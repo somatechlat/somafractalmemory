@@ -43,6 +43,8 @@ Core component of the **Soma Cognitive Triad**:
 - **PostgreSQL**: 15+ (Metadata)
 - **Milvus**: 2.3+ (Vectors)
 - **Redis**: 7.0+ (Cache)
+- **HashiCorp Vault**: (Optional, Recommended for Secrets)
+- **Open Policy Agent**: (Optional, Recommended for AuthZ)
 
 ### 3.2 Quick Start (Production)
 ```bash
@@ -60,11 +62,15 @@ docker compose --profile core up -d
 
 ### 3.3 Configuration Parameters
 | Variable | Description | Default |
+| Variable | Description | Default |
 |----------|-------------|---------|
 | `SOMA_API_PORT` | API Service Port | `10101` |
 | `SOMA_POSTGRES_URL` | Database Connection | `postgresql://...` |
 | `SOMA_MILVUS_HOST` | Vector Store Host | `localhost` |
 | `SOMA_REDIS_HOST` | Cache Host | `localhost` |
+| `SOMA_VAULT_URL` | Vault URL (Secrets) | `""` |
+| `SOMA_OPA_URL` | OPA URL (AuthZ) | `http://opa:10818` |
+| `SOMA_OPA_FAIL_OPEN` | AuthZ Safety Mode | `False` (Fail Closed) |
 
 ---
 

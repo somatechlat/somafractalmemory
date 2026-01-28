@@ -94,13 +94,11 @@ def health_detailed(request: HttpRequest) -> dict:
     services = []
 
     # Check PostgreSQL
-    print("DEBUG: Checking Postgres...")
     try:
         pg_start = time.time()
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         pg_latency = (time.time() - pg_start) * 1000
-        print("DEBUG: Postgres OK")
         services.append(
             {
                 "name": "postgresql",
@@ -110,13 +108,11 @@ def health_detailed(request: HttpRequest) -> dict:
             }
         )
     except Exception as e:
-        print(f"DEBUG: Postgres FAILED: {e}")
         services.append(
             {"name": "postgresql", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
 
     # Check Redis
-    print("DEBUG: Checking Redis...")
     try:
         import redis
 
@@ -124,10 +120,8 @@ def health_detailed(request: HttpRequest) -> dict:
         redis_host = os.environ.get("SOMA_REDIS_HOST", "localhost")
         redis_port = int(os.environ.get("SOMA_REDIS_PORT", "6379"))
         redis_password = os.environ.get("SOMA_REDIS_PASSWORD", None)
-        print(f"DEBUG: Connecting Redis {redis_host}:{redis_port}")
         r = redis.Redis(host=redis_host, port=redis_port, password=redis_password, socket_timeout=2)
         r.ping()
-        print("DEBUG: Redis OK")
         redis_latency = (time.time() - redis_start) * 1000
         services.append(
             {
@@ -138,13 +132,11 @@ def health_detailed(request: HttpRequest) -> dict:
             }
         )
     except Exception as e:
-        print(f"DEBUG: Redis FAILED: {e}")
         services.append(
             {"name": "redis", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
 
     # Check Milvus
-    print("DEBUG: Checking Milvus...")
     try:
         from pymilvus import connections
 

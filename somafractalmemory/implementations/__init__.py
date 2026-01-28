@@ -6,6 +6,5 @@ Provides concrete implementations of storage backends:
 """
 
 from .milvus_vector import MilvusVectorStore
-from .postgres_kv import PostgresKeyValueStore
 
-__all__ = ["MilvusVectorStore", "PostgresKeyValueStore"]
+__all__ = ["MilvusVectorStore"]

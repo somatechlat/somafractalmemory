@@ -19,9 +19,10 @@ Authoritative overview of environment variables and precedence.
 
 ## 🛂 Policy (OPA)
 
-- OPA_URL — e.g., http://opa:8181 (default used if unset)
-- OPA_POLICY_PATH — e.g., soma/authz/allow
-  - Decision expected as boolean or object with `allow` boolean
+- SOMA_OPA_URL — e.g., http://opa:8181 (default http://opa:8181)
+- SOMA_OPA_TIMEOUT — timeout in seconds (default 1.0)
+- SOMA_OPA_FAIL_OPEN — "true" allows access on error (default "false" / Fail Closed)
+  - Policy path is hardcoded to `soma/authz/allow` or configured via code.
 
 ## 🚦 Rate limiting
 
@@ -44,8 +45,14 @@ Postgres URL resolution (first set wins):
 Redis config:
 - REDIS_URL (parsed) OR individual: REDIS_HOST, REDIS_PORT, REDIS_DB
 
-Qdrant config:
-- QDRANT_URL OR QDRANT_HOST + QDRANT_PORT (default 6333)
+Milvus config (Standard):
+- SOMA_MILVUS_HOST (default "milvus")
+- SOMA_MILVUS_PORT (default 19530)
+
+HASHICORP VAULT (Secrets):
+- SOMA_VAULT_URL — e.g. http://vault:8200 (Required for secrets in prod)
+- SOMA_VAULT_ROLE — Kubernetes role for auth
+- SOMA_SECRETS_PATH — Path to secret in Vault
 
 ## 🔭 Observability
 

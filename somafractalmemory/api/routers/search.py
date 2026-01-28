@@ -11,6 +11,7 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from common.utils.logger import get_logger
+from somafractalmemory.aaas.auth import MultiAuth, can_access_namespace, has_permission
 
 from ..messages import ErrorCode, get_message
 from ..schemas import MemorySearchRequest, MemorySearchResponse
@@ -28,29 +29,31 @@ def _get_service():
 
 def _get_tenant_from_request(request: HttpRequest) -> str:
     """Extract tenant from request headers."""
+    auth = getattr(request, "auth", {}) or {}
+    if auth.get("tenant"):
+        return auth["tenant"]
     tenant = request.headers.get("X-Soma-Tenant")
     if tenant:
         return tenant.strip()
     return "default"
 
 
-def _check_auth(request: HttpRequest) -> None:
-    """Check API token authentication."""
-    from somafractalmemory.api.core import API_TOKEN
-
-    if not API_TOKEN:
-        return
-
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HttpError(401, get_message(ErrorCode.MISSING_AUTH_HEADER))
-
-    provided = auth_header.split(" ", 1)[1]
-    if provided != API_TOKEN:
-        raise HttpError(401, get_message(ErrorCode.INVALID_API_TOKEN))
+def _ensure_permission(request: HttpRequest, permission: str) -> None:
+    """Ensure caller has the required permission."""
+    if not has_permission(request, permission):
+        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
 
 
-@router.get("/search", response=MemorySearchResponse)
+def _ensure_namespace_access(request: HttpRequest) -> None:
+    """Ensure caller can access the current namespace."""
+    from somafractalmemory.api.core import get_mem
+
+    namespace = get_mem().namespace
+    if not can_access_namespace(request, namespace):
+        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
+
+
+@router.get("/search", response=MemorySearchResponse, auth=MultiAuth())
 def search_memories_get(
     request: HttpRequest,
     query: str,
@@ -58,7 +61,8 @@ def search_memories_get(
     filters: str | None = None,
 ) -> MemorySearchResponse:
     """GET version of the memory search endpoint using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "read")
+    _ensure_namespace_access(request)
 
     service = _get_service()
     tenant = _get_tenant_from_request(request)
@@ -85,10 +89,11 @@ def search_memories_get(
     return MemorySearchResponse(memories=results)
 
 
-@router.post("/search", response=MemorySearchResponse)
+@router.post("/search", response=MemorySearchResponse, auth=MultiAuth())
 def search_memories(request: HttpRequest, req: MemorySearchRequest) -> MemorySearchResponse:
     """POST version of the memory search endpoint using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "read")
+    _ensure_namespace_access(request)
 
     service = _get_service()
     tenant = _get_tenant_from_request(request)

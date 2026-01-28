@@ -10,6 +10,11 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
 
+somaSecretKey: "dev-secret-change-me"
+somaAllowedHosts: "*"
+somaDbName: "somamemory"
+somaDbUser: "soma"
+
 resources:
   limits:
     cpu: "1"
@@ -60,20 +65,6 @@ redis:
   persistence:
     enabled: false
     size: 5Gi
-
-qdrant:
-  enabled: true
-  replicaCount: 1
-  image:
-    repository: qdrant/qdrant
-    tag: latest
-  service:
-    port: 40023
-    targetPort: 6333
-  containerPort: 6333
-  persistence:
-    enabled: false
-    size: 10Gi
 
 secrets:
   create: false

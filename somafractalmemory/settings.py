@@ -11,10 +11,33 @@ VIBE Compliance:
 """
 
 import os
+import sys
 from pathlib import Path
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# -----------------------------------------------------------------------------
+# Vault Secrets Injection (Runtime Only)
+# -----------------------------------------------------------------------------
+try:
+    from common.utils.vault_client import VaultSecretManager
+
+    _vault_secrets = VaultSecretManager().get_secrets()
+    if _vault_secrets:
+        # Update process environment with secrets (memory-only)
+        # effectively masking any absence of these in startup env.
+        os.environ.update(_vault_secrets)
+except ImportError:
+    pass  # Allow running without common/hvac (e.g. during build)
+except RuntimeError as e:
+    # Critical reliance on Vault failed - do not start service
+    print(f"CRITICAL: Vault configuration failed: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    # Unexpected error during secret loading
+    print(f"Startup Warning: Failed to load Vault secrets: {e}", file=sys.stderr)
+
 
 # -----------------------------------------------------------------------------
 # Security Settings
@@ -213,6 +236,14 @@ SOMA_LANGFUSE_HOST = os.environ.get("SOMA_LANGFUSE_HOST", "")
 SOMA_CIRCUIT_FAILURE_THRESHOLD = int(os.environ.get("SOMA_CIRCUIT_FAILURE_THRESHOLD", "3"))
 SOMA_CIRCUIT_RESET_INTERVAL = float(os.environ.get("SOMA_CIRCUIT_RESET_INTERVAL", "60.0"))
 SOMA_CIRCUIT_COOLDOWN_INTERVAL = float(os.environ.get("SOMA_CIRCUIT_COOLDOWN_INTERVAL", "0.0"))
+
+# -----------------------------------------------------------------------------
+# OPA Configuration
+# -----------------------------------------------------------------------------
+SOMA_OPA_URL = os.environ.get("SOMA_OPA_URL", "http://opa:8181")
+SOMA_OPA_TIMEOUT = float(os.environ.get("SOMA_OPA_TIMEOUT", "1.0"))
+SOMA_OPA_FAIL_OPEN = os.environ.get("SOMA_OPA_FAIL_OPEN", "false").lower() in ("true", "1", "yes")
+
 
 # -----------------------------------------------------------------------------
 # Data Directories

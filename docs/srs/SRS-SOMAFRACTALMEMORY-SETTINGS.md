@@ -50,6 +50,24 @@ Used for Session Caching and Locks.
 | `SOMA_REDIS_DB` | `0` | | Redis DB Index |
 | `SOMA_REDIS_PASSWORD` | - | | Redis Password |
 
+### 2.4 Secrets Management (Vault)
+Used for retrieving sensitive credentials at runtime (SSOT).
+
+| Variable | Default | Required | Description |
+|----------|---------|:--------:|-------------|
+| `SOMA_VAULT_URL` | - | ✅ | Vault URL (e.g. http://vault:8200) |
+| `SOMA_VAULT_ROLE` | - | ✅ | Kubernetes Auth Role |
+| `SOMA_SECRETS_PATH` | - | ✅ | Path to secrets in Vault |
+
+### 2.5 Policy Engine (OPA)
+Used for Authorization decisions (AuthZ).
+
+| Variable | Default | Required | Description |
+|----------|---------|:--------:|-------------|
+| `SOMA_OPA_URL` | `http://opa:8181` | | OPA Service URL |
+| `SOMA_OPA_TIMEOUT` | `1.0` | | Request timeout (seconds) |
+| `SOMA_OPA_FAIL_OPEN` | `false` | | Fail Closed (Secure) by default |
+
 ---
 
 ## 3. Application Configuration

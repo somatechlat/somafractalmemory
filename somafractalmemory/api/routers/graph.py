@@ -9,6 +9,7 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from common.utils.logger import get_logger
+from somafractalmemory.aaas.auth import MultiAuth, can_access_namespace, has_permission
 
 from ..messages import ErrorCode, get_message
 from ..schemas import (
@@ -42,32 +43,35 @@ def _safe_parse_coord(coord: str) -> tuple[float, ...]:
 
 def _get_tenant_from_request(request: HttpRequest) -> str:
     """Extract tenant from request headers."""
+    auth = getattr(request, "auth", {}) or {}
+    if auth.get("tenant"):
+        return auth["tenant"]
     tenant = request.headers.get("X-Soma-Tenant")
     if tenant:
         return tenant.strip()
     return "default"
 
 
-def _check_auth(request: HttpRequest) -> None:
-    """Check API token authentication."""
-    from somafractalmemory.api.core import API_TOKEN
-
-    if not API_TOKEN:
-        return
-
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HttpError(401, get_message(ErrorCode.MISSING_AUTH_HEADER))
-
-    provided = auth_header.split(" ", 1)[1]
-    if provided != API_TOKEN:
-        raise HttpError(401, get_message(ErrorCode.INVALID_API_TOKEN))
+def _ensure_permission(request: HttpRequest, permission: str) -> None:
+    """Ensure caller has the required permission."""
+    if not has_permission(request, permission):
+        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
 
 
-@router.post("/link", response=GraphLinkResponse)
+def _ensure_namespace_access(request: HttpRequest) -> None:
+    """Ensure caller can access the current namespace."""
+    from somafractalmemory.api.core import get_graph
+
+    namespace = get_graph().namespace
+    if not can_access_namespace(request, namespace):
+        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
+
+
+@router.post("/link", response=GraphLinkResponse, auth=MultiAuth())
 def create_graph_link(request: HttpRequest, req: GraphLinkRequest) -> GraphLinkResponse:
     """Create a link between two memory coordinates using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "write")
+    _ensure_namespace_access(request)
 
     service = _get_graph_service()
     tenant = _get_tenant_from_request(request)
@@ -97,7 +101,7 @@ def create_graph_link(request: HttpRequest, req: GraphLinkRequest) -> GraphLinkR
         raise HttpError(500, get_message(ErrorCode.GRAPH_LINK_FAILED)) from exc
 
 
-@router.get("/neighbors", response=GraphNeighborsResponse)
+@router.get("/neighbors", response=GraphNeighborsResponse, auth=MultiAuth())
 def get_graph_neighbors(
     request: HttpRequest,
     coord: str,
@@ -106,7 +110,8 @@ def get_graph_neighbors(
     link_type: str | None = None,
 ) -> GraphNeighborsResponse:
     """Get neighbors of a coordinate using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "read")
+    _ensure_namespace_access(request)
 
     service = _get_graph_service()
     tenant = _get_tenant_from_request(request)
@@ -114,12 +119,9 @@ def get_graph_neighbors(
     parsed = _safe_parse_coord(coord)
 
     try:
-        neighbors = service.get_neighbors(parsed, link_type=link_type, limit=limit)
+        neighbors = service.get_neighbors(parsed, link_type=link_type, limit=limit, tenant=tenant)
 
-        # Filter by tenant
-        filtered = [n for n in neighbors if n.get("_tenant", "default") == tenant]
-        # Remove internal fields
-        clean_neighbors = [{k: v for k, v in n.items() if not k.startswith("_")} for n in filtered]
+        clean_neighbors = [{k: v for k, v in n.items() if not k.startswith("_")} for n in neighbors]
 
         return GraphNeighborsResponse(coord=coord, neighbors=clean_neighbors)
     except Exception as exc:
@@ -127,7 +129,7 @@ def get_graph_neighbors(
         raise HttpError(500, get_message(ErrorCode.GRAPH_NEIGHBORS_FAILED)) from exc
 
 
-@router.get("/path", response=GraphPathResponse)
+@router.get("/path", response=GraphPathResponse, auth=MultiAuth())
 def find_graph_path(
     request: HttpRequest,
     from_coord: str,
@@ -136,15 +138,19 @@ def find_graph_path(
     link_type: str | None = None,
 ) -> GraphPathResponse:
     """Find the shortest path between two coordinates using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "read")
+    _ensure_namespace_access(request)
 
     service = _get_graph_service()
+    tenant = _get_tenant_from_request(request)
 
     from_parsed = _safe_parse_coord(from_coord)
     to_parsed = _safe_parse_coord(to_coord)
 
     try:
-        path_result = service.find_shortest_path(from_parsed, to_parsed, link_type=link_type)
+        path_result = service.find_shortest_path(
+            from_parsed, to_parsed, link_type=link_type, tenant=tenant
+        )
 
         if not path_result or len(path_result) > max_length:
             return GraphPathResponse(

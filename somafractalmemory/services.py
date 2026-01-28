@@ -8,16 +8,38 @@ Django ORM. It provides services for:
 - GraphService: Management of links and relationships between memories.
 """
 
+import hashlib
+import json
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 
 from common.utils.logger import get_logger
+from somafractalmemory.implementations import MilvusVectorStore
 
-from .models import AuditLog, GraphLink, Memory
+from .models import AuditLog, GraphLink, Memory, VectorEmbedding
 
 logger = get_logger(__name__)
+
+
+class HashEmbedder:
+    """Deterministic hash-based embedding generator (no external deps)."""
+
+    def __init__(self, dim: int = 768):
+        self.dim = dim
+
+    def embed(self, text: str) -> list[float]:
+        """Generate a deterministic vector of length dim from text."""
+        vec: list[float] = []
+        for i in range(self.dim):
+            digest = hashlib.sha256(f"{text}|{i}".encode()).digest()
+            val = int.from_bytes(digest[:4], "big", signed=False)
+            vec.append((val % 2_000_000) / 1_000_000 - 1.0)  # map to [-1, 1]
+        # L2 normalize for cosine
+        norm = sum(v * v for v in vec) ** 0.5 or 1.0
+        return [v / norm for v in vec]
 
 
 class MemoryService:
@@ -34,6 +56,26 @@ class MemoryService:
         """Initialize the instance."""
 
         self.namespace = namespace
+        self.vector_dim = getattr(settings, "SOMA_VECTOR_DIM", 768)
+        self.embedder = HashEmbedder(dim=self.vector_dim)
+        self.vector_store = self._build_vector_store()
+
+    def _build_vector_store(self) -> MilvusVectorStore | None:
+        """Create a Milvus vector store if configuration is present."""
+        host = getattr(settings, "SOMA_MILVUS_HOST", None)
+        port = getattr(settings, "SOMA_MILVUS_PORT", None)
+        if not host or not port:
+            return None
+        try:
+            return MilvusVectorStore(
+                host=host,
+                port=port,
+                collection_name=f"sfm_{self.namespace}",
+                dim=self.vector_dim,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to initialize MilvusVectorStore", error=str(exc))
+            return None
 
     @transaction.atomic
     def store(
@@ -49,15 +91,38 @@ class MemoryService:
 
         memory, created = Memory.objects.update_or_create(
             namespace=self.namespace,
+            tenant=tenant,
             coordinate_key=coord_key,
             defaults={
                 "coordinate": list(coordinate),
                 "memory_type": memory_type,
                 "payload": payload,
                 "metadata": metadata or {},
-                "tenant": tenant,
             },
         )
+
+        # Store vector embedding (best effort)
+        if self.vector_store and self.embedder:
+            try:
+                payload_text = json.dumps(payload, sort_keys=True)
+                vector = self.embedder.embed(payload_text)
+                milvus_id = self.vector_store.insert(
+                    coordinate_key=coord_key,
+                    vector=vector,
+                    namespace=self.namespace,
+                    tenant=tenant,
+                )
+                VectorEmbedding.objects.update_or_create(
+                    memory=memory,
+                    collection_name=self.vector_store.collection_name,
+                    defaults={
+                        "milvus_id": milvus_id,
+                        "vector_dim": self.vector_dim,
+                        "model_name": getattr(settings, "SOMA_MODEL_NAME", "hash-embedder"),
+                    },
+                )
+            except Exception as exc:
+                logger.warning("Vector store insert failed", error=str(exc), exc_info=True)
 
         # Log the operation
         AuditLog.objects.create(
@@ -117,6 +182,18 @@ class MemoryService:
             tenant=tenant,
         ).delete()
 
+        if deleted and self.vector_store:
+            try:
+                self.vector_store.delete(coord_key)
+            except Exception as exc:
+                logger.warning("Vector store delete failed", error=str(exc))
+        if deleted:
+            VectorEmbedding.objects.filter(
+                memory__coordinate_key=coord_key,
+                memory__namespace=self.namespace,
+                memory__tenant=tenant,
+            ).delete()
+
         if deleted:
             AuditLog.objects.create(
                 action=AuditLog.Action.DELETE,
@@ -137,9 +214,45 @@ class MemoryService:
     ) -> list[dict[str, Any]]:
         """Search memories using Django ORM.
 
-        For vector similarity search, this delegates to Milvus.
-        For metadata/payload search, uses Django ORM.
+        Vector similarity search via Milvus when configured; fallback to ORM text search.
         """
+        if self.vector_store and self.embedder:
+            try:
+                vector = self.embedder.embed(query)
+                vector_results = self.vector_store.search(
+                    query_vector=vector,
+                    top_k=top_k,
+                    namespace=self.namespace,
+                    tenant=tenant,
+                )
+                coord_keys = [res["coordinate_key"] for res in vector_results]
+                memories = list(
+                    Memory.objects.filter(
+                        namespace=self.namespace,
+                        tenant=tenant,
+                        coordinate_key__in=coord_keys,
+                    )
+                )
+                memory_map = {m.coordinate_key: m for m in memories}
+                ordered: list[dict[str, Any]] = []
+                for res in vector_results:
+                    mem = memory_map.get(res["coordinate_key"])
+                    if not mem:
+                        continue
+                    ordered.append(
+                        {
+                            "coordinate": mem.coordinate,
+                            "payload": mem.payload,
+                            "memory_type": mem.memory_type,
+                            "importance": mem.importance,
+                            "score": res.get("score"),
+                        }
+                    )
+                if ordered:
+                    return ordered
+            except Exception as exc:
+                logger.warning("Vector search failed, falling back to ORM", error=str(exc))
+
         queryset = Memory.objects.filter(
             namespace=self.namespace,
             tenant=tenant,
@@ -194,13 +307,22 @@ class MemoryService:
 
     def health_check(self) -> dict[str, bool]:
         """Check database health using Django ORM."""
+        status = {"kv_store": False, "vector_store": False, "graph_store": False}
+
         try:
-            # Simple query to verify database connection
             Memory.objects.count()
-            return {"kv_store": True, "vector_store": True, "graph_store": True}
+            status["kv_store"] = True
+            status["graph_store"] = True
         except Exception as e:
-            logger.error(f"Health check failed: {e}")
-            return {"kv_store": False, "vector_store": False, "graph_store": False}
+            logger.error(f"Health check failed (Postgres): {e}")
+
+        if self.vector_store:
+            try:
+                status["vector_store"] = bool(self.vector_store.health_check())
+            except Exception as e:
+                logger.error(f"Health check failed (Milvus): {e}")
+                status["vector_store"] = False
+        return status
 
 
 class GraphService:
@@ -224,9 +346,11 @@ class GraphService:
         """Create a graph link using Django ORM."""
         from_key = Memory.coord_to_key(from_coord)
         to_key = Memory.coord_to_key(to_coord)
+        tenant = link_data.get("_tenant", "default")
 
         link, created = GraphLink.objects.update_or_create(
             namespace=self.namespace,
+            tenant=tenant,
             from_coordinate_key=from_key,
             to_coordinate_key=to_key,
             link_type=link_data.get("link_type", "related"),
@@ -239,7 +363,6 @@ class GraphService:
                     for k, v in link_data.items()
                     if k not in ("link_type", "strength", "_tenant")
                 },
-                "tenant": link_data.get("_tenant", "default"),
             },
         )
 
@@ -250,12 +373,14 @@ class GraphService:
         coord: tuple[float, ...],
         link_type: str | None = None,
         limit: int = 10,
+        tenant: str = "default",
     ) -> list[dict[str, Any]]:
         """Get neighbors of a coordinate using Django ORM."""
         coord_key = Memory.coord_to_key(coord)
 
         queryset = GraphLink.objects.filter(
             namespace=self.namespace,
+            tenant=tenant,
             from_coordinate_key=coord_key,
         )
 
@@ -279,6 +404,7 @@ class GraphService:
         from_coord: tuple[float, ...],
         to_coord: tuple[float, ...],
         link_type: str | None = None,
+        tenant: str = "default",
     ) -> list[tuple[float, ...]] | None:
         """Find shortest path using BFS with Django ORM."""
         from collections import deque
@@ -297,6 +423,7 @@ class GraphService:
 
             queryset = GraphLink.objects.filter(
                 namespace=self.namespace,
+                tenant=tenant,
                 from_coordinate_key=current_key,
             )
             if link_type:

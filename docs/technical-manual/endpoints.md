@@ -5,7 +5,7 @@ last_modified: "2025-10-29"
 
 # 📘 Endpoint Catalog
 
-Auth: Bearer token unless noted. Token comes from SOMA_API_TOKEN or SOMA_API_TOKEN_FILE. JWT mode optionally supported (HS256/RS256 with exp/iat).
+Auth: Bearer token unless noted. Accepts SOMA_API_TOKEN (shared) or `sfm_*` API keys. Token is required for all memory/search/graph routes.
 
 ## Health
 
@@ -26,7 +26,7 @@ Auth: Bearer token unless noted. Token comes from SOMA_API_TOKEN or SOMA_API_TOK
 
 ## Search
 
-- POST /memories/search — vector/hybrid search (auth required)
+- POST /memories/search — vector search (auth required)
   - Body: { "query": string, "top_k": int=5, "filters"?: object }
   - 200 { "memories": [ { ... } ] }
 

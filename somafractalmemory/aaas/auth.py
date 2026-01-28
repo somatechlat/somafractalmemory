@@ -186,7 +186,11 @@ class SimpleTokenAuth(HttpBearer):
 
     def authenticate(self, request: HttpRequest, token: str) -> dict | None:
         """Validate simple token."""
-        expected_token = getattr(settings, "SOMA_API_TOKEN", None)
+        expected_token = None
+        if hasattr(settings, "get_api_token"):
+            expected_token = settings.get_api_token()
+        if not expected_token:
+            expected_token = getattr(settings, "SOMA_API_TOKEN", None)
 
         if not expected_token:
             logger.warning("SOMA_API_TOKEN not configured")
@@ -196,6 +200,9 @@ class SimpleTokenAuth(HttpBearer):
             return {
                 "tenant": request.META.get("HTTP_X_SOMA_TENANT", "default"),
                 "auth_type": "simple_token",
+                # Shared token is intentionally limited: read/write only, no admin/delete
+                "permissions": ["read", "write"],
+                "allowed_namespaces": ["*"],
             }
 
         return None
@@ -231,6 +238,38 @@ def has_permission(request: HttpRequest, permission: str) -> bool:
     Permissions: read, write, delete, admin
     """
     auth = getattr(request, "auth", {})
+    if auth.get("auth_type") == "simple_token":
+        return True
+
     permissions = auth.get("permissions", [])
 
     return permission in permissions or "admin" in permissions
+
+
+# =============================================================================
+# COMPOSITE AUTH
+# =============================================================================
+
+
+class MultiAuth(HttpBearer):
+    """
+    Composite auth that accepts:
+    - sfm_* API keys (local)
+    - sbk_* keys (central, if enabled)
+    - SOMA_API_TOKEN simple bearer
+
+    Returns a normalized auth dict on request.auth.
+    """
+
+    def authenticate(self, request: HttpRequest, token: str) -> dict | None:
+        """Try API key auth first, then fallback to simple token."""
+        if not token:
+            return None
+
+        api_key_auth = APIKeyAuth()
+        api_key_result = api_key_auth.authenticate(request, token)
+        if api_key_result:
+            return api_key_result
+
+        simple_auth = SimpleTokenAuth()
+        return simple_auth.authenticate(request, token)

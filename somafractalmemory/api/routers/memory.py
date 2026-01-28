@@ -9,6 +9,7 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from common.utils.logger import get_logger
+from somafractalmemory.aaas.auth import MultiAuth, can_access_namespace, has_permission
 
 from ..messages import ErrorCode, get_message
 from ..schemas import (
@@ -42,32 +43,35 @@ def _safe_parse_coord(coord: str) -> tuple[float, ...]:
 
 def _get_tenant_from_request(request: HttpRequest) -> str:
     """Extract tenant from request headers."""
+    auth = getattr(request, "auth", {}) or {}
+    if auth.get("tenant"):
+        return auth["tenant"]
     tenant = request.headers.get("X-Soma-Tenant")
     if tenant:
         return tenant.strip()
     return "default"
 
 
-def _check_auth(request: HttpRequest) -> None:
-    """Check API token authentication."""
-    from somafractalmemory.api.core import API_TOKEN
-
-    if not API_TOKEN:
-        return
-
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HttpError(401, get_message(ErrorCode.MISSING_AUTH_HEADER))
-
-    provided = auth_header.split(" ", 1)[1]
-    if provided != API_TOKEN:
-        raise HttpError(401, get_message(ErrorCode.INVALID_API_TOKEN))
+def _ensure_permission(request: HttpRequest, permission: str) -> None:
+    """Ensure caller has the required permission."""
+    if not has_permission(request, permission):
+        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
 
 
-@router.post("", response=MemoryStoreResponse)
+def _ensure_namespace_access(request: HttpRequest) -> None:
+    """Ensure caller can access the current namespace."""
+    from somafractalmemory.api.core import get_mem
+
+    namespace = get_mem().namespace
+    if not can_access_namespace(request, namespace):
+        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
+
+
+@router.post("", response=MemoryStoreResponse, auth=MultiAuth())
 def store_memory(request: HttpRequest, req: MemoryStoreRequest) -> MemoryStoreResponse:
     """Store a memory using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "write")
+    _ensure_namespace_access(request)
 
     service = _get_service()
     coord = _safe_parse_coord(req.coord)
@@ -84,10 +88,11 @@ def store_memory(request: HttpRequest, req: MemoryStoreRequest) -> MemoryStoreRe
     return MemoryStoreResponse(coord=req.coord, memory_type=memory_type)
 
 
-@router.get("/{coord}", response=MemoryGetResponse)
+@router.get("/{coord}", response=MemoryGetResponse, auth=MultiAuth())
 def fetch_memory(request: HttpRequest, coord: str) -> MemoryGetResponse:
     """Fetch a memory by coordinate using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "read")
+    _ensure_namespace_access(request)
 
     service = _get_service()
     parsed = _safe_parse_coord(coord)
@@ -100,10 +105,11 @@ def fetch_memory(request: HttpRequest, coord: str) -> MemoryGetResponse:
     return MemoryGetResponse(memory=record)
 
 
-@router.delete("/{coord}", response=MemoryDeleteResponse)
+@router.delete("/{coord}", response=MemoryDeleteResponse, auth=MultiAuth())
 def delete_memory(request: HttpRequest, coord: str) -> MemoryDeleteResponse:
     """Delete a memory using Django ORM."""
-    _check_auth(request)
+    _ensure_permission(request, "delete")
+    _ensure_namespace_access(request)
 
     service = _get_service()
     parsed = _safe_parse_coord(coord)

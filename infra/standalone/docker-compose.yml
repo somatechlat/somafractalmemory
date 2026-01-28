@@ -33,7 +33,7 @@ services:
     networks:
       somafractalmemory_standalone_net:
         aliases:
-          - standalone_postgres
+          - standalone-postgres
 
   somafractalmemory_standalone_redis:
     image: redis:7
@@ -61,7 +61,7 @@ services:
     networks:
       somafractalmemory_standalone_net:
         aliases:
-          - standalone_redis
+          - standalone-redis
 
   somafractalmemory_standalone_etcd:
     image: quay.io/coreos/etcd:v3.5.5
@@ -69,7 +69,7 @@ services:
     volumes:
       - etcddata:/etcd
     command: >
-      etcd --advertise-client-urls=http://127.0.0.1:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd --auto-compaction-mode=periodic --auto-compaction-retention=1h --quota-backend-bytes=8589934592 --snapshot-count=10000 --max-txn-ops=10000 --max-request-bytes=10485760
+      etcd --advertise-client-urls=http://standalone-etcd:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd --auto-compaction-mode=periodic --auto-compaction-retention=1h --quota-backend-bytes=8589934592 --snapshot-count=10000 --max-txn-ops=10000 --max-request-bytes=10485760
     deploy:
       resources:
         limits:
@@ -86,7 +86,7 @@ services:
     networks:
       somafractalmemory_standalone_net:
         aliases:
-          - standalone_etcd
+          - standalone-etcd
 
   somafractalmemory_standalone_minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
@@ -113,7 +113,7 @@ services:
     networks:
       somafractalmemory_standalone_net:
         aliases:
-          - standalone_minio
+          - standalone-minio
 
   somafractalmemory_standalone_milvus:
     image: milvusdb/milvus:v2.3.3
@@ -123,20 +123,16 @@ services:
       - "${MILVUS_HOST_PORT:-10530}:19530"
       - "${MILVUS_GRPC_PORT:-10531}:9091"
     environment:
-      ETCD_ENDPOINTS: somafractalmemory_standalone_etcd:2379
-      MINIO_ADDRESS: somafractalmemory_standalone_minio:9000
+      ETCD_ENDPOINTS: standalone-etcd:2379
+      MINIO_ADDRESS: standalone-minio:9000
       MINIO_ACCESS_KEY_ID: minioadmin
       MINIO_SECRET_ACCESS_KEY: minioadmin
       MINIO_USE_SSL: "false"
       MINIO_BUCKET_NAME: "milvus-bucket"
+      MINIO_ROOT_PATH: "milvus"
     volumes:
       - milvusdata:/var/lib/milvus
-    deploy:
-      resources:
-        limits:
-          memory: 4500M
-        reservations:
-          memory: 1G
+    restart: on-failure
     depends_on:
       somafractalmemory_standalone_etcd:
         condition: service_healthy
@@ -153,7 +149,35 @@ services:
     networks:
       somafractalmemory_standalone_net:
         aliases:
-          - standalone_milvus
+          - standalone-milvus
+
+  somafractalmemory_standalone_opa:
+    image: openpolicyagent/opa:latest-debug
+    container_name: somafractalmemory_standalone_opa
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=info"
+    ports:
+      - "${OPA_PORT:-10818}:8181"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q --tries=1 -O - http://127.0.0.1:8181/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - core
+    networks:
+      somafractalmemory_standalone_net:
+        aliases:
+          - opa
 
   somafractalmemory_standalone_api:
     build:
@@ -179,14 +203,14 @@ services:
       SOMA_DB_NAME: somamemory
       SOMA_DB_USER: soma
       SOMA_DB_PASSWORD: soma
-      SOMA_DB_HOST: somafractalmemory_standalone_postgres
+      SOMA_DB_HOST: standalone-postgres
       SOMA_DB_PORT: "5432"
-      SOMA_POSTGRES_URL: postgresql://soma:soma@somafractalmemory_standalone_postgres:5432/somamemory
+      SOMA_POSTGRES_URL: postgresql://soma:soma@standalone-postgres:5432/somamemory
       # Redis
-      SOMA_REDIS_HOST: somafractalmemory_standalone_redis
+      SOMA_REDIS_HOST: standalone-redis
       SOMA_REDIS_PORT: "6379"
       # Milvus
-      SOMA_MILVUS_HOST: somafractalmemory_standalone_milvus
+      SOMA_MILVUS_HOST: standalone-milvus
       SOMA_MILVUS_PORT: "19530"
       # Django
       DJANGO_SETTINGS_MODULE: somafractalmemory.settings
@@ -217,7 +241,7 @@ services:
     networks:
       somafractalmemory_standalone_net:
         aliases:
-          - standalone_api
+          - standalone-api
 
 volumes:
   pgdata:
@@ -235,5 +259,5 @@ volumes:
 
 networks:
   somafractalmemory_standalone_net:
-    name: somafractalmemory_standalone_net
-    driver: bridge
+    name: soma_shared_net
+    external: true

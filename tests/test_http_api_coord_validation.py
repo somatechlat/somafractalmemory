@@ -16,6 +16,14 @@ os.environ.setdefault("SOMA_POSTGRES_URL", "postgresql://soma:soma@localhost:400
 os.environ.setdefault("SOMA_MILVUS_HOST", "localhost")
 os.environ.setdefault("SOMA_MILVUS_PORT", "35003")
 os.environ.setdefault("SOMA_API_TOKEN", "test-token")
+# Required Django settings for import-time validation
+os.environ.setdefault("SOMA_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("SOMA_ALLOWED_HOSTS", "*")
+os.environ.setdefault("SOMA_DB_NAME", "somamemory")
+os.environ.setdefault("SOMA_DB_USER", "soma")
+os.environ.setdefault("SOMA_DB_PASSWORD", "soma")
+os.environ.setdefault("SOMA_DB_HOST", "localhost")
+os.environ.setdefault("SOMA_DB_PORT", "40021")
 
 try:
     from ninja.testing import TestClient

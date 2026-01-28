@@ -61,8 +61,8 @@ class Memory(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["namespace", "coordinate_key"],
-                name="unique_namespace_coordinate",
+                fields=["namespace", "tenant", "coordinate_key"],
+                name="unique_namespace_tenant_coordinate",
             ),
         ]
 
@@ -121,8 +121,14 @@ class GraphLink(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["namespace", "from_coordinate_key", "to_coordinate_key", "link_type"],
-                name="unique_graph_link",
+                fields=[
+                    "namespace",
+                    "tenant",
+                    "from_coordinate_key",
+                    "to_coordinate_key",
+                    "link_type",
+                ],
+                name="unique_graph_link_tenant",
             ),
         ]
 

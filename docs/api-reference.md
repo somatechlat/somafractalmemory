@@ -10,13 +10,13 @@ http://localhost:10101
 
 ## Authentication
 
-All endpoints except health probes require Bearer token authentication:
+All endpoints except health probes require Bearer token authentication (SOMA_API_TOKEN or `sfm_*` API key):
 
 ```
 Authorization: Bearer YOUR_TOKEN
 ```
 
-Set the token via `SOMA_API_TOKEN` environment variable.
+Set the shared token via `SOMA_API_TOKEN` environment variable or use an issued API key.
 
 ---
 

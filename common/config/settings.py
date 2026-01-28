@@ -68,6 +68,14 @@ class LangfuseSettings(BaseModel):
     host: str = Field(default="", alias="langfuse_host")
 
 
+class OPASettings(BaseModel):
+    """Configuration for Open Policy Agent (OPA)."""
+
+    url: str = Field(default="http://opa:8181", alias="opa_url")
+    timeout: float = Field(default=1.0, alias="opa_timeout")
+    fail_open: bool = Field(default=False, alias="opa_fail_open")
+
+
 class SMFSettings(SomaBaseSettings):
     """Settings specific to the SomaFractalMemory service."""
 
@@ -83,6 +91,7 @@ class SMFSettings(SomaBaseSettings):
 
     infra: InfraEndpoints = Field(default_factory=InfraEndpoints)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    opa: OPASettings = Field(default_factory=OPASettings)
 
     # Additional environment‑driven flags that were previously accessed via
     # ``os.getenv`` throughout the codebase. They are now centralised here so

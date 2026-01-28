@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from django.db import models
+from django.db.models import F
 
 # =============================================================================
 # API KEY MODEL (Standalone Mode)
@@ -99,7 +100,8 @@ class APIKey(models.Model):
         self.last_used_at = datetime.now(timezone.utc)
         if ip_address:
             self.last_used_ip = str(ip_address)
-        self.usage_count += 1
+        # Use F() expression for atomic increment to avoid race conditions
+        self.usage_count = F("usage_count") + 1
         self.save(update_fields=["last_used_at", "last_used_ip", "usage_count"])
 
 

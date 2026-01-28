@@ -50,20 +50,7 @@ redis:
       memory: "256Mi"
       cpu: "10m"
 
-# Qdrant (vector DB for locally dev)
-qdrant:
-  enabled: true
-  replicaCount: 1
-  persistence:
-    enabled: true
-    size: 1Gi
-  resources:
-    limits:
-      memory: "1Gi"
-      cpu: "500m"
-    requests:
-      memory: "256Mi"
-      cpu: "20m"
+
 
 # Secrets - loaded from Vault (Rule 100)
 secrets:

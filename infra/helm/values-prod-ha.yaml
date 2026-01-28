@@ -29,9 +29,3 @@ redis:
   persistence:
     enabled: true
     storageClass: "gp2" # Example for AWS, change as needed
-
-qdrant:
-  replicaCount: 2
-  persistence:
-    enabled: true
-    storageClass: "gp2" # Example for AWS, change as needed
