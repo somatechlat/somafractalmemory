@@ -33,6 +33,7 @@ dependencies = [
   "opentelemetry-sdk==1.37.0",
   "networkx",
   "hvac",
+  "django-environ",
 ]
 
 [project.optional-dependencies]

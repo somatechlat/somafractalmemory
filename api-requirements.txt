@@ -3,7 +3,7 @@ django>=4.2
 django-ninja>=1.0
 psycopg2-binary
 pyyaml
-python-dotenv
+django-environ
 msgpack>=1.0.4
 redis>=4.0.0
 pymilvus>=2.3.0
