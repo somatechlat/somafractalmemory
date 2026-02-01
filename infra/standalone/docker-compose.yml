@@ -259,5 +259,5 @@ volumes:
 
 networks:
   somafractalmemory_standalone_net:
-    name: soma_shared_net
-    external: true
+    name: somafractalmemory_standalone_net
+    driver: bridge

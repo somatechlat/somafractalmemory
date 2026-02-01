@@ -60,7 +60,7 @@ class GraphServiceSanityTest(TestCase):
         self.assertEqual(link.from_coordinate, list(c1))
         self.assertEqual(link.to_coordinate, list(c2))
 
-        # Neighbors
-        neighbors = graph.get_neighbors(c1)
+        # Neighbors - MUST use same tenant as add_link
+        neighbors = graph.get_neighbors(c1, tenant="t1")
         self.assertEqual(len(neighbors), 1)
         self.assertEqual(neighbors[0]["coordinate"], list(c2))

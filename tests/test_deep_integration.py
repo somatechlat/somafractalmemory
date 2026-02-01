@@ -23,10 +23,13 @@ import pytest
 from django.db import connections
 
 # Skip all tests if infrastructure is not available
-pytestmark = pytest.mark.skipif(
-    os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
-    reason="Requires live infrastructure (Redis, Postgres, Milvus)",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        os.environ.get("SOMA_INFRA_AVAILABLE") != "1",
+        reason="Requires live infrastructure (Redis, Postgres, Milvus)",
+    ),
+    pytest.mark.django_db(transaction=True),
+]
 
 
 def _get_namespace(prefix: str) -> str:
