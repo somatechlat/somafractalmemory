@@ -24,13 +24,12 @@ from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 
-from common.utils.logger import configure_logging
-from somafractalmemory.services import (
+from somafractalmemory.apps.common.messages import ErrorCode, get_message
+from somafractalmemory.apps.common.utils.logger import configure_logging
+from somafractalmemory.apps.core.services import (
     get_graph_service,
     get_memory_service,
 )
-
-from .messages import ErrorCode, get_message
 
 # Configure logging
 logger = configure_logging(

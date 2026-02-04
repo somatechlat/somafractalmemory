@@ -27,7 +27,7 @@ except ImportError:
     boto3 = None
 
 # Centralised configuration for backup/restore paths and bucket.
-from common.config.settings import load_settings
+from somafractalmemory.apps.common.config.settings import load_settings
 
 _settings = load_settings()
 BACKUP_DIR = str(_settings.backup_dir)

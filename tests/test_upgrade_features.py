@@ -2,7 +2,7 @@
 
 import pytest
 
-from common.config.settings import SMFSettings
+from somafractalmemory.apps.common.config.settings import SMFSettings
 
 
 def test_config_validation():
@@ -58,7 +58,7 @@ def test_retry_backoff_with_invalid_redis():
     # This tests real error handling without using stubs
     import redis.asyncio as aioredis
 
-    from common.utils.redis_cache import RedisCache
+    from somafractalmemory.apps.common.utils.redis_cache import RedisCache
 
     invalid_client = aioredis.Redis(
         host="localhost",

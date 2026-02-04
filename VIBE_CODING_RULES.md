@@ -160,7 +160,7 @@ NO CODING until the entire architecture + flow is understood.
 - **Database ORM:** Django ORM ONLY. No SQLAlchemy for new work. Models live in the Django apps; migrations via `manage.py makemigrations && migrate`.
 - **Vectors:** Milvus ONLY (no Qdrant). Memory/vector integrations must use the Milvus client; remove Qdrant references when migrating.
 - **Infra kept:** Temporal, Kafka, Flink, Vault, OPA, Redis, Postgres, MinIO/S3, OTEL/Prom/Grafana/Loki/Tempo remain and must be wired.
-- **Messages/I18N:** All user-facing text must come from `admin.common.messages.get_message(code, **kwargs)`. No hardcoded user strings.
+- **Messages/I18N:** All user-facing text must come from `admin.somafractalmemory.admin.common.messages.get_message(code, **kwargs)`. No hardcoded user strings.
 - **Security:** Fail-closed OPA gates; RBAC/ABAC per `docs/technical-manual/security/rbac-matrix.md`; TLS/mTLS ready; Vault for secrets.
 
 ===============================================================

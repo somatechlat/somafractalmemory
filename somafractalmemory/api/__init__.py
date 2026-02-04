@@ -5,19 +5,20 @@ All strings use centralized messages for i18n.
 """
 
 # Re-export core components
+# Re-export messages
+from somafractalmemory.apps.common.messages import (
+    ErrorCode,
+    SuccessCode,
+    get_error_detail,
+    get_message,
+)
+
 from .core import (
     API_TOKEN,
     api,
     get_graph,
     get_mem,
     get_rate_limiter,
-)
-
-# Re-export messages
-from .messages import (
-    ErrorCode,
-    SuccessCode,
-    get_message,
 )
 
 # Re-export schemas

@@ -12,19 +12,20 @@ authors = [
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.13"
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Framework :: Django",
   "Operating System :: OS Independent",
 ]
 
 # 100% Django - lean dependencies only
 dependencies = [
-  "django>=4.2",
+  "django>=4.2,<5.0",
   "django-ninja>=1.3.0",
   "psycopg[binary]>=3.2.0",
-  "redis>=4.0.0",
-  "pymilvus>=2.3.0",
+  "redis>=5.2.0",
+  "pymilvus>=2.4.0",
   "numpy>=1.24.0",
   "prometheus-client",
   "structlog",
@@ -32,13 +33,15 @@ dependencies = [
   "opentelemetry-api==1.37.0",
   "opentelemetry-sdk==1.37.0",
   "networkx",
-  "hvac",
-  "django-environ",
+  "hvac>=2.0",
+  "django-environ>=0.12.0",
+  "uvicorn[standard]>=0.27.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest",
+  "pytest-django",
   "hypothesis>=6.0.0",
   "testcontainers",
   "ruff",
@@ -55,7 +58,7 @@ dev = [
 soma = "somafractalmemory.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["somafractalmemory", "common"]
+include = ["somafractalmemory"]
 exclude = ["tests", "docs", "site"]
 
 [tool.setuptools.package-data]

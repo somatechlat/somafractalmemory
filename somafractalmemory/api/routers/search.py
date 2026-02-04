@@ -10,10 +10,10 @@ from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
 
-from common.utils.logger import get_logger
-from somafractalmemory.aaas.auth import MultiAuth, can_access_namespace, has_permission
+from somafractalmemory.apps.aaas.auth import MultiAuth, can_access_namespace, has_permission
+from somafractalmemory.apps.common.messages import ErrorCode, get_message
+from somafractalmemory.apps.common.utils.logger import get_logger
 
-from ..messages import ErrorCode, get_message
 from ..schemas import MemorySearchRequest, MemorySearchResponse
 
 logger = get_logger(__name__)

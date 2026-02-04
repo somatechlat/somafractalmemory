@@ -25,7 +25,7 @@ import requests
 # The API configuration lives in the shared ``common`` settings module.
 # Importing from ``somafractalmemory.config.settings`` would miss the
 # ``api_port`` field, causing an AttributeError during test collection.
-from common.config.settings import settings as common_settings
+from somafractalmemory.apps.common.config.settings import settings as common_settings
 
 BASE_URL = f"http://127.0.0.1:{common_settings.api_port or 10101}"
 

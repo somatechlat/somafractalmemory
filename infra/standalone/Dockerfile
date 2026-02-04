@@ -15,8 +15,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # PYTHON BUILDER STAGE: Build Python wheel
 # ═══════════════════════════════════════════════════════════════════════════════
-## Clean multi-stage Dockerfile: build wheel from pyproject and install in slim runtime
-### Builder stage: build wheel
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -27,14 +25,15 @@ WORKDIR /build
 
 COPY pyproject.toml README.md /build/
 COPY somafractalmemory /build/somafractalmemory
-COPY common /build/common
 
 # Build a wheel reproducibly using build
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip build setuptools wheel \
     && python -m build --wheel --no-isolation -o /build/dist
 
-### Runtime stage: slim image with only runtime deps and wheel installed
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUNTIME STAGE: slim image with only runtime deps and wheel installed
+# ═══════════════════════════════════════════════════════════════════════════════
 FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -43,24 +42,27 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System packages for healthcheck and optional components
+# System packages for healthcheck
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl supervisor python3-numpy \
+    && apt-get install -y --no-install-recommends curl supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy wheel from builder stage and install
 COPY --from=builder /build/dist /dist
 RUN --mount=type=cache,target=/root/.cache/pip \
-    if [ -d "/dist" ] && [ -n "$(ls -A /dist)" ]; then pip install /dist/*.whl; else echo "No wheel files found"; exit 1; fi
-
-# Install gunicorn for Django production
-RUN --mount=type=cache,target=/root/.cache/pip pip install gunicorn
+    if [ -d "/dist" ] && [ -n "$(ls -A /dist)" ]; then \
+    pip install /dist/*.whl && \
+    pip install "somafractalmemory[dev]"; \
+    else \
+    echo "No wheel files found"; exit 1; \
+    fi
 
 # Copy only essential runtime assets.
 COPY manage.py /app/manage.py
-COPY common /app/common
+COPY tests /app/tests
+COPY conftest.py /app/conftest.py
 
-# Also copy source tree to ensure latest local code is importable at runtime (overrides wheel)
+# Also copy source tree to ensure latest local code is importable at runtime
 COPY somafractalmemory /app/somafractalmemory
 
 # Ensure runtime imports from /app are visible
@@ -83,10 +85,12 @@ EXPOSE 10101
 ENV SOMAFRACTALMEMORY_HOST=0.0.0.0 \
     SOMAFRACTALMEMORY_PORT=10101 \
     SOMAFRACTALMEMORY_WORKERS=1 \
-    SOMA_MEMORY_MODE=evented_enterprise
+    SOMA_MEMORY_MODE=evented_enterprise \
+    DJANGO_SETTINGS_MODULE=somafractalmemory.settings.standalone
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${SOMAFRACTALMEMORY_PORT:-10101}/health" || exit 1
 
-ENTRYPOINT ["python", "manage.py", "runserver", "0.0.0.0:10101"]
+ENTRYPOINT ["uvicorn"]
+CMD ["somafractalmemory.config.asgi:application", "--host", "0.0.0.0", "--port", "10101", "--workers", "1"]

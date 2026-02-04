@@ -8,14 +8,15 @@ VIBE Coding Rules v5.2 - ALL 7 PERSONAS.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from somafractalmemory.aaas.auth import APIKeyAuth, has_permission
-from somafractalmemory.aaas.models import APIKey, UsageRecord
+from somafractalmemory.apps.aaas.auth import APIKeyAuth, has_permission
+from somafractalmemory.apps.aaas.models import APIKey, UsageRecord
+from somafractalmemory.apps.common.messages import ErrorCode, get_message
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def list_api_keys(request, tenant: str | None = None):
     Requires admin permission.
     """
     if not has_permission(request, "admin"):
-        raise HttpError(403, "Admin permission required")
+        raise HttpError(403, get_message(ErrorCode.ADMIN_REQUIRED))
 
     queryset = APIKey.objects.all()
 
@@ -121,7 +122,7 @@ def create_api_key(request, data: APIKeyCreateSchema):
     ⚠️ The full key is only returned ONCE!
     """
     if not has_permission(request, "admin"):
-        raise HttpError(403, "Admin permission required")
+        raise HttpError(403, get_message(ErrorCode.ADMIN_REQUIRED))
 
     # Generate key
     full_key, prefix, key_hash = APIKey.generate_key(is_test=data.is_test)
@@ -129,7 +130,7 @@ def create_api_key(request, data: APIKeyCreateSchema):
     # Calculate expiration
     expires_at = None
     if data.expires_days:
-        expires_at = datetime.now(timezone.utc) + timedelta(days=data.expires_days)
+        expires_at = datetime.now(UTC) + timedelta(days=data.expires_days)
 
     # Create key
     api_key = APIKey.objects.create(
@@ -158,19 +159,19 @@ def create_api_key(request, data: APIKeyCreateSchema):
 def revoke_api_key(request, key_id: UUID):
     """Revoke an API key."""
     if not has_permission(request, "admin"):
-        raise HttpError(403, "Admin permission required")
+        raise HttpError(403, get_message(ErrorCode.ADMIN_REQUIRED))
 
     try:
         api_key = APIKey.objects.get(id=key_id)
         api_key.is_active = False
-        api_key.revoked_at = datetime.now(timezone.utc)
+        api_key.revoked_at = datetime.now(UTC)
         api_key.save()
 
         logger.info(f"Revoked SFM API key: {api_key.name}")
 
         return {"status": "revoked", "key_id": str(key_id)}
     except APIKey.DoesNotExist as e:
-        raise HttpError(404, "API key not found") from e
+        raise HttpError(404, get_message(ErrorCode.API_KEY_NOT_FOUND)) from e
 
 
 # =============================================================================
@@ -189,10 +190,10 @@ def get_usage_stats(
 
     # Check access
     if auth.get("tenant") != tenant and not has_permission(request, "admin"):
-        raise HttpError(403, "Access denied")
+        raise HttpError(403, get_message(ErrorCode.ACCESS_DENIED))
 
     # Calculate period
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(days=days)
 
     # Aggregate usage

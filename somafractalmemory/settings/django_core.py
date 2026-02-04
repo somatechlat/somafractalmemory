@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "django.contrib.postgres",  # For PostgreSQL-specific fields
     "somafractalmemory",  # SomaFractalMemory Django app
     "somafractalmemory.apps.aaas",  # AAAS: API keys, usage tracking
+    "somafractalmemory.apps.core",  # Memory Core: Models and services
 ]
 
 MIDDLEWARE = [

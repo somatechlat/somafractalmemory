@@ -2,7 +2,7 @@
 
 from django.test import TestCase
 
-from somafractalmemory.services import get_graph_service, get_memory_service
+from somafractalmemory.apps.core.services import get_graph_service, get_memory_service
 
 
 class MemoryServiceSanityTest(TestCase):

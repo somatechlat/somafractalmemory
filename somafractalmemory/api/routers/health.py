@@ -4,14 +4,16 @@ All database access through Django ORM models.
 All strings use centralized messages for i18n.
 """
 
+from datetime import UTC
+
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import Router
 from ninja.errors import HttpError
 
-from common.utils.logger import get_logger
+from somafractalmemory.apps.common.messages import ErrorCode, SuccessCode, get_message
+from somafractalmemory.apps.common.utils.logger import get_logger
 
-from ..messages import ErrorCode, SuccessCode, get_message
 from ..schemas import HealthResponse, StatsResponse
 
 logger = get_logger(__name__)
@@ -82,11 +84,11 @@ def health_detailed(request: HttpRequest) -> dict:
     import os
     import platform
     import time
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from django.db import connection
 
-    from somafractalmemory.models import GraphLink, Memory, MemoryNamespace
+    from somafractalmemory.apps.core.models import GraphLink, Memory, MemoryNamespace
 
     start_time = time.time()
 
@@ -219,7 +221,7 @@ def health_detailed(request: HttpRequest) -> dict:
         "status": status,
         "version": "0.2.0",
         "uptime_seconds": round(time.time() - start_time, 3),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "services": services,
         "database": database,
         "tenants": tenants,
@@ -244,7 +246,7 @@ def test_stats(request: HttpRequest) -> StatsResponse:
     """Return stats for the test-memory namespace only."""
     _check_auth(request)
 
-    from somafractalmemory.services import get_memory_service
+    from somafractalmemory.apps.core.services import get_memory_service
 
     test_ns = getattr(settings, "SOMA_TEST_MEMORY_NAMESPACE", "test_ns")
     test_service = get_memory_service(namespace=test_ns)
@@ -271,6 +273,7 @@ def metrics(request: HttpRequest) -> HttpResponse:
 def root(request: HttpRequest) -> dict:
     """Root endpoint."""
     return {
+        "status": "online",
         "message": get_message(SuccessCode.API_RUNNING),
         "metrics": "/metrics",
     }

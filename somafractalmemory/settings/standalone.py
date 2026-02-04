@@ -26,4 +26,25 @@ MIDDLEWARE = [  # noqa: F405
 SOMA_NAMESPACE = "standalone"
 SOMA_MEMORY_NAMESPACE = "standalone_memory"
 
+# FORCE DATABASES update to ensure Vault injection is respected
+# regardless of import order or cache state.
+if "SOMA_DB_USER" in os.environ:
+    DATABASES["default"]["USER"] = os.environ["SOMA_DB_USER"]
+if "SOMA_DB_PASSWORD" in os.environ:
+    DATABASES["default"]["PASSWORD"] = os.environ["SOMA_DB_PASSWORD"]
+if "SOMA_DB_HOST" in os.environ:
+    DATABASES["default"]["HOST"] = os.environ["SOMA_DB_HOST"]
+if "SOMA_DB_PORT" in os.environ:
+    DATABASES["default"]["PORT"] = os.environ["SOMA_DB_PORT"]
+if "SOMA_DB_NAME" in os.environ:
+    DATABASES["default"]["NAME"] = os.environ["SOMA_DB_NAME"]
+
+# Override Redis if injected
+if "SOMA_REDIS_HOST" in os.environ:
+    SOMA_REDIS_HOST = os.environ["SOMA_REDIS_HOST"]
+if "SOMA_REDIS_PORT" in os.environ:
+    SOMA_REDIS_PORT = int(os.environ["SOMA_REDIS_PORT"])
+if "SOMA_REDIS_PASSWORD" in os.environ:
+    SOMA_REDIS_PASSWORD = os.environ["SOMA_REDIS_PASSWORD"]
+
 print(f"Loaded STANDALONE settings. Apps: {len(INSTALLED_APPS)}")  # noqa: F405

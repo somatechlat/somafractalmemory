@@ -7,9 +7,40 @@ env = environ.Env()
 # -----------------------------------------------------------------------------
 # Vault Secrets Injection (Runtime Only)
 # -----------------------------------------------------------------------------
+import os
+
 try:
-    # Vault client import placeholder for standardization
-    pass
+    from somafractalmemory.apps.core.security.vault_client import (
+        VaultNotConfigured,
+        get_db_credentials,
+        get_redis_credentials,
+        get_secret,
+    )
+
+    try:
+        # DB Injection
+        db_creds = get_db_credentials()
+        if db_creds:
+            _user = db_creds.get("username", "postgres")
+            _pass = db_creds.get("password", "")
+            _host = db_creds.get("host", "localhost")
+            _port = db_creds.get("port", 5432)
+            _name = db_creds.get("dbname", "somafractalmemory")
+            os.environ["SOMA_DB_USER"] = _user
+            os.environ["SOMA_DB_PASSWORD"] = _pass
+            os.environ["SOMA_DB_HOST"] = _host
+            os.environ["SOMA_DB_PORT"] = str(_port)
+            os.environ["SOMA_DB_NAME"] = _name
+
+        # Redis Injection
+        redis_creds = get_redis_credentials()
+        if redis_creds:
+            os.environ["SOMA_REDIS_HOST"] = redis_creds.get("host", "localhost")
+            os.environ["SOMA_REDIS_PORT"] = str(redis_creds.get("port", 6379))
+            os.environ["SOMA_REDIS_PASSWORD"] = redis_creds.get("password", "")
+
+    except (VaultNotConfigured, Exception):
+        pass
 except ImportError:
     pass
 

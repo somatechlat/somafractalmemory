@@ -1,183 +1,171 @@
-name: somafractalmemory
-
+# SFM Standalone Stack
 services:
-  somafractalmemory_standalone_redis:
+  # --- Redis cache -------------------------------------------
+  somafractalmemory-standalone-redis:
     image: redis:7.2-alpine
+    container_name: somafractalmemory-standalone-redis
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
-    networks:
-      - somafractalmemory_standalone_net
-    ports:
-      - "${REDIS_HOST_PORT:-10100}:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
-    volumes:
-      - redis_data:/data
-    command:
-      - redis-server
-      - --maxmemory
-      - "800mb"
-      - --maxmemory-policy
-      - "allkeys-lru"
-      - --appendonly
-      - "yes"
-      - --appendfsync
-      - "everysec"
-
-  somafractalmemory_standalone_postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-somafractalmemory}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-somafractalmemory}
-      POSTGRES_DB: ${POSTGRES_DB:-somafractalmemory}
-    ports:
-      - "${POSTGRES_HOST_PORT:-10106}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      retries: 5
     networks:
-      - somafractalmemory_standalone_net
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      - somafractalmemory-standalone-net
+    ports:
+      - "10379:6379"
 
-  somafractalmemory_standalone_db_migrate:
-    image: somafractalmemory:latest
+  # --- Vault secrets -----------------------------------------
+  somafractalmemory-standalone-vault:
+    image: hashicorp/vault:1.13.3
+    container_name: somafractalmemory-standalone-vault
+    restart: unless-stopped
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    ports:
+      - "18200:8200"
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: [ "CMD", "vault", "status" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - somafractalmemory-standalone-net
+
+  # --- Vault init helper -------------------------------------
+  somafractalmemory-standalone-vault-init:
+    image: alpine:latest
+    container_name: somafractalmemory-standalone-vault-init
     depends_on:
-      somafractalmemory_standalone_postgres:
+      somafractalmemory-standalone-vault:
         condition: service_healthy
     networks:
-      - somafractalmemory_standalone_net
-    environment:
-      POSTGRES_USER: "${POSTGRES_USER}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      POSTGRES_DB: "${POSTGRES_DB}"
-      SOMA_POSTGRES_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@somafractalmemory_standalone_postgres:5432/${POSTGRES_DB}"
-    command: [ "sh", "-lc", "cd /app && python manage.py migrate --noinput" ]
-    restart: "no"
-    profiles: [ "dev" ]
-
-  somafractalmemory_standalone_opa:
-    image: openpolicyagent/opa:0.54.0
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-        reservations:
-          memory: 64M
+      - somafractalmemory-standalone-net
+    entrypoint: [ "sh", "-c" ]
     command:
-      - run
-      - --server
-      - --addr=0.0.0.0:8181
-      - --log-level=error
-    networks:
-      - somafractalmemory_standalone_net
-    ports:
-      - "${OPA_HOST_PORT:-10104}:8181"
-    volumes:
-      - opa_data:/var/lib/opa
-    healthcheck:
-      test: [ "CMD", "/opa", "check", "/" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - |
+        apk add --no-cache curl jq
+        # Wait for vault to be ready
+        until curl -s http://somafractalmemory-standalone-vault:8200/v1/sys/health; do sleep 1; done
+        # Mount KV v2
+        curl -H "X-Vault-Token: root" -X POST -d '{"type":"kv-v2"}' http://somafractalmemory-standalone-vault:8200/v1/sys/mounts/somafractalmemory
 
-  # --- Milvus dependencies: etcd and minio -----------------------------------
-  somafractalmemory_standalone_etcd:
-    image: quay.io/coreos/etcd:v3.5.5
+        # Write Database Credentials
+        curl -H "X-Vault-Token: root" -X POST \
+          -d '{"data": {"username": "somafractalmemory", "password": "somafractalmemory", "host": "somafractalmemory-standalone-postgres", "port": 5432, "dbname": "somafractalmemory"}}' \
+          http://somafractalmemory-standalone-vault:8200/v1/somafractalmemory/data/database
+
+        # Write Redis Credentials
+        curl -H "X-Vault-Token: root" -X POST \
+          -d '{"data": {"host": "somafractalmemory-standalone-redis", "port": 6379, "password": ""}}' \
+          http://somafractalmemory-standalone-vault:8200/v1/somafractalmemory/data/redis
+
+        echo "Vault initialized and secrets populated."
+
+  # --- Database ----------------------------------------------
+  somafractalmemory-standalone-postgres:
+    image: postgres:15-alpine
+    container_name: somafractalmemory-standalone-postgres
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
     environment:
-      ETCD_AUTO_COMPACTION_MODE: "revision"
-      ETCD_AUTO_COMPACTION_RETENTION: "1000"
-      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
-      ETCD_SNAPSHOT_COUNT: "50000"
-      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
-      ETCD_ADVERTISE_CLIENT_URLS: "http://somafractalmemory_standalone_etcd:2379"
-      ETCD_LISTEN_PEER_URLS: "http://0.0.0.0:2380"
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: "http://somafractalmemory_standalone_etcd:2380"
-      ETCD_INITIAL_CLUSTER: "default=http://somafractalmemory_standalone_etcd:2380"
-      ETCD_INITIAL_CLUSTER_STATE: "new"
+      POSTGRES_DB: "somafractalmemory"
+      POSTGRES_USER: "somafractalmemory"
+      POSTGRES_PASSWORD: "somafractalmemory"
     volumes:
-      - etcd_data:/etcd
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "10432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U somafractalmemory" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - somafractalmemory-standalone-net
+
+  # --- OPA ---------------------------------------------------
+  somafractalmemory-standalone-opa:
+    image: openpolicyagent/opa:latest-debug
+    container_name: somafractalmemory-standalone-opa
+    restart: unless-stopped
+    ports:
+      - "10818:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=info"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8181/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - somafractalmemory-standalone-net
+
+  # --- Etcd --------------------------------------------------
+  somafractalmemory-standalone-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: somafractalmemory-standalone-etcd
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_RETENTION: "1"
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://somafractalmemory-standalone-etcd:2379"
     healthcheck:
       test: [ "CMD", "etcdctl", "endpoint", "health" ]
-      interval: 30s
-      timeout: 20s
+      interval: 10s
+      timeout: 5s
       retries: 3
     networks:
-      - somafractalmemory_standalone_net
+      - somafractalmemory-standalone-net
 
-  somafractalmemory_standalone_minio:
+  # --- MinIO -------------------------------------------------
+  somafractalmemory-standalone-minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: somafractalmemory-standalone-minio
     restart: unless-stopped
-    hostname: minio
-    deploy:
-      resources:
-        limits:
-          memory: 512M
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    volumes:
-      - minio_data:/minio_data
-    ports:
-      - "10109:9000"
-      - "10110:9001"
-    command: minio server /minio_data --console-address ":9001"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+    command: server /data
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
-      interval: 30s
-      timeout: 20s
+      interval: 10s
+      timeout: 5s
       retries: 3
     networks:
-      somafractalmemory_standalone_net:
+      somafractalmemory-standalone-net:
         aliases:
           - minio
 
   # --- Milvus vector store -----------------------------------
-  somafractalmemory_standalone_milvus:
+  somafractalmemory-standalone-milvus:
     image: milvusdb/milvus:v2.3.3
+    container_name: somafractalmemory-standalone-milvus
     restart: unless-stopped
     depends_on:
-      somafractalmemory_standalone_etcd:
+      somafractalmemory-standalone-etcd:
         condition: service_healthy
-      somafractalmemory_standalone_minio:
+      somafractalmemory-standalone-minio:
         condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 4G
     environment:
-      ETCD_ENDPOINTS: "somafractalmemory_standalone_etcd:2379"
+      ETCD_ENDPOINTS: "somafractalmemory-standalone-etcd:2379"
       MINIO_ADDRESS: "minio:9000"
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
-      - "${MILVUS_GRPC_HOST_PORT:-10119}:19530"
-      - "${MILVUS_HTTP_HOST_PORT:-10120}:9091"
+      - "10530:19530"
+      - "10531:9091"
     command: [ "milvus", "run", "standalone" ]
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
@@ -186,43 +174,48 @@ services:
       retries: 10
       start_period: 180s
     networks:
-      - somafractalmemory_standalone_net
+      - somafractalmemory-standalone-net
 
-  somafractalmemory_standalone_app:
+  somafractalmemory-standalone-api:
     build:
       context: ../..
       dockerfile: infra/standalone/Dockerfile
     image: somafractalmemory:latest
+    container_name: somafractalmemory-standalone-api
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 2G
     depends_on:
-      somafractalmemory_standalone_redis:
+      somafractalmemory-standalone-vault-init:
+        condition: service_completed_successfully
+      somafractalmemory-standalone-redis:
         condition: service_healthy
-      somafractalmemory_standalone_postgres:
+      somafractalmemory-standalone-postgres:
         condition: service_healthy
-      somafractalmemory_standalone_opa:
+      somafractalmemory-standalone-opa:
         condition: service_healthy
-      somafractalmemory_standalone_milvus:
+      somafractalmemory-standalone-milvus:
         condition: service_healthy
     networks:
-      - somafractalmemory_standalone_net
+      - somafractalmemory-standalone-net
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      DJANGO_SETTINGS_MODULE: "somafractalmemory.settings.standalone"
+      # VAULT BOOTSTRAP ONLY
+      VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
+      VAULT_TOKEN: "root"
+      SOMA_LOG_LEVEL: "INFO"
+      SOMA_ALLOWED_HOSTS: "*"
+      SOMA_API_TOKEN: "test-token-123"
       SOMA_API_PORT: "10101"
-      SOMA_REDIS_HOST: "somafractalmemory_standalone_redis"
-      SOMA_REDIS_PORT: "6379"
-      SOMA_DB_HOST: "somafractalmemory_standalone_postgres"
-      SOMA_DB_PORT: "5432"
-      SOMA_DB_USER: "${POSTGRES_USER}"
-      SOMA_DB_PASSWORD: "${POSTGRES_PASSWORD}"
-      SOMA_DB_NAME: "${POSTGRES_DB}"
-      SOMA_MILVUS_HOST: "somafractalmemory_standalone_milvus"
-      SOMA_MILVUS_PORT: "19530"
-      SOMA_OPA_URL: "http://somafractalmemory_standalone_opa:8181"
+      # INFRA HOST NAMES ONLY (Credentials via Vault)
+      SOMA_DB_HOST: "somafractalmemory-standalone-postgres"
+      SOMA_REDIS_HOST: "somafractalmemory-standalone-redis"
+      SOMA_MILVUS_HOST: "somafractalmemory-standalone-milvus"
+      SOMA_OPA_URL: "http://somafractalmemory-standalone-opa:8181"
     ports:
       - "10101:10101"
     healthcheck:
@@ -232,24 +225,17 @@ services:
       start_period: 30s
       retries: 5
     cap_drop: [ "ALL" ]
-    read_only: false # Allow writing to local db file if needed for dev or logs
+    read_only: false
     security_opt:
       - no-new-privileges:true
 
+networks:
+  somafractalmemory-standalone-net:
+    driver: bridge
+
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  opa_data:
-    driver: local
-  etcd_data:
-    driver: local
-  minio_data:
-    driver: local
   milvus_data:
-    driver: local
-
-networks:
-  somafractalmemory_standalone_net:
-    driver: bridge
+  etcd_data:
+  redis_data:
+  opa_data:
