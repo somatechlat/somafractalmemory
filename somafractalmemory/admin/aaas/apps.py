@@ -7,5 +7,5 @@ class AaasConfig(AppConfig):
     """Configuration for the AAAS application."""
 
     default_auto_field = "django.db.models.BigAutoField"
-    name = "somafractalmemory.apps.aaas"
+    name = "somafractalmemory.admin.aaas"
     verbose_name = "SomaFractalMemory AAAS"

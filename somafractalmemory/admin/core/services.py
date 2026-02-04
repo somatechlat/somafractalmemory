@@ -16,8 +16,8 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 
-from somafractalmemory.apps.common.utils.logger import get_logger
-from somafractalmemory.apps.core.implementations import MilvusVectorStore
+from somafractalmemory.admin.common.utils.logger import get_logger
+from somafractalmemory.admin.core.implementations import MilvusVectorStore
 
 from .models import AuditLog, GraphLink, Memory, VectorEmbedding
 

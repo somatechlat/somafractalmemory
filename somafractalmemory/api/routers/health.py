@@ -4,6 +4,7 @@ All database access through Django ORM models.
 All strings use centralized messages for i18n.
 """
 
+import time
 from datetime import UTC
 
 from django.conf import settings
@@ -11,12 +12,13 @@ from django.http import HttpRequest, HttpResponse
 from ninja import Router
 from ninja.errors import HttpError
 
-from somafractalmemory.apps.common.messages import ErrorCode, SuccessCode, get_message
-from somafractalmemory.apps.common.utils.logger import get_logger
+from somafractalmemory.admin.common.messages import ErrorCode, SuccessCode, get_message
+from somafractalmemory.admin.common.utils.logger import get_logger
 
 from ..schemas import HealthResponse, StatsResponse
 
 logger = get_logger(__name__)
+start_time = time.time()
 router = Router(tags=["system"])
 
 
@@ -88,11 +90,8 @@ def health_detailed(request: HttpRequest) -> dict:
 
     from django.db import connection
 
-    from somafractalmemory.apps.core.models import GraphLink, Memory, MemoryNamespace
+    from somafractalmemory.admin.core.models import GraphLink, Memory, MemoryNamespace
 
-    start_time = time.time()
-
-    # Track service health
     services = []
 
     # Check PostgreSQL
@@ -246,7 +245,7 @@ def test_stats(request: HttpRequest) -> StatsResponse:
     """Return stats for the test-memory namespace only."""
     _check_auth(request)
 
-    from somafractalmemory.apps.core.services import get_memory_service
+    from somafractalmemory.admin.core.services import get_memory_service
 
     test_ns = getattr(settings, "SOMA_TEST_MEMORY_NAMESPACE", "test_ns")
     test_service = get_memory_service(namespace=test_ns)

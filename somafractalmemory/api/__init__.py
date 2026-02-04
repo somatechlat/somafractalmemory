@@ -6,10 +6,9 @@ All strings use centralized messages for i18n.
 
 # Re-export core components
 # Re-export messages
-from somafractalmemory.apps.common.messages import (
+from somafractalmemory.admin.common.messages import (
     ErrorCode,
     SuccessCode,
-    get_error_detail,
     get_message,
 )
 

@@ -14,9 +14,9 @@ from uuid import UUID
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from somafractalmemory.apps.aaas.auth import APIKeyAuth, has_permission
-from somafractalmemory.apps.aaas.models import APIKey, UsageRecord
-from somafractalmemory.apps.common.messages import ErrorCode, get_message
+from somafractalmemory.admin.aaas.auth import APIKeyAuth, has_permission
+from somafractalmemory.admin.aaas.models import APIKey, UsageRecord
+from somafractalmemory.admin.common.messages import ErrorCode, get_message
 
 logger = logging.getLogger(__name__)
 

@@ -18,12 +18,12 @@ import logging
 import threading
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
-from somafractalmemory.aaas.models import UsageRecord
+from somafractalmemory.admin.aaas.models import UsageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class UsageBuffer:
                     "count": count,
                     "bytes_processed": bytes_processed,
                     "api_key_id": api_key_id,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 }
             )
 

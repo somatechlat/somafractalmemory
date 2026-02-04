@@ -27,7 +27,7 @@ def main() -> None:
     """Entry point for the SomaFractalMemory CLI."""
     setup_django()
 
-    from somafractalmemory.apps.core.services import get_memory_service
+    from somafractalmemory.admin.core.services import get_memory_service
 
     parser = argparse.ArgumentParser(prog="soma", description="SomaFractalMemory CLI (Django ORM)")
     parser.add_argument("--namespace", default="cli_ns")

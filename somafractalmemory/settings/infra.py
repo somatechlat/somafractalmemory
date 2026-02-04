@@ -1,20 +1,16 @@
+import os
 from pathlib import Path
 
 import environ
 
 env = environ.Env()
 
-# -----------------------------------------------------------------------------
-# Vault Secrets Injection (Runtime Only)
-# -----------------------------------------------------------------------------
-import os
 
 try:
-    from somafractalmemory.apps.core.security.vault_client import (
+    from somafractalmemory.admin.core.security.vault_client import (
         VaultNotConfigured,
         get_db_credentials,
         get_redis_credentials,
-        get_secret,
     )
 
     try:

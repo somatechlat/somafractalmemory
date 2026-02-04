@@ -1,6 +1,6 @@
 import os
 
-from somafractalmemory.apps.core.security.vault_client import _get_vault_client, get_secret
+from somafractalmemory.admin.core.security.vault_client import _get_vault_client, get_secret
 
 print("--- Vault Debug ---")
 print(f"VAULT_ADDR: {os.environ.get('VAULT_ADDR')}")

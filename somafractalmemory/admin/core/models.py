@@ -7,7 +7,7 @@ All database access goes through these models.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
@@ -84,7 +84,7 @@ class Memory(models.Model):
     def touch(self) -> None:
         """Update access count and timestamp."""
         self.access_count += 1
-        self.last_accessed = datetime.now(timezone.utc)
+        self.last_accessed = datetime.now(UTC)
         self.save(update_fields=["access_count", "last_accessed", "updated_at"])
 
 

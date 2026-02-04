@@ -17,14 +17,14 @@ VIBE Coding Rules v5.2 - ALL 7 PERSONAS:
 import logging
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from django.conf import settings
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 
-from somafractalmemory.aaas.models import UsageRecord
+from somafractalmemory.admin.aaas.models import UsageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ class UsageSyncService:
         """Perform the actual sync operation."""
         try:
             # Get unsynced records grouped by tenant
-            cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
+            cutoff = datetime.now(UTC) - timedelta(minutes=1)
 
             # Get distinct tenants with unsent records
             tenants = (
@@ -171,7 +171,7 @@ class UsageSyncService:
             for tenant in tenants:
                 self._sync_tenant(tenant, cutoff)
 
-            self._last_sync = datetime.now(timezone.utc)
+            self._last_sync = datetime.now(UTC)
 
         except Exception as e:
             logger.exception(f"Sync loop error: {e}")
@@ -215,7 +215,7 @@ class UsageSyncService:
                 tenant=tenant,
                 synced_at__isnull=True,
                 timestamp__lt=cutoff,
-            ).update(synced_at=datetime.now(timezone.utc))
+            ).update(synced_at=datetime.now(UTC))
 
 
 # =============================================================================

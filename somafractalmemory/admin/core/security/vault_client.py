@@ -43,9 +43,9 @@ def _get_vault_client():
         logger.info(f"Vault client connected to {vault_addr}")
         return client
     except ImportError:
-        raise VaultNotConfigured("hvac library not installed.")
+        raise VaultNotConfigured("hvac library not installed.") from None
     except Exception as e:
-        raise VaultNotConfigured(f"Vault connection failed: {e}")
+        raise VaultNotConfigured(f"Vault connection failed: {e}") from e
 
 
 def get_secret(path: str, key: str | None = None) -> Any:
@@ -76,7 +76,7 @@ def get_secret(path: str, key: str | None = None) -> Any:
     except Exception as e:
         if "SecretNotFound" in str(type(e)):
             raise
-        raise SecretNotFound(f"Secret at '{path}' not found: {e}")
+        raise SecretNotFound(f"Secret at '{path}' not found: {e}") from e
 
 
 def get_db_credentials() -> dict:

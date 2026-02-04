@@ -8,9 +8,9 @@ from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
 
-from somafractalmemory.apps.aaas.auth import MultiAuth, can_access_namespace, has_permission
-from somafractalmemory.apps.common.messages import ErrorCode, get_message
-from somafractalmemory.apps.common.utils.logger import get_logger
+from somafractalmemory.admin.aaas.auth import MultiAuth, can_access_namespace, has_permission
+from somafractalmemory.admin.common.messages import ErrorCode, get_message
+from somafractalmemory.admin.common.utils.logger import get_logger
 
 from ..schemas import (
     GraphLinkRequest,

@@ -7,7 +7,7 @@ Can work standalone or integrate with SomaBrain.
 
 import hashlib
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from django.db import models
@@ -89,7 +89,7 @@ class APIKey(models.Model):
         key_hash = hashlib.sha256(full_key.encode()).hexdigest()
         try:
             api_key = cls.objects.get(key_hash=key_hash, is_active=True)
-            if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+            if api_key.expires_at and api_key.expires_at < datetime.now(UTC):
                 return None
             return api_key
         except cls.DoesNotExist:
@@ -97,7 +97,7 @@ class APIKey(models.Model):
 
     def touch(self, ip_address: str | None = None) -> None:
         """Update usage stats."""
-        self.last_used_at = datetime.now(timezone.utc)
+        self.last_used_at = datetime.now(UTC)
         if ip_address:
             self.last_used_ip = str(ip_address)
         # Use F() expression for atomic increment to avoid race conditions
@@ -161,7 +161,7 @@ class UsageRecord(models.Model):
         api_key_id: "str | None" = None,
     ) -> "UsageRecord":
         """Record a usage event."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         hour_bucket = now.replace(minute=0, second=0, microsecond=0)
         return cls.objects.create(
             tenant=tenant,

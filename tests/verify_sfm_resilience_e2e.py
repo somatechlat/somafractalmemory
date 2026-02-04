@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 
@@ -6,8 +7,9 @@ import requests
 # SFM E2E Memory Test Configuration
 SFM_HOST = "localhost"
 SFM_PORT = 10101
-ENDPOINT = f"http://{SFM_HOST}:{SFM_PORT}/api/memories/"
-TOKEN = "dev-token-somastack2024"
+ENDPOINT = f"http://{SFM_HOST}:{SFM_PORT}/memories"
+
+TOKEN = os.environ.get("SOMA_API_TOKEN", "dev-token-somastack2024")
 
 # Test Data (Resilient Fractal Coordinate)
 TEST_COORD = [1.2, 3.4, 5.6]
@@ -26,8 +28,8 @@ def verify_sfm():
 
     # 1. Store Operation
     store_data = {
-        "namespace": TEST_NAMESPACE,
-        "coordinate": TEST_COORD,
+        # "namespace": TEST_NAMESPACE,  # Not in schema
+        "coord": ",".join(map(str, TEST_COORD)),
         "payload": TEST_PAYLOAD,
         "memory_type": "episodic",
     }
@@ -43,7 +45,7 @@ def verify_sfm():
 
     # 2. Retrieve Operation
     coord_str = ",".join(map(str, TEST_COORD))
-    retrieve_url = f"{ENDPOINT}{TEST_NAMESPACE}/{coord_str}"
+    retrieve_url = f"{ENDPOINT}/{coord_str}"
 
     print(f"Retrieving memory from {coord_str}...")
     try:
@@ -52,7 +54,7 @@ def verify_sfm():
         data = r.json()
 
         # Verify Integrity
-        if data["payload"]["origin"] == "e2e_resilience_test":
+        if data["memory"]["payload"]["origin"] == "e2e_resilience_test":
             print(f"RETRIEVE SUCCESS: Match Confirmed via {TEST_NAMESPACE}")
             print("--- SFM E2E VERIFICATION COMPLETE | STATUS: SOVEREIGN ---")
             return True
