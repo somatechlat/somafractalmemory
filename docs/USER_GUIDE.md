@@ -5,10 +5,10 @@ This FAQ addresses the most common questions users have when getting started wit
 ## General
 
 **Q: What is the difference between *episodic* and *semantic* memory?**
-A: *Episodic* memory stores the payload exactly as‑provided and is retrieved by the exact coordinate key. *Semantic* memory also stores the payload but creates a vector embedding (via Qdrant) that enables similarity search based on content.
+A: *Episodic* memory stores the payload exactly as‑provided and is retrieved by the exact coordinate key. *Semantic* memory also stores the payload but creates a vector embedding (via Milvus) that enables similarity search based on content.
 
 **Q: Do I need Docker to run the system?**
-A: Docker is required for the supporting services (PostgreSQL, Redis, Qdrant). The API itself is a pure Python FastAPI app and can be run locally without Docker if you provide alternative back‑ends.
+A: Docker is required for the supporting services (PostgreSQL, Redis, Milvus). The API is a Django + Django Ninja service and can be run locally without Docker if you provide alternative back-ends.
 
 ## Authentication & Security
 
@@ -118,7 +118,7 @@ This document provides a high‑level overview of the capabilities offered by **
 | Feature | Description |
 |---------|-------------|
 | **Episodic Memory** | Store arbitrary JSON payloads indexed by a coordinate vector. Retrieval by exact coordinate.
-| **Semantic Memory** | Store payloads with vector embeddings (via Qdrant) enabling similarity search.
+| **Semantic Memory** | Store payloads with vector embeddings (via Milvus) enabling similarity search.
 | **Graph Store** | Relationships between memories are captured in a NetworkX graph for traversals and reasoning.
 | **Versioning** | Each memory version is retained, allowing rollback and audit trails.
 | **Bulk Operations** | Batch insert and delete APIs for high‑throughput ingestion.
@@ -141,7 +141,7 @@ This guide walks you through installing **SomaFractalMemory** on a local macOS o
 ## Prerequisites
 
 * Python **3.10+** (recommended via `pyenv` or system Python)
-* Docker Desktop (Compose v2) – required for the PostgreSQL, Redis, and Qdrant services.
+* Docker Desktop (Compose v2) – required for the PostgreSQL, Redis, and Milvus services.
 * Git
 * A POSIX‑compatible shell (`zsh` is the default on macOS).
 
@@ -175,7 +175,7 @@ This guide walks you through installing **SomaFractalMemory** on a local macOS o
    ```bash
    docker compose --profile core up -d
    ```
-   This brings up PostgreSQL, Redis, Qdrant, and the API.
+   This brings up PostgreSQL, Redis, Milvus, and the API.
 
 6. **Verify the API is healthy**
    ```bash

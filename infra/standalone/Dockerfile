@@ -52,7 +52,7 @@ COPY --from=builder /build/dist /dist
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -d "/dist" ] && [ -n "$(ls -A /dist)" ]; then \
     pip install /dist/*.whl && \
-    pip install "somafractalmemory[dev]"; \
+    pip install "somafractalmemory[dev]" gunicorn; \
     else \
     echo "No wheel files found"; exit 1; \
     fi
@@ -92,5 +92,5 @@ ENV SOMAFRACTALMEMORY_HOST=0.0.0.0 \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${SOMAFRACTALMEMORY_PORT:-10101}/health" || exit 1
 
-ENTRYPOINT ["uvicorn"]
-CMD ["somafractalmemory.config.asgi:application", "--host", "0.0.0.0", "--port", "10101", "--workers", "1"]
+ENTRYPOINT ["gunicorn"]
+CMD ["somafractalmemory.config.wsgi:application", "--bind", "0.0.0.0:10101", "--workers", "1", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]

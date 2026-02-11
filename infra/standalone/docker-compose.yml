@@ -21,7 +21,7 @@ services:
     container_name: somafractalmemory-standalone-vault
     restart: unless-stopped
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_DEV_ROOT_TOKEN_ID: "${SFM_VAULT_TOKEN:-change-me-vault-token}"
       VAULT_ADDR: "http://0.0.0.0:8200"
     ports:
       - "18200:8200"
@@ -42,6 +42,12 @@ services:
     depends_on:
       somafractalmemory-standalone-vault:
         condition: service_healthy
+    environment:
+      SFM_VAULT_TOKEN: "${SFM_VAULT_TOKEN:-change-me-vault-token}"
+      SFM_DB_USER: "${SFM_DB_USER:-somafractalmemory}"
+      SFM_DB_PASSWORD: "${SFM_DB_PASSWORD:-change-me-db-password}"
+      SFM_DB_NAME: "${SFM_DB_NAME:-somafractalmemory}"
+      SFM_REDIS_PASSWORD: "${SFM_REDIS_PASSWORD:-}"
     networks:
       - somafractalmemory-standalone-net
     entrypoint: [ "sh", "-c" ]
@@ -51,16 +57,16 @@ services:
         # Wait for vault to be ready
         until curl -s http://somafractalmemory-standalone-vault:8200/v1/sys/health; do sleep 1; done
         # Mount KV v2
-        curl -H "X-Vault-Token: root" -X POST -d '{"type":"kv-v2"}' http://somafractalmemory-standalone-vault:8200/v1/sys/mounts/somafractalmemory
+        curl -H "X-Vault-Token: $${SFM_VAULT_TOKEN}" -X POST -d '{"type":"kv-v2"}' http://somafractalmemory-standalone-vault:8200/v1/sys/mounts/somafractalmemory
 
         # Write Database Credentials
-        curl -H "X-Vault-Token: root" -X POST \
-          -d '{"data": {"username": "somafractalmemory", "password": "somafractalmemory", "host": "somafractalmemory-standalone-postgres", "port": 5432, "dbname": "somafractalmemory"}}' \
+        curl -H "X-Vault-Token: $${SFM_VAULT_TOKEN}" -X POST \
+          -d "{\"data\": {\"username\": \"$${SFM_DB_USER}\", \"password\": \"$${SFM_DB_PASSWORD}\", \"host\": \"somafractalmemory-standalone-postgres\", \"port\": 5432, \"dbname\": \"$${SFM_DB_NAME}\"}}" \
           http://somafractalmemory-standalone-vault:8200/v1/somafractalmemory/data/database
 
         # Write Redis Credentials
-        curl -H "X-Vault-Token: root" -X POST \
-          -d '{"data": {"host": "somafractalmemory-standalone-redis", "port": 6379, "password": ""}}' \
+        curl -H "X-Vault-Token: $${SFM_VAULT_TOKEN}" -X POST \
+          -d "{\"data\": {\"host\": \"somafractalmemory-standalone-redis\", \"port\": 6379, \"password\": \"$${SFM_REDIS_PASSWORD}\"}}" \
           http://somafractalmemory-standalone-vault:8200/v1/somafractalmemory/data/redis
 
         echo "Vault initialized and secrets populated."
@@ -71,9 +77,9 @@ services:
     container_name: somafractalmemory-standalone-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "somafractalmemory"
-      POSTGRES_USER: "somafractalmemory"
-      POSTGRES_PASSWORD: "somafractalmemory"
+      POSTGRES_DB: "${SFM_DB_NAME:-somafractalmemory}"
+      POSTGRES_USER: "${SFM_DB_USER:-somafractalmemory}"
+      POSTGRES_PASSWORD: "${SFM_DB_PASSWORD:-change-me-db-password}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -88,7 +94,7 @@ services:
 
   # --- OPA ---------------------------------------------------
   somafractalmemory-standalone-opa:
-    image: openpolicyagent/opa:latest-debug
+    image: openpolicyagent/opa:0.54.0
     container_name: somafractalmemory-standalone-opa
     restart: unless-stopped
     ports:
@@ -112,7 +118,6 @@ services:
     restart: unless-stopped
     environment:
       ETCD_AUTO_COMPACTION_RETENTION: "1"
-      ALLOW_NONE_AUTHENTICATION: "yes"
       ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
       ETCD_ADVERTISE_CLIENT_URLS: "http://somafractalmemory-standalone-etcd:2379"
     healthcheck:
@@ -129,8 +134,8 @@ services:
     container_name: somafractalmemory-standalone-minio
     restart: unless-stopped
     environment:
-      MINIO_ACCESS_KEY: "minioadmin"
-      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_ROOT_USER: "${SFM_MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${SFM_MINIO_ROOT_PASSWORD:-change-me-minio-password}"
     command: server /data
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
@@ -159,8 +164,8 @@ services:
     environment:
       ETCD_ENDPOINTS: "somafractalmemory-standalone-etcd:2379"
       MINIO_ADDRESS: "minio:9000"
-      MINIO_ACCESS_KEY: "minioadmin"
-      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_ACCESS_KEY: "${SFM_MINIO_ROOT_USER:-minioadmin}"
+      MINIO_SECRET_KEY: "${SFM_MINIO_ROOT_PASSWORD:-change-me-minio-password}"
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
@@ -206,10 +211,10 @@ services:
       DJANGO_SETTINGS_MODULE: "somafractalmemory.settings.standalone"
       # VAULT BOOTSTRAP ONLY
       VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
-      VAULT_TOKEN: "root"
+      VAULT_TOKEN: "${SFM_VAULT_TOKEN:-change-me-vault-token}"
       SOMA_LOG_LEVEL: "INFO"
-      SOMA_ALLOWED_HOSTS: "*"
-      SOMA_API_TOKEN: "test-token-123"
+      SOMA_ALLOWED_HOSTS: "${SOMA_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      SOMA_API_TOKEN: "${SOMA_API_TOKEN:-test-token-123}"
       SOMA_API_PORT: "10101"
       # INFRA HOST NAMES ONLY (Credentials via Vault)
       SOMA_DB_HOST: "somafractalmemory-standalone-postgres"

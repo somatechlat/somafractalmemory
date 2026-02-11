@@ -15,11 +15,10 @@ This guide provides step-by-step instructions for deploying SomaFractalMemory (S
 cd /path/to/somafractalmemory
 
 # 2. Start all services
-cd infra/docker
-docker compose --profile core up -d
+docker compose -f infra/standalone/docker-compose.yml up -d
 
 # 3. Apply migrations
-docker exec somafractalmemory_api python manage.py migrate
+docker exec somafractalmemory-standalone-api python manage.py migrate
 
 # 4. Verify health (all 6 services should be healthy)
 docker ps --format "table {{.Names}}\t{{.Status}}"
@@ -52,10 +51,8 @@ cp .env.example .env 2>/dev/null || true
 ### Step 2: Start Core Services
 
 ```bash
-cd infra/docker
-
-# Start with core profile
-docker compose --profile core up -d
+# Start standalone stack
+docker compose -f infra/standalone/docker-compose.yml up -d
 
 # Wait for services to initialize
 sleep 20
@@ -65,7 +62,7 @@ sleep 20
 
 ```bash
 # Apply Django migrations
-docker exec somafractalmemory_api python manage.py migrate
+docker exec somafractalmemory-standalone-api python manage.py migrate
 ```
 
 ### Step 4: Verify Health
@@ -75,12 +72,12 @@ docker exec somafractalmemory_api python manage.py migrate
 docker compose ps
 
 # Expected: 6 services, all (healthy)
-# - somafractalmemory_api
-# - somafractalmemory_postgres
-# - somafractalmemory_redis
-# - somafractalmemory_milvus
-# - somafractalmemory_etcd
-# - somafractalmemory_minio
+# - somafractalmemory-standalone-api
+# - somafractalmemory-standalone-postgres
+# - somafractalmemory-standalone-redis
+# - somafractalmemory-standalone-milvus
+# - somafractalmemory-standalone-etcd
+# - somafractalmemory-standalone-minio
 ```
 
 ### Step 5: Test API
@@ -93,7 +90,7 @@ curl -s http://localhost:10101/healthz
 
 # Search test (empty results expected)
 curl -s -X POST http://localhost:10101/memories/search \
-  -H "Authorization: Bearer dev-token-somastack2024" \
+  -H "Authorization: Bearer test-token-123" \
   -H "Content-Type: application/json" \
   -d '{"query": "test", "limit": 5}'
 
@@ -106,12 +103,12 @@ curl -s -X POST http://localhost:10101/memories/search \
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| somafractalmemory_api | 10101 | Main API service |
-| somafractalmemory_postgres | 5432 | PostgreSQL database |
-| somafractalmemory_redis | 6379 | KV store + cache |
-| somafractalmemory_milvus | 19530 | Vector database |
-| somafractalmemory_etcd | 2379 | Milvus metadata |
-| somafractalmemory_minio | 9000 | Milvus object storage |
+| somafractalmemory-standalone-api | 10101 | Main API service |
+| somafractalmemory-standalone-postgres | 5432 | PostgreSQL database |
+| somafractalmemory-standalone-redis | 6379 | KV store + cache |
+| somafractalmemory-standalone-milvus | 19530 | Vector database |
+| somafractalmemory-standalone-etcd | 2379 | Milvus metadata |
+| somafractalmemory-standalone-minio | 9000 | Milvus object storage |
 
 ---
 
@@ -154,16 +151,16 @@ curl -X POST http://localhost:10101/memories/search \
 ### Container Restarting
 ```bash
 # Check logs
-docker logs somafractalmemory_api --tail 50
+docker logs somafractalmemory-standalone-api --tail 50
 
 # Verify Milvus dependencies (etcd, minio) are healthy first
-docker logs somafractalmemory_milvus --tail 50
+docker logs somafractalmemory-standalone-milvus --tail 50
 ```
 
 ### Migration Errors
 ```bash
 # Run migrations manually
-docker exec somafractalmemory_api python manage.py migrate --run-syncdb
+docker exec somafractalmemory-standalone-api python manage.py migrate --run-syncdb
 
 # If tables exist, reset database (DESTRUCTIVE)
 docker compose down -v && docker compose up -d
@@ -175,7 +172,7 @@ docker compose down -v && docker compose up -d
 curl -s http://localhost:9091/healthz
 
 # Check etcd health
-docker exec somafractalmemory_etcd etcdctl endpoint health
+docker exec somafractalmemory-standalone-etcd etcdctl endpoint health
 ```
 
 ---
