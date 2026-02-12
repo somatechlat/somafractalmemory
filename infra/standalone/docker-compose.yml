@@ -104,7 +104,7 @@ services:
       - "--server"
       - "--log-level=info"
     healthcheck:
-      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8181/health || exit 1" ]
+      test: [ "CMD", "/opa", "eval", "time.now_ns()" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -134,8 +134,8 @@ services:
     container_name: somafractalmemory-standalone-minio
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: "${SFM_MINIO_ROOT_USER:-minioadmin}"
-      MINIO_ROOT_PASSWORD: "${SFM_MINIO_ROOT_PASSWORD:-change-me-minio-password}"
+      MINIO_ROOT_USER: "minioadmin"
+      MINIO_ROOT_PASSWORD: "minioadmin"
     command: server /data
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
@@ -164,8 +164,8 @@ services:
     environment:
       ETCD_ENDPOINTS: "somafractalmemory-standalone-etcd:2379"
       MINIO_ADDRESS: "minio:9000"
-      MINIO_ACCESS_KEY: "${SFM_MINIO_ROOT_USER:-minioadmin}"
-      MINIO_SECRET_KEY: "${SFM_MINIO_ROOT_PASSWORD:-change-me-minio-password}"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
