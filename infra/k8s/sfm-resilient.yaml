@@ -24,12 +24,13 @@ data:
   DJANGO_SETTINGS_MODULE: "somafractalmemory.settings"
   SOMA_API_PORT: "10101"
   SOMA_DB_NAME: "somamemory"
-  SOMA_POSTGRES_URL: "postgresql://soma:soma@postgres:5432/somamemory"
+  SOMA_DB_USER: "soma"
+  SOMA_DB_HOST: "postgres"
+  SOMA_DB_PORT: "5432"
   SOMA_REDIS_HOST: "redis"
   SOMA_REDIS_PORT: "6379"
   SOMA_MILVUS_HOST: "milvus"
   SOMA_MILVUS_PORT: "19530"
-  SOMA_API_TOKEN: "dev-token-somastack2024"
   PYTHONUNBUFFERED: "1"
   # Allow K8s health probes from any pod IP
   ALLOWED_HOSTS: "*"
@@ -57,6 +58,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: sfm-config
+            - secretRef:
+                name: sfm-secrets
 ---
 # API Deployment with init containers
 apiVersion: apps/v1
@@ -93,6 +96,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: sfm-config
+            - secretRef:
+                name: sfm-secrets
       containers:
         - name: api
           image: sfm-api:latest
@@ -103,6 +108,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: sfm-config
+            - secretRef:
+                name: sfm-secrets
           livenessProbe:
             httpGet:
               path: /healthz
@@ -165,7 +172,10 @@ spec:
             - name: POSTGRES_USER
               value: "soma"
             - name: POSTGRES_PASSWORD
-              value: "soma"
+              valueFrom:
+                secretKeyRef:
+                  name: sfm-secrets
+                  key: SOMA_DB_PASSWORD
             - name: POSTGRES_DB
               value: "somamemory"
           volumeMounts:

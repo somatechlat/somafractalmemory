@@ -7,7 +7,7 @@ VIBE Coding Rules:
 - Tests Django model classmethod utilities
 """
 
-from somafractalmemory.apps.core.models import Memory
+from somafractalmemory.admin.core.models import Memory
 
 
 class TestMemoryCoordinateConversion:

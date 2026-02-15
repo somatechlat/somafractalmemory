@@ -1,7 +1,7 @@
 """Live integration tests that exercise the running services.
 
 These tests connect to the Docker‑compose services started on the host
-(`docker compose --profile core up -d`). They use the central ``settings``
+(`docker compose -f infra/standalone/docker-compose.yml up -d`). They use the central ``settings``
 singleton to obtain the API bearer token and the API port, guaranteeing
 that no hard‑coded values are present.
 
@@ -12,7 +12,7 @@ The suite validates:
 
 All requests include the ``Authorization: Bearer <token>`` header as required
 by the API. The tests are deliberately simple but hit the real backend
-components (Postgres, Redis, Qdrant) to satisfy the "always test on live
+components (Postgres, Redis, Milvus) to satisfy the "always test on live
 servers" rule.
 """
 
@@ -21,11 +21,6 @@ import time
 
 import pytest
 import requests
-
-# The API configuration lives in the shared ``common`` settings module.
-# Importing from ``somafractalmemory.config.settings`` would miss the
-# ``api_port`` field, causing an AttributeError during test collection.
-# from somafractalmemory.apps.common.config.settings import settings as common_settings
 
 BASE_URL = f"http://127.0.0.1:{os.environ.get('SFM_PORT', '10101')}"
 
@@ -50,7 +45,7 @@ def _auth_headers() -> dict[str, str]:
                         token = line.strip().split("=", 1)[1]
                         break
     if not token:
-        token = "devtoken"  # Last resort fallback
+        pytest.skip("SOMA_API_TOKEN not set and not found in repo .env; cannot auth to live API")
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 

@@ -58,13 +58,25 @@ DJANGO_ENV: "production"
 DJANGO_SETTINGS_MODULE: "somafractalmemory.settings"
 SOMA_API_PORT: "10101"
 SOMA_DB_NAME: "somamemory"
-SOMA_POSTGRES_URL: "postgresql://soma:soma@postgres:5432/somamemory"
+SOMA_DB_USER: "soma"
+SOMA_DB_HOST: "postgres"
+SOMA_DB_PORT: "5432"
 SOMA_REDIS_HOST: "redis"
 SOMA_REDIS_PORT: "6379"
 SOMA_MILVUS_HOST: "milvus"
 SOMA_MILVUS_PORT: "19530"
-SOMA_API_TOKEN: "dev-token-somastack2024"
 ALLOWED_HOSTS: "*"
+```
+
+## Secrets (Required)
+
+The manifest references a Kubernetes Secret named `sfm-secrets` (not committed to git).
+Create it before applying `sfm-resilient.yaml`:
+
+```bash
+kubectl create secret generic sfm-secrets -n sfm \
+  --from-literal=SOMA_API_TOKEN="<set-a-real-token>" \
+  --from-literal=SOMA_DB_PASSWORD="<set-a-real-db-password>"
 ```
 
 ## Port Forwards

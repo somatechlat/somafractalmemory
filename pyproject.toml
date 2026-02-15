@@ -9,7 +9,7 @@ description = "100% Django-based fractal memory system."
 authors = [
   { name="SomaTech", email="ai@somatech.lat" }
 ]
-license = "MIT"
+license = { text = "Apache-2.0" }
 license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -21,7 +21,7 @@ classifiers = [
 
 # 100% Django - lean dependencies only
 dependencies = [
-  "django>=4.2,<5.0",
+  "django>=5.1,<6.0",
   "django-ninja>=1.3.0",
   "psycopg[binary]>=3.2.0",
   "redis>=5.2.0",
@@ -66,7 +66,7 @@ somafractalmemory = ["py.typed", "**/*.json", "**/*.yaml"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py312"]
 
 [tool.ruff]
 line-length = 100
@@ -79,7 +79,7 @@ ignore = ["E501"]
 known_first_party = ["somafractalmemory"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 ignore_missing_imports = true
 strict_optional = false
 warn_redundant_casts = true

@@ -82,7 +82,7 @@ The `MemoryService` class provides:
 
 All database access uses Django ORM.
 
-**Location**: `somafractalmemory/models.py`
+**Location**: `somafractalmemory/admin/core/models.py`
 
 | Model | Table | Description |
 |-------|-------|-------------|
@@ -96,7 +96,7 @@ All database access uses Django ORM.
 
 Django settings handle all configuration.
 
-**Location**: `somafractalmemory/settings.py`
+**Location**: `somafractalmemory/settings/`
 
 Key configurations:
 - Database connection (PostgreSQL)

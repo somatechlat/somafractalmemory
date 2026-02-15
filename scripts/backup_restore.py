@@ -26,13 +26,16 @@ try:
 except ImportError:
     boto3 = None
 
-# Centralised configuration for backup/restore paths and bucket.
-from somafractalmemory.apps.common.config.settings import load_settings
+# Centralized configuration lives in the settings modules (code is truth).
+from somafractalmemory.settings.infra import (  # noqa: E402
+    SOMA_BACKUP_DIR,
+    SOMA_MEMORY_DATA_DIR,
+    SOMA_S3_BUCKET,
+)
 
-_settings = load_settings()
-BACKUP_DIR = str(_settings.backup_dir)
-MEMORY_DATA_DIR = str(_settings.memory_data_dir)
-S3_BUCKET = _settings.s3_bucket
+BACKUP_DIR = str(SOMA_BACKUP_DIR)
+MEMORY_DATA_DIR = str(SOMA_MEMORY_DATA_DIR)
+S3_BUCKET = SOMA_S3_BUCKET
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("backup_restore")

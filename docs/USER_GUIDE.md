@@ -13,7 +13,7 @@ A: Docker is required for the supporting services (PostgreSQL, Redis, Milvus). T
 ## Authentication & Security
 
 **Q: How is authentication handled?**
-A: The API expects a bearer token in the `Authorization` header. For local development a static token (`devtoken`) is used. In production you should provision a secure token and rotate it regularly.
+A: The API expects a bearer token in the `Authorization` header. Set `SOMA_API_TOKEN` in your environment (or `.env`) to match the running API.
 
 **Q: Can I run the API behind a TLS reverse proxy?**
 A: Yes. The API does not terminate TLS itself; you can place an Nginx or Traefik proxy in front of it.
@@ -24,7 +24,7 @@ A: Yes. The API does not terminate TLS itself; you can place an Nginx or Traefik
 A: Use the `DELETE /memories/{coord}` endpoint. This removes the entry from the KV store, vector store, and graph store.
 
 **Q: How can I bulk‑load many memories?**
-A: The `POST /memories/bulk` endpoint accepts a JSON array of memory objects for efficient ingestion.
+A: The API currently exposes `POST /memories` and `POST /memories/search`. Bulk ingest is not part of the current HTTP surface.
 
 ## Development
 
@@ -43,15 +43,15 @@ This guide shows the minimal steps to store and retrieve a memory using the HTTP
 ## 1. Start the stack
 
 ```bash
-docker compose --profile core up -d
+docker compose -f infra/standalone/docker-compose.yml up -d
 ```
 
 The API will be reachable at `http://127.0.0.1:10101`.
 
-## 2. Set the dev token
+## 2. Set the API token
 
 ```bash
-export SOMA_API_TOKEN=devtoken
+export SOMA_API_TOKEN="your-token"
 ```
 
 ## 3. Store a memory
@@ -140,8 +140,8 @@ This guide walks you through installing **SomaFractalMemory** on a local macOS o
 
 ## Prerequisites
 
-* Python **3.10+** (recommended via `pyenv` or system Python)
-* Docker Desktop (Compose v2) – required for the PostgreSQL, Redis, and Milvus services.
+* Python **3.12+**
+* Docker Engine + Docker Compose v2 (required for PostgreSQL, Redis, Milvus, etc.)
 * Git
 * A POSIX‑compatible shell (`zsh` is the default on macOS).
 
@@ -162,18 +162,18 @@ This guide walks you through installing **SomaFractalMemory** on a local macOS o
 3. **Install the package and development extras**
    ```bash
    pip install -U pip
-   pip install -e ".[api,dev]"
+   pip install -e ".[dev]"
    ```
 
 4. **Create and configure the environment file**
    ```bash
    cp .env.example .env
-   echo "SOMA_API_TOKEN=devtoken" >> .env   # local‑only token
+   echo "SOMA_API_TOKEN=<set-a-real-token>" >> .env
    ```
 
 5. **Start the supporting services**
    ```bash
-   docker compose --profile core up -d
+   docker compose -f infra/standalone/docker-compose.yml up -d
    ```
    This brings up PostgreSQL, Redis, Milvus, and the API.
 

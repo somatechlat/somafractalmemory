@@ -1,180 +1,61 @@
-# SomaFractalMemory - Agent Context
+# SomaFractalMemory (SFM) - Agent Context
 
-> Purpose: Provide a single, accurate reference for agents working on the SomaFractalMemory repo.
-> Last updated: 2026-01-02
+Purpose: a single, code-accurate reference for working in this repo.
 
----
+## What This Repo Is
 
-## Quick Summary
+SomaFractalMemory is an HTTP memory service (Django + Django Ninja) providing:
+- Memory CRUD: store/retrieve/delete by fractal coordinate string
+- Search: semantic search via Milvus when configured (fallback to ORM text search)
+- Graph operations: link, neighbors, shortest path (ORM-backed)
 
-SomaFractalMemory is a **fractal coordinate-based vector memory system**. It stores and retrieves memories using hierarchical fractal coordinates, backed by PostgreSQL, Redis, and Milvus.
+## Canonical Entry Points
 
-**Role in SomaStack:** Layer 1 (Storage/Memory Layer)
+- Django settings: `somafractalmemory/settings/__init__.py`
+- Standalone settings profile (used by the standalone compose): `somafractalmemory/settings/standalone.py`
+- API wiring (Ninja routers): `somafractalmemory/api/core.py`
+- Django URL mount (API at root): `somafractalmemory/config/urls.py`
+- Service layer (business logic): `somafractalmemory/admin/core/services.py`
+- Compatibility service exports: `somafractalmemory/services.py`
 
----
-
-## SomaStack Hierarchy
-
-```
-SomaStack/
-├── shared/             # Port 49000-49099 (Keycloak, etc.)
-├── SomaFractalMemory/  # Port 21000-21099 ← THIS REPO
-├── SomaBrain/          # Port 30000-30199
-└── SomaAgent01/        # Port 20000-20199
-```
-
----
-
-## Software Modes
-
-- **StandAlone**: Runs independently with local auth/storage.
-- **SomaStackClusterMode**: Paired with SomaBrain for integrated cognitive operations.
-
----
-
-## Project Structure
-
-```
-somafractalmemory/
-├── api/                    # Django Ninja API
-│   ├── endpoints/          # Memory endpoints
-│   └── schemas/            # Pydantic schemas
-├── core/                   # Memory models
-│   ├── models.py           # Django ORM models
-│   └── fractal.py          # Fractal coordinate system
-├── services/               # Memory services
-│   ├── store.py            # Memory storage
-│   ├── recall.py           # Memory retrieval
-│   └── indexer.py          # Vector indexing
-├── docs/                   # Documentation
-│   └── SRS-SOMAFRACTALMEMORY-MASTER.md  # Master SRS
-├── tests/                  # Test suites
-└── docker-compose.yml      # Local stack
-```
-
----
-
-## Ports (21000 Range)
-
-| Service | Port | Description |
-|---------|------|-------------|
-| **API** | 21000 | Memory REST API |
-| **PostgreSQL** | 21001 | Metadata storage |
-| **Redis** | 21002 | Cache layer |
-| **Milvus gRPC** | 21003 | Vector search |
-| **Milvus HTTP** | 21004 | Vector metrics |
-
----
-
-## Core Environment Variables
+## Local Standalone Run (Docker Compose)
 
 ```bash
-# API
-SOMA_API_PORT=10101           # Internal port
-API_PORT=21000               # Host port
-SOMA_API_TOKEN=devtoken      # API auth token
-
-# Database
-POSTGRES_HOST_PORT=21001
-POSTGRES_PASSWORD=postgres
-
-# Cache
-REDIS_HOST_PORT=21002
-
-# Vector DB
-MILVUS_HOST_PORT=21003
-MILVUS_GRPC_PORT=21004
+cd somafractalmemory
+cp .env.example .env
+docker compose -f infra/standalone/docker-compose.yml up -d
+curl -fsS http://127.0.0.1:10101/healthz
 ```
 
----
+Host ports (standalone compose):
+- API: `10101`
+- Postgres: `10432`
+- Redis: `10379`
+- Milvus: `10530`
 
-## API Endpoints
+## Required Environment Variables (Standalone Compose)
 
-Base URL: `http://localhost:21000/api/v1`
+These are required by `infra/standalone/docker-compose.yml`:
+- `SOMA_API_TOKEN`
+- `SFM_DB_PASSWORD`
+- `SFM_VAULT_TOKEN`
+- `SFM_MINIO_ROOT_USER`
+- `SFM_MINIO_ROOT_PASSWORD`
 
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/health` | Health check |
-| `POST` | `/memories` | Store memory |
-| `POST` | `/memories/search` | Recall memories |
-| `GET` | `/memories/{id}` | Get memory |
-| `DELETE` | `/memories/{id}` | Delete memory |
+## HTTP Surface (Code Truth)
 
-### Memory Store Request
+Base URL: `http://127.0.0.1:10101`
 
-```json
-POST /api/v1/memories
-{
-  "coord": "0.1,0.2,0.3,0.4",
-  "payload": {
-    "content": "Memory content",
-    "agent_id": "uuid",
-    "user_id": "uuid",
-    "memory_type": "episodic"
-  }
-}
-```
+- `GET /healthz`
+- `GET /readyz`
+- `GET /health`
+- `GET /stats`
+- `POST /memories` (body: `{"coord": "...", "payload": {...}, "memory_type": "episodic|semantic"}`)
+- `GET /memories/{coord}`
+- `DELETE /memories/{coord}`
+- `POST /memories/search`
+- `POST /graph/link`
+- `GET /graph/neighbors`
+- `GET /graph/path`
 
-### Memory Search Request
-
-```json
-POST /api/v1/memories/search
-{
-  "query": "search text",
-  "top_k": 5,
-  "filters": {
-    "agent_id": "uuid",
-    "memory_type": "episodic"
-  }
-}
-```
-
----
-
-## Development with Tilt
-
-```bash
-# Start infrastructure
-colima start
-minikube start
-
-# Deploy SomaStack (includes SomaFractalMemory)
-cd somaAgent01
-tilt up --port 10351
-
-# SomaStack Tilt Dashboard
-open http://localhost:10351
-```
-
----
-
-## Testing Notes
-
-- Tests require real infrastructure; no mocks.
-- Use `docker compose --profile core up -d` for test infra.
-- Run tests: `pytest tests/`
-
----
-
-## Key Documentation
-
-- Master SRS: `docs/SRS-SOMAFRACTALMEMORY-MASTER.md`
-- VIBE Rules: Follow rules from SomaAgent01 repo
-
----
-
-## VIBE Coding Rules (CRITICAL)
-
-1. **NO MOCKS** - All tests use real infrastructure
-2. **Django ORM only** - No SQLAlchemy
-3. **Milvus only** - No Qdrant
-4. **Complete implementations** - No placeholders
-
----
-
-## Related Services
-
-| Service | Port | Connection |
-|---------|------|------------|
-| SomaBrain | 30101 | `SOMABRAIN_MEMORY_HTTP_ENDPOINT=http://host.docker.internal:21000` |
-| SomaAgent01 | 20020 | `SOMA_MEMORY_URL=http://host.docker.internal:21000` |
+Most non-health routes require `Authorization: Bearer <token>` (see `somafractalmemory/admin/aaas/auth.py`).

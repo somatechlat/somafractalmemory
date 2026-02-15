@@ -18,17 +18,19 @@ import requests
 
 # VIBE: Read from environment, no hardcoded secrets
 BASE_URL = os.environ.get("SFM_API_URL", "http://localhost:10101")
-API_TOKEN = os.environ.get("SOMA_API_TOKEN", "dev-token-somastack2024")
+API_TOKEN = os.environ.get("SOMA_API_TOKEN")
 
 
 @pytest.fixture(scope="module")
 def api_token() -> str:
     """Return the API token from environment."""
+    if not API_TOKEN:
+        pytest.skip("SOMA_API_TOKEN not set; set it to match the running SFM API")
     return API_TOKEN
 
 
 def test_end_to_end_memory_save(api_token: str) -> None:
-    # 1️⃣ Store a semantic memory (creates a vector in Qdrant)
+    # 1) Store a semantic memory (Milvus-backed vector insert when Milvus is configured)
     """Execute test end to end memory save.
 
     Args:
@@ -65,5 +67,4 @@ def test_end_to_end_memory_save(api_token: str) -> None:
     stats = stats_resp.json()
     assert stats.get("total_memories", 0) >= 1, "total_memories should be >= 1"
     assert stats.get("semantic", 0) >= 1, "semantic count should be >= 1"
-    # Note: vector_count may not be in response depending on backend
-    print(f"✅ E2E TEST PASSED - Stats: {stats}")
+    # Keep tests quiet; assertions above are the signal.

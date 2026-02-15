@@ -21,7 +21,7 @@ services:
     container_name: somafractalmemory-standalone-vault
     restart: unless-stopped
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: "${SFM_VAULT_TOKEN:-change-me-vault-token}"
+      VAULT_DEV_ROOT_TOKEN_ID: "${SFM_VAULT_TOKEN:?set SFM_VAULT_TOKEN}"
       VAULT_ADDR: "http://0.0.0.0:8200"
     ports:
       - "18200:8200"
@@ -43,9 +43,9 @@ services:
       somafractalmemory-standalone-vault:
         condition: service_healthy
     environment:
-      SFM_VAULT_TOKEN: "${SFM_VAULT_TOKEN:-change-me-vault-token}"
+      SFM_VAULT_TOKEN: "${SFM_VAULT_TOKEN:?set SFM_VAULT_TOKEN}"
       SFM_DB_USER: "${SFM_DB_USER:-somafractalmemory}"
-      SFM_DB_PASSWORD: "${SFM_DB_PASSWORD:-change-me-db-password}"
+      SFM_DB_PASSWORD: "${SFM_DB_PASSWORD:?set SFM_DB_PASSWORD}"
       SFM_DB_NAME: "${SFM_DB_NAME:-somafractalmemory}"
       SFM_REDIS_PASSWORD: "${SFM_REDIS_PASSWORD:-}"
     networks:
@@ -79,7 +79,7 @@ services:
     environment:
       POSTGRES_DB: "${SFM_DB_NAME:-somafractalmemory}"
       POSTGRES_USER: "${SFM_DB_USER:-somafractalmemory}"
-      POSTGRES_PASSWORD: "${SFM_DB_PASSWORD:-change-me-db-password}"
+      POSTGRES_PASSWORD: "${SFM_DB_PASSWORD:?set SFM_DB_PASSWORD}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -134,8 +134,8 @@ services:
     container_name: somafractalmemory-standalone-minio
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: "minioadmin"
-      MINIO_ROOT_PASSWORD: "minioadmin"
+      MINIO_ROOT_USER: "${SFM_MINIO_ROOT_USER:?set SFM_MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${SFM_MINIO_ROOT_PASSWORD:?set SFM_MINIO_ROOT_PASSWORD}"
     command: server /data
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
@@ -164,8 +164,8 @@ services:
     environment:
       ETCD_ENDPOINTS: "somafractalmemory-standalone-etcd:2379"
       MINIO_ADDRESS: "minio:9000"
-      MINIO_ACCESS_KEY: "minioadmin"
-      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_ACCESS_KEY: "${SFM_MINIO_ROOT_USER:?set SFM_MINIO_ROOT_USER}"
+      MINIO_SECRET_KEY: "${SFM_MINIO_ROOT_PASSWORD:?set SFM_MINIO_ROOT_PASSWORD}"
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
@@ -211,10 +211,10 @@ services:
       DJANGO_SETTINGS_MODULE: "somafractalmemory.settings.standalone"
       # VAULT BOOTSTRAP ONLY
       VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
-      VAULT_TOKEN: "${SFM_VAULT_TOKEN:-change-me-vault-token}"
+      VAULT_TOKEN: "${SFM_VAULT_TOKEN:?set SFM_VAULT_TOKEN}"
       SOMA_LOG_LEVEL: "INFO"
       SOMA_ALLOWED_HOSTS: "${SOMA_ALLOWED_HOSTS:-localhost,127.0.0.1}"
-      SOMA_API_TOKEN: "${SOMA_API_TOKEN:-test-token-123}"
+      SOMA_API_TOKEN: "${SOMA_API_TOKEN:?set SOMA_API_TOKEN}"
       SOMA_API_PORT: "10101"
       # INFRA HOST NAMES ONLY (Credentials via Vault)
       SOMA_DB_HOST: "somafractalmemory-standalone-postgres"

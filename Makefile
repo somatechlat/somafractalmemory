@@ -1,12 +1,11 @@
 .PHONY: setup test lint api cli clean uv-install lock \
-	db-upgrade db-current db-revision \
 	help prereqs prereqs-docker \
     compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health \
 	helm-install-local-dev helm-uninstall-local-dev \
 	helm-install-prod-ha helm-uninstall-prod-ha
 
 # Variables
-API_PORT ?= 9595
+API_PORT ?= 10101
 
 help: ## Show this help
 	@echo "Available targets:" && \
@@ -54,10 +53,6 @@ test-e2e: compose-health ## Run a simple end-to-end test against the running ser
 	\
 	echo "✓ [SUCCESS] End-to-end test completed successfully."
 
-compose-up: prereqs-docker ## Start the full stack in the background
-	docker compose -f infra/standalone/docker-compose.yml up -d
-	@echo "→ API will be available at: http://127.0.0.1:$(API_PORT)"
-
 ci-verify: prereqs-docker ## CI-style verify with Compose: up, health check, and tear down
 	$(MAKE) -s compose-up
 	$(MAKE) -s compose-health
@@ -68,7 +63,7 @@ uv-install:
 	@~/.local/bin/uv --version
 
 setup: uv-install
-	~/.local/bin/uv sync --extra api --extra events --extra dev
+	~/.local/bin/uv sync --extra dev
 
 lock: uv-install
 	~/.local/bin/uv lock
@@ -80,23 +75,13 @@ lint:
 	~/.local/bin/uv run mypy somafractalmemory
 
 api:
-	~/.local/bin/uv run uvicorn somafractalmemory.http_api:app --reload
+	~/.local/bin/uv run uvicorn somafractalmemory.config.asgi:application --reload --port $(API_PORT)
 
 cli:
 	~/.local/bin/uv run soma -h
 
-db-upgrade: ## Run Alembic migrations
-	~/.local/bin/uv run alembic upgrade head
-
-db-current: ## Show current Alembic revision
-	~/.local/bin/uv run alembic current
-
-db-revision: ## Generate a new Alembic migration
-	@MSG=$${MSG:-"describe change"}; \
-	~/.local/bin/uv run alembic revision -m "$$MSG"
-
 clean:
-	rm -rf .pytest_cache __pycache__ somafractalmemory.egg-info qdrant.db *.index audit_log.jsonl .ipynb_checkpoints
+	rm -rf .pytest_cache __pycache__ somafractalmemory.egg-info *.index audit_log.jsonl .ipynb_checkpoints
 
 # ==============================================================================
 # Docker Compose Workflows (for local development)

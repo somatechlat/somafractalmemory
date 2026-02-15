@@ -9,7 +9,10 @@ SFM_HOST = "localhost"
 SFM_PORT = 10101
 ENDPOINT = f"http://{SFM_HOST}:{SFM_PORT}/memories"
 
-TOKEN = os.environ.get("SOMA_API_TOKEN", "dev-token-somastack2024")
+TOKEN = os.environ.get("SOMA_API_TOKEN")
+if not os.environ.get("SOMA_API_TOKEN"):
+    print("ERROR: SOMA_API_TOKEN is required (no defaults).")
+    sys.exit(2)
 
 # Test Data (Resilient Fractal Coordinate)
 TEST_COORD = [1.2, 3.4, 5.6]

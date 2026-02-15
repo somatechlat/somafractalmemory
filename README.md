@@ -4,7 +4,7 @@
 > [!IMPORTANT]
 > **Distributed Long-Term Memory for Autonomous AI Agents**
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Django 5.0+](https://img.shields.io/badge/Django-5.0+-092E20?style=for-the-badge&logo=django&logoColor=white)](https://djangoproject.com)
 [![Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)](LICENSE)
 
@@ -38,7 +38,7 @@ Core component of the **Soma Cognitive Triad**:
 ## 3. Installation & Configuration
 
 ### 3.1 Prerequisites
-- **Python**: 3.11+
+- **Python**: 3.12+
 - **Docker**: 24.0+
 - **PostgreSQL**: 15+ (Metadata)
 - **Milvus**: 2.3+ (Vectors)
@@ -57,7 +57,7 @@ cp .env.example .env
 # EDIT .env WITH REAL CREDENTIALS
 
 # 3. Launch Stack
-docker compose --profile core up -d
+docker compose -f infra/standalone/docker-compose.yml up -d
 ```
 
 ### 3.3 Configuration Parameters
@@ -79,7 +79,7 @@ docker compose --profile core up -d
 ### 4.1 Production Run
 ```bash
 # Start Django Server via Gunicorn/Uvicorn
-gunicorn somafractalmemory.wsgi:application --bind 0.0.0.0:10101
+gunicorn somafractalmemory.config.wsgi:application --bind 0.0.0.0:10101
 ```
 
 ### 4.2 Development Mode
@@ -101,17 +101,17 @@ curl http://localhost:10101/healthz
 ### 5.1 REST API References
 
 #### Store Memory
-`POST /api/v2/memory/store`
+`POST /memories`
 ```json
 {
-  "content": "User prefers dark mode",
-  "namespace": "user-prefs",
-  "type": "semantic"
+  "coord": "1.0,2.0,3.0",
+  "payload": { "content": "User prefers dark mode" },
+  "memory_type": "semantic"
 }
 ```
 
 #### Search Memory
-`POST /api/v2/memory/search`
+`POST /memories/search`
 ```json
 {
   "query": "dark mode",

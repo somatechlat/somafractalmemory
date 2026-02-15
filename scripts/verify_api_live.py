@@ -7,8 +7,10 @@ import requests
 
 # Configuration
 BASE_URL = "http://localhost:10101"
-# Use the token we know works (from previous steps)
-TOKEN = os.environ.get("SOMA_API_TOKEN", "dev-token-somastack2024")
+TOKEN = os.environ.get("SOMA_API_TOKEN")
+if not TOKEN:
+    print("ERROR: SOMA_API_TOKEN is required (no defaults).")
+    sys.exit(2)
 
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 

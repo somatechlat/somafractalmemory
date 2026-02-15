@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 - Fix: `eventing/producer.py` now emits ISO8601 UTC timestamps to conform with `schemas/memory.event.json`.
 - Fix: `workers/kv_writer.py` normalises incoming `timestamp` values (accepts numeric epoch and ISO strings) to preserve compatibility.
 - Docs: Added `docs/PRODUCTION_READINESS.md` and linked it from canonical docs and README.
-- Docs: Updated architecture, monitoring, port strategy, and runbooks to reflect unified port assignments (API 10101, Postgres 40021, Redis 40022, Qdrant 40023).
+- Docs: Updated architecture, monitoring, port strategy, and runbooks to reflect unified port assignments (API 10101 and backing stores per current Milvus deployment).
 
 ### Changed
 - **Standardized Docker Images**: Replaced all third-party Docker images (e.g., `bitnami/kafka`, `confluentinc/cp-kafka`) with their official open-source counterparts (`apache/kafka`, `postgres`, `redis`). This applies to both Docker Compose and Kubernetes Helm charts.

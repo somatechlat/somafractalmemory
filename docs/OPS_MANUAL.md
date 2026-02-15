@@ -85,7 +85,7 @@ Postgres URL resolution (first set wins):
 1. SOMA_POSTGRES_URL
 2. settings.postgres_url (centralized settings, if present)
 3. POSTGRES_URL
-4. Fallback: postgresql://soma:soma@postgres:5432/somamemory
+4. Fallback: postgresql://soma@postgres:5432/somamemory
 
 Redis config:
 - REDIS_URL (parsed) OR individual: REDIS_HOST, REDIS_PORT, REDIS_DB
@@ -154,18 +154,16 @@ This document explains how secrets are handled for local development versus prod
 
 ## Development defaults
 
-- The Docker Compose file pins the API token to a predictable value for local testing:
-  - SOMA_API_TOKEN = "devtoken"
-- This makes the e2e examples work out of the box.
-- Do not reuse this token in any non-dev environment.
+- The standalone Docker Compose stack requires an explicit `SOMA_API_TOKEN`.
+- Do not commit real tokens to git; use `.env` locally and Secrets in Kubernetes.
 
 ## Overriding secrets
 
 You can override the default token and other settings without editing compose by using an `.env` file or shell env vars.
 
 Options (precedence: shell > .env > compose defaults):
-- Shell: `export SOMA_API_TOKEN=your-token && docker compose --profile core up -d`
-- .env file at repo root (see `.env.example`), then `docker compose --profile core up -d`.
+- Shell: `export SOMA_API_TOKEN=your-token && docker compose -f infra/standalone/docker-compose.yml up -d`
+- `.env` file at repo root (see `.env.example`), then `docker compose -f infra/standalone/docker-compose.yml up -d`.
 
 Common variables:
 - SOMA_API_TOKEN: Bearer token for API access (string)
@@ -193,6 +191,6 @@ Common variables:
 
 ## Local quick check
 
-- Start services: `docker compose --profile core up -d`
+- Start services: `docker compose -f infra/standalone/docker-compose.yml up -d`
 - Health: GET `http://127.0.0.1:10101/healthz`
-- Use Authorization: `Bearer devtoken` for local tests unless overridden.
+- Use Authorization: `Bearer $SOMA_API_TOKEN`

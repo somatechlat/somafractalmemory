@@ -51,16 +51,18 @@ Complete technical specification for SomaFractalMemory, the coordinate-based sto
 
 ```
 somafractalmemory/
-├── somafractalmemory/      # Main Django app (25 files)
-│   ├── api/                # Django Ninja API (10 files)
-│   ├── aaas/               # Multi-tenant (6 files)
-│   ├── models.py           # Django ORM models
-│   ├── services.py         # Memory/Graph services
-│   ├── settings.py         # Django settings
-│   └── urls.py             # Ninja routing
-├── common/                 # Shared utilities (10 files)
-├── tests/                  # Test suite (18 files)
-└── manage.py               # Django entry point
+├── somafractalmemory/                 # Python package
+│   ├── api/                           # Django Ninja API routers + schema
+│   ├── admin/
+│   │   ├── core/                      # ORM models + services (source of truth)
+│   │   └── aaas/                      # API keys + usage tracking
+│   ├── config/                        # Django URL mount + WSGI
+│   ├── settings/                      # Settings profiles (default + standalone)
+│   └── services.py                    # Compatibility re-exports for MemoryService/GraphService
+├── infra/                             # Docker/K8s/Helm
+├── scripts/                           # Ops scripts
+├── tests/                             # Test suite
+└── manage.py                          # Django entry point
 ```
 
 ## 2.2 Port Namespace

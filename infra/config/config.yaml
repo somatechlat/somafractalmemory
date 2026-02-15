@@ -16,6 +16,7 @@ infra:
   postgres: "postgres"
 
 # Database connections
-postgres_url: "postgresql://soma:soma@postgres:5432/somamemory"
+# Keep passwords out of the repo; supply via env/secret in the actual deployment.
+postgres_url: "postgresql://soma@postgres:5432/somamemory"
 milvus_host: "milvus"
 milvus_port: 19530

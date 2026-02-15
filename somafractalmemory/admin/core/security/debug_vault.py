@@ -4,7 +4,7 @@ from somafractalmemory.admin.core.security.vault_client import _get_vault_client
 
 print("--- Vault Debug ---")
 print(f"VAULT_ADDR: {os.environ.get('VAULT_ADDR')}")
-print(f"VAULT_TOKEN: {os.environ.get('VAULT_TOKEN')}")
+print(f"VAULT_TOKEN set: {bool(os.environ.get('VAULT_TOKEN'))}")
 
 try:
     print("Attempting to get client...")

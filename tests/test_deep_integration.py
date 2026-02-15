@@ -5,7 +5,7 @@ These tests verify the integration between SomaBrain and SomaFractalMemory,
 including tenant isolation, graph persistence, and degradation handling.
 
 VIBE CODING RULES: NO mocks, NO stubs, NO placeholders.
-All tests require real infrastructure via docker compose --profile core up -d
+All tests require real infrastructure via docker compose -f infra/standalone/docker-compose.yml up -d
 
 Test Coverage:
 - V2.7: Graph links persist across SFM restart

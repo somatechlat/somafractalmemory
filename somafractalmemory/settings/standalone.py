@@ -4,6 +4,7 @@ STRICTLY ISOLATED from AAAS/Multi-tenancy logic.
 Usage: DJANGO_SETTINGS_MODULE=somafractalmemory.settings.standalone
 """
 
+import logging
 import os
 
 from .django_core import *  # noqa: F403
@@ -49,4 +50,5 @@ if "SOMA_REDIS_PORT" in os.environ:
 if "SOMA_REDIS_PASSWORD" in os.environ:
     SOMA_REDIS_PASSWORD = os.environ["SOMA_REDIS_PASSWORD"]
 
-print(f"Loaded STANDALONE settings. Apps: {len(INSTALLED_APPS)}")  # noqa: F405
+logger = logging.getLogger(__name__)
+logger.info("Loaded STANDALONE settings. Apps: %s", len(INSTALLED_APPS))  # noqa: F405

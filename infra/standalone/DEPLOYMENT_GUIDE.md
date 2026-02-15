@@ -90,7 +90,7 @@ curl -s http://localhost:10101/healthz
 
 # Search test (empty results expected)
 curl -s -X POST http://localhost:10101/memories/search \
-  -H "Authorization: Bearer test-token-123" \
+  -H "Authorization: Bearer $SOMA_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "test", "limit": 5}'
 

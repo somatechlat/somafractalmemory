@@ -17,8 +17,11 @@ This guide covers deploying SomaFractalMemory in production.
 git clone https://github.com/somatechlat/somafractalmemory.git
 cd somafractalmemory
 
-# Start all services
-docker compose --profile core up -d
+# Configure environment
+cp .env.example .env
+
+# Start the standalone stack (API + Postgres + Redis + Milvus + dependencies)
+docker compose -f infra/standalone/docker-compose.yml up -d
 
 # Verify health
 curl http://localhost:10101/healthz
@@ -29,49 +32,39 @@ curl http://localhost:10101/healthz
 | Service | Image | Port | Memory |
 |---------|-------|------|--------|
 | API | somafractalmemory-api | 10101 | 1 GB |
-| PostgreSQL | postgres:15 | 40001 | 1.5 GB |
-| Redis | redis:7 | 40002 | 512 MB |
+| PostgreSQL | postgres:15 | 10432 | 1.5 GB |
+| Redis | redis:7 | 10379 | 512 MB |
 | etcd | quay.io/coreos/etcd:v3.5.5 | - | 256 MB |
 | MinIO | minio/minio | - | 256 MB |
-| Milvus | milvusdb/milvus:v2.3.3 | 40003, 40004 | 6 GB |
+| Milvus | milvusdb/milvus:v2.3.3 | 10530 | 6 GB |
 
 ### Environment Variables
 
-Create a `.env` file:
+Create a `.env` file (see `.env.example`):
 
 ```bash
-# API Configuration
-API_PORT=10101
-SOMA_API_PORT=10101
+# Required secrets
 SOMA_API_TOKEN=your-secure-token-here
-
-# PostgreSQL
-POSTGRES_HOST_PORT=40001
-POSTGRES_USER=soma
-POSTGRES_PASSWORD=your-secure-password
-POSTGRES_DB=somamemory
-
-# Redis
-REDIS_HOST_PORT=40002
-
-# Memory settings
-SOMA_MEMORY_NAMESPACE=production
+SFM_DB_PASSWORD=your-secure-db-password
+SFM_VAULT_TOKEN=your-secure-vault-token
+SFM_MINIO_ROOT_USER=your-minio-user
+SFM_MINIO_ROOT_PASSWORD=your-minio-password
 ```
 
 ### Production Commands
 
 ```bash
 # Start services
-docker compose --profile core up -d
+docker compose -f infra/standalone/docker-compose.yml up -d
 
 # View logs
-docker compose --profile core logs -f api
+docker compose -f infra/standalone/docker-compose.yml logs -f --tail=200 somafractalmemory-standalone-api
 
 # Stop services
-docker compose --profile core down
+docker compose -f infra/standalone/docker-compose.yml down
 
 # Reset (remove volumes)
-docker compose --profile core down -v
+docker compose -f infra/standalone/docker-compose.yml down -v
 ```
 
 ---
@@ -212,19 +205,19 @@ Logs are written to stdout in JSON format:
 
 ```bash
 # Backup
-docker compose --profile core exec postgres \
-  pg_dump -U soma somamemory > backup.sql
+docker compose -f infra/standalone/docker-compose.yml exec -T somafractalmemory-standalone-postgres \
+  pg_dump -U "${SFM_DB_USER:-somafractalmemory}" "${SFM_DB_NAME:-somafractalmemory}" > backup.sql
 
 # Restore
-docker compose --profile core exec -T postgres \
-  psql -U soma somamemory < backup.sql
+docker compose -f infra/standalone/docker-compose.yml exec -T somafractalmemory-standalone-postgres \
+  psql -U "${SFM_DB_USER:-somafractalmemory}" "${SFM_DB_NAME:-somafractalmemory}" < backup.sql
 ```
 
 ### Volume Backup
 
 ```bash
 # Stop services
-docker compose --profile core down
+docker compose -f infra/standalone/docker-compose.yml down
 
 # Backup volumes
 docker run --rm -v somafractalmemory_pgdata:/data \
@@ -237,13 +230,13 @@ docker run --rm -v somafractalmemory_pgdata:/data \
 
 ### API Not Starting
 
-1. Check logs: `docker compose --profile core logs api`
+1. Check logs: `docker compose -f infra/standalone/docker-compose.yml logs -f --tail=200 somafractalmemory-standalone-api`
 2. Verify PostgreSQL is healthy
 3. Verify Milvus is healthy
 
 ### Database Connection Failed
 
-1. Check PostgreSQL status: `docker compose --profile core ps postgres`
+1. Check PostgreSQL status: `docker compose -f infra/standalone/docker-compose.yml ps somafractalmemory-standalone-postgres`
 2. Verify credentials in `.env`
 3. Check network connectivity
 

@@ -6,10 +6,10 @@ import django
 if not django.apps.apps.ready:
     django.setup()
 
-# Ensure FastAPI surface can import with mandatory auth in test runs.
+# Ensure API surfaces can import with mandatory auth in test runs.
 # Ensure the Prometheus ``api_requests_total`` metric is registered before any
 # test imports ``prometheus_client``. This avoids pulling in heavy optional
-# dependencies (FastAPI, OpenTelemetry) and works even in minimal test
+# dependencies and works even in minimal test
 # environments.
 try:
     from prometheus_client import Counter

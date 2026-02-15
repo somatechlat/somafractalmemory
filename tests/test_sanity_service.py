@@ -1,8 +1,11 @@
 """Module test_sanity_service."""
 
+import pytest
 from django.test import TestCase
 
-from somafractalmemory.apps.core.services import get_graph_service, get_memory_service
+from somafractalmemory.admin.core.services import get_graph_service, get_memory_service
+
+pytestmark = pytest.mark.integration
 
 
 class MemoryServiceSanityTest(TestCase):

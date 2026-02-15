@@ -16,7 +16,7 @@ if not settings.configured:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
 django.setup()
 
-# Ensure FastAPI surface can import with mandatory auth in test runs.
+# Ensure API surfaces can import with mandatory auth in test runs.
 os.environ.setdefault("SOMA_API_TOKEN", "test-token")
 
 
@@ -80,7 +80,7 @@ def pytest_sessionstart(session):
     - Never abort the entire test session; if infra remains unreachable, mark it via env so
       integration tests can skip gracefully.
 
-    Note: Qdrant support was removed per architecture decision - Milvus is the only vector backend.
+    Note: Milvus is the only vector backend.
     """
     # Accept either USE_LIVE_INFRA (preferred) or USE_REAL_INFRA (back-compat)
     use_live = settings.use_live_infura if hasattr(settings, "use_live_infura") else False
@@ -95,7 +95,17 @@ def pytest_sessionstart(session):
     # Postgres URL – already provided by the central settings. If for any reason it is
     # missing (unlikely in normal operation), fall back to a sensible default that
     # matches the docker‑compose configuration.
-    pg_url = settings.postgres_url or "postgresql://postgres:postgres@localhost:5433/somamemory"
+    if settings.postgres_url:
+        pg_url = settings.postgres_url
+    else:
+        # Avoid committing credential-like defaults. If a password is needed, it must come
+        # from the environment (e.g. standalone compose or CI secret injection).
+        pg_user = os.environ.get("POSTGRES_USER", "postgres")
+        pg_pass = os.environ.get("SOMA_DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+        if pg_pass:
+            pg_url = "postgresql://" + pg_user + ":" + pg_pass + "@localhost:5433/somamemory"
+        else:
+            pg_url = "postgresql://" + pg_user + "@localhost:5433/somamemory"
     # Redis: prefer env, else try common host ports (6379 from other stacks, 6381 from this compose)
     redis_host = settings.redis_host
     redis_port_env = str(settings.redis_port) if settings.redis_port else None
@@ -105,7 +115,7 @@ def pytest_sessionstart(session):
         # Probe for a reachable Redis on localhost
         detected = _first_reachable("localhost", [6379, 6381])
         redis_port = detected if detected is not None else 6379
-    # Milvus (Qdrant removed - standardized on Milvus)
+    # Milvus (standardized on Milvus)
     milvus_host = getattr(settings, "milvus_host", "milvus")
     milvus_port = getattr(settings, "milvus_port", 19530)
 
