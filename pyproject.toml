@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,8 +9,7 @@ description = "100% Django-based fractal memory system."
 authors = [
   { name="SomaTech", email="ai@somatech.lat" }
 ]
-license = { text = "Apache-2.0" }
-license-files = ["LICENSE"]
+license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 classifiers = [
@@ -36,6 +35,7 @@ dependencies = [
   "hvac>=2.0",
   "django-environ>=0.12.0",
   "uvicorn[standard]>=0.27.0",
+  "pytest-django>=4.12.0",
 ]
 
 [project.optional-dependencies]

@@ -19,11 +19,10 @@ import threading
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
-
-from somafractalmemory.admin.aaas.models import UsageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +62,14 @@ class UsageBuffer:
             self._flush_thread.start()
 
     def stop(self) -> None:
-        """Stop the background flush thread."""
+        """Stop the background flush thread and force a final flush."""
         self._running = False
         if self._flush_thread:
             self._flush_thread.join(timeout=5)
+
+        # Force final synchronous flush
+        with self._lock:
+            self._flush()
 
     def add(
         self,
@@ -118,19 +121,38 @@ class UsageBuffer:
                 aggregated[key]["count"] += record["count"]
                 aggregated[key]["bytes_processed"] += record["bytes_processed"]
 
-            # Batch create
-            usage_records = [
-                UsageRecord(
-                    tenant=tenant,
-                    operation=operation,
-                    count=data["count"],
-                    bytes_processed=data["bytes_processed"],
-                )
-                for (tenant, operation), data in aggregated.items()
-            ]
+            # Industrial Upsert: Atomic hour-bucket aggregation via Raw SQL (Flaw 4 Hardening)
+            from django.db import connection
 
-            UsageRecord.objects.bulk_create(usage_records)
-            logger.debug(f"Flushed {len(usage_records)} usage records")
+            now = datetime.now(UTC)
+            hour_bucket = now.replace(minute=0, second=0, microsecond=0)
+
+            with connection.cursor() as cursor:
+                for (tenant, operation), data in aggregated.items():
+                    cursor.execute(
+                        """
+                        INSERT INTO sfm_usage_records
+                            (id, tenant, operation, hour_bucket, count, bytes_processed, timestamp, api_key_id)
+                        VALUES
+                            (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (tenant, operation, hour_bucket)
+                        DO UPDATE SET
+                            count = sfm_usage_records.count + EXCLUDED.count,
+                            bytes_processed = sfm_usage_records.bytes_processed + EXCLUDED.bytes_processed,
+                            timestamp = EXCLUDED.timestamp
+                        """,
+                        [
+                            str(uuid4()),
+                            tenant,
+                            operation,
+                            hour_bucket,
+                            data["count"],
+                            data["bytes_processed"],
+                            now,
+                            None,  # Batch aggregation loses individual key detail
+                        ],
+                    )
+            logger.debug(f"Aggregated {len(aggregated)} usage buckets via atomic upsert")
 
         except Exception as e:
             logger.error(f"Failed to flush usage records: {e}")
@@ -149,6 +171,12 @@ def get_usage_buffer() -> UsageBuffer:
     if _usage_buffer is None:
         _usage_buffer = UsageBuffer()
         _usage_buffer.start()
+
+        # Fix Flaw 4: Ensure buffer flushes on shutdown
+        import atexit
+
+        atexit.register(_usage_buffer.stop)
+
     return _usage_buffer
 
 

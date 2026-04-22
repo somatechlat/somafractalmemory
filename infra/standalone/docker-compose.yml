@@ -1,4 +1,7 @@
-# SFM Standalone Stack
+# SomaFractalMemory — Standalone Cluster
+# Identifiable in Docker Desktop as "somafractalmemory-standalone"
+name: somafractalmemory-standalone
+
 services:
   # --- Redis cache -------------------------------------------
   somafractalmemory-standalone-redis:
@@ -24,7 +27,7 @@ services:
       VAULT_DEV_ROOT_TOKEN_ID: "${SFM_VAULT_TOKEN:?set SFM_VAULT_TOKEN}"
       VAULT_ADDR: "http://0.0.0.0:8200"
     ports:
-      - "18200:8200"
+      - "10200:8200"
     cap_add:
       - IPC_LOCK
     healthcheck:
@@ -216,18 +219,21 @@ services:
       SOMA_ALLOWED_HOSTS: "${SOMA_ALLOWED_HOSTS:-localhost,127.0.0.1}"
       SOMA_API_TOKEN: "${SOMA_API_TOKEN:?set SOMA_API_TOKEN}"
       SOMA_API_PORT: "10101"
-      # INFRA HOST NAMES ONLY (Credentials via Vault)
+      # INFRA HOST NAMES ONLY (Credentials via Vault, with env fallback)
       SOMA_DB_HOST: "somafractalmemory-standalone-postgres"
+      SOMA_DB_USER: "${SFM_DB_USER:-somafractalmemory}"
+      SOMA_DB_PASSWORD: "${SFM_DB_PASSWORD}"
+      SOMA_DB_NAME: "${SFM_DB_NAME:-somafractalmemory}"
       SOMA_REDIS_HOST: "somafractalmemory-standalone-redis"
       SOMA_MILVUS_HOST: "somafractalmemory-standalone-milvus"
       SOMA_OPA_URL: "http://somafractalmemory-standalone-opa:8181"
     ports:
       - "10101:10101"
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:10101/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -f http://localhost:10101/healthz || exit 1" ]
       interval: 30s
       timeout: 10s
-      start_period: 30s
+      start_period: 60s
       retries: 5
     cap_drop: [ "ALL" ]
     read_only: false

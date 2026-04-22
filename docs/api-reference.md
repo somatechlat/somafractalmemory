@@ -87,7 +87,7 @@ Detailed health check with service latencies and per-tenant statistics.
         }
     ],
     "system": {
-        "python_version": "3.10.19",
+        "python_version": "3.12.x",
         "platform": "Linux-...",
         "hostname": "container-id",
         "process_id": 9,
@@ -357,7 +357,7 @@ Find shortest path between two coordinates.
 
 ### GET /memories/search
 
-Search memories using vector similarity.
+Search memories by query string using query parameters (convenient for simple searches).
 
 **Query Parameters**
 
@@ -365,7 +365,8 @@ Search memories using vector similarity.
 |-----------|------|----------|---------|-------------|
 | `query` | string | Yes | - | Search query text |
 | `top_k` | int | No | 5 | Number of results |
-| `memory_type` | string | No | - | Filter by type |
+| `offset` | int | No | 0 | Pagination offset |
+| `filters` | string | No | - | JSON-encoded filter dict (e.g., `{"agent_id": "uuid"}`) |
 
 **Response**
 
@@ -380,6 +381,64 @@ Search memories using vector similarity.
     ]
 }
 ```
+
+**cURL Example**
+
+```bash
+curl "http://localhost:10101/memories/search?query=hello+world&top_k=5&offset=0" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+---
+
+### POST /memories/search
+
+Search memories using a JSON request body (preferred for complex filters and programmatic use).
+
+**Request Body**
+
+```json
+{
+    "query": "What is the capital city?",
+    "top_k": 5,
+    "offset": 0,
+    "memory_type": "semantic",
+    "filters": {
+        "agent_id": "uuid-of-agent",
+        "user_id": "uuid-of-user"
+    }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Search query text |
+| `top_k` | int | No | Max results (default: 5) |
+| `offset` | int | No | Pagination offset (default: 0) |
+| `memory_type` | string | No | Filter by memory type (`episodic` or `semantic`) |
+| `filters` | object | No | Arbitrary key-value filters applied to payload |
+
+**Response** (same structure as GET)
+
+```json
+{
+    "memories": [
+        {
+            "coordinate": [1.0, 2.0, 3.0],
+            "payload": {"content": "Matching content"},
+            "score": 0.95
+        }
+    ]
+}
+```
+
+**cURL Example**
+
+```bash
+curl -X POST http://localhost:10101/memories/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"query": "hello world", "top_k": 5, "offset": 0}'
 
 ---
 

@@ -1,10 +1,12 @@
-"""
-SomaFractalMemory API Core - Django Ninja Integration
-Copyright (C) 2025 SomaTech LAT.
+"""SomaFractalMemory API Core - Django Ninja Integration.
+
+Copyright (C) 2025-2026 SomaTech LAT.
 
 This module initializes the Django Ninja API and uses Django ORM services.
 All database access through Django ORM models.
 NO external frameworks - pure Django.
+
+Standalone mode — AAAS is a separate deployment concern.
 """
 
 # flake8: noqa: E402
@@ -73,7 +75,7 @@ graph_service = get_graph_service(namespace=_namespace)
 api = NinjaAPI(
     title="SomaFractalMemory API",
     version="2.0.0",
-    description="Cognitive memory system API (100% Django)",
+    description="Cognitive memory system API (100% Django) — Standalone Mode",
 )
 
 
@@ -91,7 +93,7 @@ def handle_http_error(request: HttpRequest, exc: HttpError) -> HttpResponse:
 @api.exception_handler(Exception)
 def handle_exception(request: HttpRequest, exc: Exception) -> HttpResponse:
     """Handle unexpected exceptions."""
-    logger.error(f"An unexpected error occurred: {exc}", exc_info=True)
+    logger.error("An unexpected error occurred: %s", exc, exc_info=True)
     return api.create_response(
         request,
         {"detail": get_message(ErrorCode.INTERNAL_ERROR)},
@@ -123,9 +125,8 @@ def get_rate_limiter() -> Any:
 
 
 # -----------------------------------------------------------------------------
-# Register Routers
+# Register Routers — Standalone Only (no AAAS admin)
 # -----------------------------------------------------------------------------
-from .routers.aaas_admin import router as aaas_admin_router
 from .routers.graph import router as graph_router
 from .routers.health import router as health_router
 from .routers.memory import router as memory_router
@@ -135,7 +136,9 @@ api.add_router("/memories", search_router, tags=["memories"])
 api.add_router("/memories", memory_router, tags=["memories"])
 api.add_router("", health_router, tags=["system"])
 api.add_router("/graph", graph_router, tags=["graph"])
-api.add_router("/admin", aaas_admin_router, tags=["AAAS Admin"])
+
+# NOTE: AAAS admin router is NOT mounted in standalone mode.
+# See infra/aaas/ for AAAS deployment configuration.
 
 
 __all__ = [

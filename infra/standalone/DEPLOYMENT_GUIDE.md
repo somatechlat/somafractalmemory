@@ -1,27 +1,26 @@
-# SomaFractalMemory Docker Deployment Guide
+# SomaFractalMemory Standalone Deployment Guide
 
-> **Document Version**: 2.0.0
-> **Last Updated**: 2026-01-09
-> **Status**: ✅ Verified 100% Healthy
-
-This guide provides step-by-step instructions for deploying SomaFractalMemory (SFM).
+> **Document Version**: 3.0.0
+> **Last Updated**: 2026-02-19
+> **Status**: ✅ Verified — 30/30 tests, 8 services healthy
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Clone and navigate
+# 1. Navigate to repo
 cd /path/to/somafractalmemory
 
-# 2. Start all services
-docker compose -f infra/standalone/docker-compose.yml up -d
+# 2. Start all services (--env-file is REQUIRED)
+docker compose -f infra/standalone/docker-compose.yml \
+  --env-file infra/standalone/.env up -d
 
-# 3. Apply migrations
-docker exec somafractalmemory-standalone-api python manage.py migrate
+# 3. Verify all 8 containers healthy
+docker compose -f infra/standalone/docker-compose.yml ps
 
-# 4. Verify health (all 6 services should be healthy)
-docker ps --format "table {{.Names}}\t{{.Status}}"
+# 4. Health check
+curl -s http://localhost:10101/health | python3 -m json.tool
 ```
 
 ---
@@ -29,7 +28,7 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 ## Prerequisites
 
 | Requirement | Minimum | Recommended |
-|-------------|---------|-------------|
+|:---|:---|:---|
 | Docker | 24.0+ | Latest |
 | Docker Compose | 2.20+ | Latest |
 | RAM | 4GB | 8GB |
@@ -37,170 +36,171 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 
 ---
 
-## Step-by-Step Deployment
+## Architecture: Secrets via Vault
 
-### Step 1: Environment Setup
+SFM uses **HashiCorp Vault** for credential injection. The flow:
 
-```bash
-# Copy example environment file (if exists)
-cp .env.example .env 2>/dev/null || true
+1. `.env` file provides `SFM_VAULT_TOKEN`, `SFM_DB_PASSWORD`, `SFM_DB_USER`
+2. `vault-init` container writes these to Vault KV v2 at `somafractalmemory/database` and `somafractalmemory/redis`
+3. API container bootstraps with `VAULT_ADDR` + `VAULT_TOKEN`
+4. `infra.py` calls `vault_client.get_db_credentials()` → injects `SOMA_DB_USER`, `SOMA_DB_PASSWORD` into `os.environ`
+5. `standalone.py` reads those env vars to override `DATABASES["default"]`
 
-# Default environment is suitable for local development
+**No database passwords are passed directly to the API container.**
+
+---
+
+## Port Authority (10xxx Range)
+
+SFM standalone uses the **10xxx** host port range. Inside the Docker network, services use standard internal ports.
+
+| Service | Host Port | Internal Port | Protocol | Purpose |
+|:---|:---|:---|:---|:---|
+| API | **10101** | 10101 | HTTP | Main SFM API |
+| PostgreSQL | **10432** | 5432 | TCP | Metadata store |
+| Redis | **10379** | 6379 | TCP | KV cache |
+| Milvus API | **10530** | 19530 | gRPC | Vector database |
+| Milvus Mgmt | **10531** | 9091 | HTTP | Milvus health/metrics |
+| Vault | **10200** | 8200 | HTTP | Secrets management |
+| OPA | **10818** | 8181 | HTTP | Authorization engine |
+| etcd | — | 2379 | TCP | Milvus metadata (no host mapping) |
+| MinIO | — | 9000 | HTTP | Milvus object store (no host mapping) |
+
+---
+
+## Services (8 containers + 1 init)
+
+| Container | Image | Health Check |
+|:---|:---|:---|
+| `somafractalmemory-standalone-api` | `somafractalmemory:latest` | `curl http://localhost:10101/health` |
+| `somafractalmemory-standalone-postgres` | `postgres:15-alpine` | `pg_isready` |
+| `somafractalmemory-standalone-redis` | `redis:7.2-alpine` | `redis-cli ping` |
+| `somafractalmemory-standalone-milvus` | `milvusdb/milvus:v2.3.3` | `curl http://localhost:9091/healthz` |
+| `somafractalmemory-standalone-etcd` | `quay.io/coreos/etcd:v3.5.5` | `etcdctl endpoint health` |
+| `somafractalmemory-standalone-minio` | `minio/minio:RELEASE.2023-03-20T20-16-18Z` | `curl http://localhost:9000/minio/health/live` |
+| `somafractalmemory-standalone-vault` | `hashicorp/vault:1.13.3` | `vault status` |
+| `somafractalmemory-standalone-opa` | `openpolicyagent/opa:0.54.0` | `opa eval time.now_ns()` |
+| `somafractalmemory-standalone-vault-init` | `alpine:latest` | Exits after seeding Vault |
+
+---
+
+## Environment Variables (`.env`)
+
+All secrets and config live in `infra/standalone/.env`.
+
+| Variable | Required | Description |
+|:---|:---|:---|
+| `SFM_VAULT_TOKEN` | ✅ | Vault dev root token |
+| `SFM_DB_USER` | ✅ | PostgreSQL username |
+| `SFM_DB_PASSWORD` | ✅ | PostgreSQL password |
+| `SFM_MINIO_ROOT_USER` | ✅ | MinIO access key |
+| `SFM_MINIO_ROOT_PASSWORD` | ✅ | MinIO secret key |
+| `SOMA_API_TOKEN` | ✅ | API bearer token |
+| `SOMA_ALLOWED_HOSTS` | No | Default: `localhost,127.0.0.1` |
+| `SOMA_LOG_LEVEL` | No | Default: `INFO` |
+
+---
+
+## Django Settings Chain
+
 ```
+DJANGO_SETTINGS_MODULE = somafractalmemory.settings.standalone
 
-### Step 2: Start Core Services
-
-```bash
-# Start standalone stack
-docker compose -f infra/standalone/docker-compose.yml up -d
-
-# Wait for services to initialize
-sleep 20
-```
-
-### Step 3: Apply Database Migrations
-
-```bash
-# Apply Django migrations
-docker exec somafractalmemory-standalone-api python manage.py migrate
-```
-
-### Step 4: Verify Health
-
-```bash
-# Check all containers are healthy
-docker compose ps
-
-# Expected: 6 services, all (healthy)
-# - somafractalmemory-standalone-api
-# - somafractalmemory-standalone-postgres
-# - somafractalmemory-standalone-redis
-# - somafractalmemory-standalone-milvus
-# - somafractalmemory-standalone-etcd
-# - somafractalmemory-standalone-minio
-```
-
-### Step 5: Test API
-
-```bash
-# Basic health check
-curl -s http://localhost:10101/healthz
-
-# Expected: {"kv_store": true, "vector_store": true, "graph_store": true}
-
-# Search test (empty results expected)
-curl -s -X POST http://localhost:10101/memories/search \
-  -H "Authorization: Bearer $SOMA_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "test", "limit": 5}'
-
-# Expected: {"memories": []}
+Load order:
+  1. settings/__init__.py → imports django_core.py + infra.py
+  2. django_core.py → DATABASES defaults (env-based)
+  3. infra.py → Vault credential injection, Redis/Milvus/OPA config
+  4. standalone.py → Overrides DATABASES from env, strips AAAS apps
 ```
 
 ---
 
-## Services Overview
+## Migration Tree
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| somafractalmemory-standalone-api | 10101 | Main API service |
-| somafractalmemory-standalone-postgres | 5432 | PostgreSQL database |
-| somafractalmemory-standalone-redis | 6379 | KV store + cache |
-| somafractalmemory-standalone-milvus | 19530 | Vector database |
-| somafractalmemory-standalone-etcd | 2379 | Milvus metadata |
-| somafractalmemory-standalone-minio | 9000 | Milvus object storage |
+```
+0001_initial → Memory, GraphLink, VectorEmbedding, MemoryNamespace, AuditLog
+  └── 0003_tenant_scoped_uniqueness → UniqueConstraint updates
+        └── 0004_apikey_usagerecord → APIKey, UsageRecord (AAAS models)
+```
+
+Apply migrations:
+```bash
+docker exec somafractalmemory-standalone-api python manage.py migrate --noinput
+```
+
+Verify no pending migrations:
+```bash
+docker exec somafractalmemory-standalone-api python manage.py makemigrations --check
+```
 
 ---
 
 ## API Endpoints
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/healthz` | GET | Basic health check |
-| `/health` | GET | Detailed health with store status |
-| `/memories` | POST | Store a memory |
-| `/memories/<coord>` | GET | Fetch a memory |
-| `/memories/<coord>` | DELETE | Delete a memory |
-| `/memories/search` | POST | Vector similarity search |
-| `/stats` | GET | Memory statistics |
-| `/docs` | GET | OpenAPI documentation |
+| Endpoint | Method | Auth | Purpose |
+|:---|:---|:---|:---|
+| `/healthz` | GET | No | Basic health (kv, vector, graph) |
+| `/health` | GET | No | Detailed health with latency + stats |
+| `/memories` | POST | Bearer | Store a memory |
+| `/memories/<coord>` | GET | Bearer | Retrieve a memory |
+| `/memories/<coord>` | DELETE | Bearer | Delete a memory |
+| `/memories/search` | POST | Bearer | Vector similarity search |
+| `/stats` | GET | Bearer | Memory statistics |
+| `/docs` | GET | No | OpenAPI documentation |
 
 ---
 
 ## Running Tests
 
-### Integration Tests (from host)
 ```bash
-cd /path/to/somafractalmemory
-source .venv/bin/activate
-python -m pytest tests/integration/ -v
-```
+# Full test suite (30 tests — unit, integration, deep integration, E2E)
+docker exec -e SOMA_INFRA_AVAILABLE=1 somafractalmemory-standalone-api \
+  python -m pytest tests/ -v --tb=short --create-db
 
-### API Tests
-```bash
-# Store + Search flow test
-curl -X POST http://localhost:10101/memories/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "test memory", "limit": 5}'
+# Unit tests only
+docker exec somafractalmemory-standalone-api \
+  python -m pytest tests/unit/ -v
+
+# Deep integration tests (requires SOMA_INFRA_AVAILABLE=1)
+docker exec -e SOMA_INFRA_AVAILABLE=1 somafractalmemory-standalone-api \
+  python -m pytest tests/test_deep_integration.py -v --reuse-db
+
+# Code quality
+docker exec somafractalmemory-standalone-api python -m ruff check somafractalmemory/
 ```
 
 ---
 
 ## Troubleshooting
 
-### Container Restarting
+### Clean Deploy (Nuclear Option)
 ```bash
-# Check logs
+docker compose -f infra/standalone/docker-compose.yml --env-file infra/standalone/.env down -v
+docker compose -f infra/standalone/docker-compose.yml --env-file infra/standalone/.env up -d
+```
+
+### Vault Credential Issues
+```bash
+# Check Vault health
+curl -s http://localhost:10200/v1/sys/health | python3 -m json.tool
+
+# Read DB credentials from Vault
+curl -s -H "X-Vault-Token: $(grep SFM_VAULT_TOKEN infra/standalone/.env | cut -d= -f2)" \
+  http://localhost:10200/v1/somafractalmemory/data/database | python3 -m json.tool
+```
+
+### API Logs
+```bash
 docker logs somafractalmemory-standalone-api --tail 50
-
-# Verify Milvus dependencies (etcd, minio) are healthy first
-docker logs somafractalmemory-standalone-milvus --tail 50
-```
-
-### Migration Errors
-```bash
-# Run migrations manually
-docker exec somafractalmemory-standalone-api python manage.py migrate --run-syncdb
-
-# If tables exist, reset database (DESTRUCTIVE)
-docker compose down -v && docker compose up -d
-```
-
-### Milvus Connection Issues
-```bash
-# Verify Milvus is ready
-curl -s http://localhost:9091/healthz
-
-# Check etcd health
-docker exec somafractalmemory-standalone-etcd etcdctl endpoint health
 ```
 
 ---
 
 ## Integration with SomaBrain
 
-SomaFractalMemory serves as the persistent memory layer for SomaBrain:
-
 ```bash
-# Both clusters should be running:
-# SomaBrain: 16 services on ports 30101+
-# SFM: 6 services on port 10101
-
-# Configure SomaBrain to use SFM
+# SomaBrain connects to SFM via:
 export SOMABRAIN_MEMORY_HTTP_ENDPOINT=http://localhost:10101
-```
-
----
-
-## Production Deployment
-
-For Kubernetes deployment:
-```bash
-# See Kubernetes manifests
-ls infra/k8s/
-
-# Apply with kubectl
-kubectl apply -f infra/k8s/sfm-resilient.yaml
 ```
 
 ---
@@ -208,6 +208,7 @@ kubectl apply -f infra/k8s/sfm-resilient.yaml
 ## Document History
 
 | Version | Date | Changes |
-|---------|------|---------|
-| 2.0.0 | 2026-01-09 | 6-service verification, API reference, troubleshooting |
+|:---|:---|:---|
+| 3.0.0 | 2026-02-19 | Full rewrite: 8-service arch, Port Authority, Vault flow, migration tree, 30-test suite |
+| 2.0.0 | 2026-01-09 | 6-service verification, API reference |
 | 1.0.0 | 2026-01-08 | Initial deployment guide |

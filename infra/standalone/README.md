@@ -3,7 +3,7 @@
 **ISOLATION LEVEL: HIGH**
 
 This directory contains the **Standalone** deployment configuration for SomaFractalMemory.
-It is **COMPLETELY ISOLATED** from the AAAS (Agent-As-A-Service) deployment.
+It is **COMPLETELY ISOLATED** from the Agent-as-a-Service (AAAS) deployment.
 
 ## Architecture
 - **Service Type**: Microservice (HTTP API)

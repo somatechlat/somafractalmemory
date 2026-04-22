@@ -1,4 +1,4 @@
-"""SomaFractalMemory AAAS App.
+"""SomaFractalMemory Agent-as-a-Service (AAAS) App.
 
 Provides API key authentication and usage tracking.
 

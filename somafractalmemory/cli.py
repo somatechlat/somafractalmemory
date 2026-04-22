@@ -47,6 +47,7 @@ def main() -> None:
     p_search = sub.add_parser("search", help="Search memories")
     p_search.add_argument("--query", required=True)
     p_search.add_argument("--top-k", dest="top_k", type=int, default=5)
+    p_search.add_argument("--offset", type=int, default=0, help="Pagination offset")
     p_search.add_argument("--type", dest="mem_type", default=None, choices=["episodic", "semantic"])
 
     # Get command
@@ -83,6 +84,7 @@ def main() -> None:
         results = service.search(
             query=args.query,
             top_k=args.top_k,
+            offset=args.offset,
             memory_type=args.mem_type,
             tenant=args.tenant,
         )

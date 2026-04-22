@@ -55,7 +55,7 @@ somafractalmemory/
 │   ├── api/                           # Django Ninja API routers + schema
 │   ├── admin/
 │   │   ├── core/                      # ORM models + services (source of truth)
-│   │   └── aaas/                      # API keys + usage tracking
+│   │   └── aaas/                      # Agent-as-a-Service (keys + usage)
 │   ├── config/                        # Django URL mount + WSGI
 │   ├── settings/                      # Settings profiles (default + standalone)
 │   └── services.py                    # Compatibility re-exports for MemoryService/GraphService

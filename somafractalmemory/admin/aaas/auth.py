@@ -137,11 +137,12 @@ class APIKeyAuth(HttpBearer):
             return None
 
         try:
-            # Synchronous call to SomaBrain auth endpoint
+            # Hardened timeout (3s) to prevent thread exhaustion (Flaw 2 Fix)
+            # In production, this should ideally be async
             response = httpx.get(
                 f"{somabrain_url}/api/v1/auth/verify",
                 headers={"Authorization": f"Bearer {token}"},
-                timeout=5.0,
+                timeout=3.0,
             )
 
             if response.status_code == 200:
@@ -159,9 +160,11 @@ class APIKeyAuth(HttpBearer):
             logger.warning(f"SomaBrain auth failed: {response.status_code}")
             return None
 
+        except httpx.TimeoutException:
+            logger.error("SomaBrain auth timeout - thread released to prevent starvation")
+            return None
         except Exception as e:
             logger.error(f"SomaBrain auth error: {e}")
-            # Fallback: Check if we have a cached tenant
             return None
 
     def _get_client_ip(self, request: HttpRequest) -> str | None:
@@ -197,10 +200,11 @@ class SimpleTokenAuth(HttpBearer):
             return None
 
         if token == expected_token:
+            # Fix Flaw 3: Bind SimpleToken to 'internal' tenant.
+            # Header-based tenant hijacking is now prohibited.
             return {
-                "tenant": request.META.get("HTTP_X_SOMA_TENANT", "default"),
+                "tenant": "internal",
                 "auth_type": "simple_token",
-                # Shared token is intentionally limited: read/write only, no admin/delete
                 "permissions": ["read", "write"],
                 "allowed_namespaces": ["*"],
             }

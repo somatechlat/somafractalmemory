@@ -2,57 +2,66 @@
 
 # ---------------------------------------------------------------------------
 # Bootstrap script for SomaFractalMemory API container.
-# 100% Django patterns - Production WSGI server (gunicorn).
+# Mode: STANDALONE — 100% Django patterns, gunicorn WSGI.
+# No AAAS, no SomaBrain integration.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
 
-echo "🚀 Starting bootstrap for SomaFractalMemory API (Django - Production)"
+echo "=== SomaFractalMemory Standalone Bootstrap ==="
 
 # ---------------------------------------------------------------------------
-# Export connection strings for Django settings
+# Standalone Django settings
 # ---------------------------------------------------------------------------
-POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
-POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-POSTGRES_USER="${POSTGRES_USER:-soma}"
-POSTGRES_DB="${POSTGRES_DB:-somamemory}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-soma}"
-MILVUS_HOST="${MILVUS_HOST:-milvus}"
-MILVUS_PORT="${MILVUS_PORT:-19530}"
-REDIS_HOST="${REDIS_HOST:-redis}"
-REDIS_PORT="${REDIS_PORT:-6379}"
-
-# Django settings environment
-export DJANGO_SETTINGS_MODULE="somafractalmemory.settings"
-export SOMA_POSTGRES_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB"
-export SOMA_DB_HOST="$POSTGRES_HOST"
-export SOMA_DB_PORT="$POSTGRES_PORT"
-export SOMA_DB_USER="$POSTGRES_USER"
-export SOMA_DB_PASSWORD="$POSTGRES_PASSWORD"
-export SOMA_DB_NAME="$POSTGRES_DB"
-export SOMA_MILVUS_HOST="$MILVUS_HOST"
-export SOMA_MILVUS_PORT="$MILVUS_PORT"
-export SOMA_REDIS_HOST="$REDIS_HOST"
-export SOMA_REDIS_PORT="$REDIS_PORT"
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-somafractalmemory.settings.standalone}"
 export PYTHONPATH="/app:${PYTHONPATH:-}"
+
+echo "Settings: ${DJANGO_SETTINGS_MODULE}"
+echo "DB Host: ${SOMA_DB_HOST:-localhost}"
+echo "Redis Host: ${SOMA_REDIS_HOST:-not configured}"
+echo "Milvus Host: ${SOMA_MILVUS_HOST:-not configured}"
+
+# ---------------------------------------------------------------------------
+# Wait for PostgreSQL to be ready (max 30s)
+# ---------------------------------------------------------------------------
+echo "Waiting for PostgreSQL..."
+DB_HOST="${SOMA_DB_HOST:-localhost}"
+DB_PORT="${SOMA_DB_PORT:-5432}"
+
+for i in $(seq 1 30); do
+    if python -c "
+import socket
+s = socket.create_connection(('${DB_HOST}', ${DB_PORT}), timeout=2)
+s.close()
+print('PostgreSQL is reachable')
+" 2>/dev/null; then
+        break
+    fi
+    echo "  Attempt ${i}/30 — PostgreSQL not ready yet..."
+    sleep 1
+done
 
 # ---------------------------------------------------------------------------
 # Run Django migrations
 # ---------------------------------------------------------------------------
-echo "🔧 Running Django migrations..."
-python /app/manage.py migrate --run-syncdb --noinput 2>&1 || {
-    echo "⚠️ Django migrate failed (tables may not exist yet), running syncdb..."
-    python /app/manage.py migrate --run-syncdb --noinput 2>&1 || true
+echo "Running Django migrations..."
+python /app/manage.py migrate --noinput 2>&1 || {
+    echo "WARNING: Django migrate failed on first attempt, retrying..."
+    sleep 2
+    python /app/manage.py migrate --noinput 2>&1 || {
+        echo "ERROR: Django migrations failed. Starting anyway (tables may already exist)."
+    }
 }
-echo "✅ Django migrations applied."
+echo "Django migrations complete."
 
-echo "🚦 Starting gunicorn (production WSGI server)..."
+# ---------------------------------------------------------------------------
+# Start gunicorn — production WSGI server
+# ---------------------------------------------------------------------------
+echo "Starting gunicorn on port ${SOMA_API_PORT:-10101}..."
 
-# Start gunicorn - production WSGI server
-# Workers = 2*CPU + 1 (but limited for container)
-exec gunicorn somafractalmemory.wsgi:application \
-    --bind 0.0.0.0:"${SOMA_API_PORT:-10101}" \
-    --workers "${GUNICORN_WORKERS:-2}" \
+exec gunicorn somafractalmemory.config.wsgi:application \
+    --bind "0.0.0.0:${SOMA_API_PORT:-10101}" \
+    --workers "${GUNICORN_WORKERS:-1}" \
     --threads "${GUNICORN_THREADS:-2}" \
     --timeout 120 \
     --keep-alive 5 \

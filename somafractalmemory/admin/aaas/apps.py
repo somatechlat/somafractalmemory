@@ -1,11 +1,11 @@
-"""Django App Configuration for AAAS module."""
+"""Django App Configuration for Agent-as-a-Service (AAAS) module."""
 
 from django.apps import AppConfig
 
 
 class AaasConfig(AppConfig):
-    """Configuration for the AAAS application."""
+    """Configuration for the Agent-as-a-Service (AAAS) application."""
 
     default_auto_field = "django.db.models.BigAutoField"
     name = "somafractalmemory.admin.aaas"
-    verbose_name = "SomaFractalMemory AAAS"
+    verbose_name = "SomaFractalMemory Agent-as-a-Service"

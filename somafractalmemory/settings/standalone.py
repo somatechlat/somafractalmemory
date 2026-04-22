@@ -1,6 +1,6 @@
 """
 Standalone Settings Profile.
-STRICTLY ISOLATED from AAAS/Multi-tenancy logic.
+STRICTLY ISOLATED from Agent-as-a-Service (AAAS)/Multi-tenancy logic.
 Usage: DJANGO_SETTINGS_MODULE=somafractalmemory.settings.standalone
 """
 

@@ -1,15 +1,9 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# 🚨 STANDALONE DEPLOYMENT: COLIMA + TILT + MINIKUBE 🚨
+# SomaFractalMemory — STANDALONE Deployment Dockerfile
 # ═══════════════════════════════════════════════════════════════════════════════
-# This project uses:
-#   ✅ COLIMA   - Docker runtime (NOT Docker Desktop)
-#   ✅ TILT     - Development orchestration
-#   ✅ MINIKUBE - Kubernetes cluster
-#
-# ❌ DO NOT USE DOCKER DESKTOP
-# ❌ DO NOT USE docker-compose directly
-#
-# Start with: tilt up --port <port>
+# Mode: STANDALONE (no AAAS, no SomaBrain integration)
+# Runtime: gunicorn (WSGI) + Django 5.x
+# Auth: SOMA_API_TOKEN bearer only
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -44,7 +38,7 @@ WORKDIR /app
 
 # System packages for healthcheck
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl supervisor \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy wheel from builder stage and install
@@ -59,6 +53,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Copy only essential runtime assets.
 COPY manage.py /app/manage.py
+COPY scripts/bootstrap.sh /app/bootstrap.sh
 COPY tests /app/tests
 COPY conftest.py /app/conftest.py
 
@@ -69,7 +64,8 @@ COPY somafractalmemory /app/somafractalmemory
 ENV PYTHONPATH=/app:${PYTHONPATH:-}
 
 # Prepare writable log dir
-RUN mkdir -p /app/logs && chmod 0755 /app/logs
+RUN mkdir -p /app/logs && chmod 0755 /app/logs \
+    && chmod +x /app/bootstrap.sh
 
 # Create non-root user with UID/GID 1000
 RUN set -eux; \
@@ -81,7 +77,7 @@ USER 1000:1000
 # Expose default API port
 EXPOSE 10101
 
-# Environment defaults
+# Environment defaults — STANDALONE mode
 ENV SOMAFRACTALMEMORY_HOST=0.0.0.0 \
     SOMAFRACTALMEMORY_PORT=10101 \
     SOMAFRACTALMEMORY_WORKERS=1 \
@@ -89,8 +85,8 @@ ENV SOMAFRACTALMEMORY_HOST=0.0.0.0 \
     DJANGO_SETTINGS_MODULE=somafractalmemory.settings.standalone
 
 # Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${SOMAFRACTALMEMORY_PORT:-10101}/health" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${SOMAFRACTALMEMORY_PORT:-10101}/healthz" || exit 1
 
-ENTRYPOINT ["gunicorn"]
-CMD ["somafractalmemory.config.wsgi:application", "--bind", "0.0.0.0:10101", "--workers", "1", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]
+# Use bootstrap.sh as entrypoint — runs migrations then starts gunicorn
+ENTRYPOINT ["/app/bootstrap.sh"]

@@ -49,6 +49,7 @@ class Memory(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_memories"
         verbose_name = "Memory"
         verbose_name_plural = "Memories"
@@ -109,6 +110,7 @@ class GraphLink(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_graph_links"
         verbose_name = "Graph Link"
         verbose_name_plural = "Graph Links"
@@ -162,6 +164,7 @@ class VectorEmbedding(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_vector_embeddings"
         verbose_name = "Vector Embedding"
         verbose_name_plural = "Vector Embeddings"
@@ -197,6 +200,7 @@ class MemoryNamespace(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_namespaces"
         verbose_name = "Memory Namespace"
         verbose_name_plural = "Memory Namespaces"
@@ -251,6 +255,7 @@ class AuditLog(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_audit_log"
         verbose_name = "Audit Log"
         verbose_name_plural = "Audit Logs"

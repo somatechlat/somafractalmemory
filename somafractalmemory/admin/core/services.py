@@ -106,6 +106,13 @@ class MemoryService:
             try:
                 payload_text = json.dumps(payload, sort_keys=True)
                 vector = self.embedder.embed(payload_text)
+
+                # Fix Flaw 2: Prevent vector cloning by deleting old vector for this coordinate if it exists
+                try:
+                    self.vector_store.delete(coord_key)
+                except Exception:
+                    pass  # Ignore if not found or store inaccessible during cleanup
+
                 milvus_id = self.vector_store.insert(
                     coordinate_key=coord_key,
                     vector=vector,
@@ -184,9 +191,17 @@ class MemoryService:
 
         if deleted and self.vector_store:
             try:
-                self.vector_store.delete(coord_key)
+                # Fix Flaw 1: Ensure Milvus deletion is successful to prevent orphans.
+                # If this fails, the exception will rollback the Postgres transaction.
+                self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
             except Exception as exc:
-                logger.warning("Vector store delete failed", error=str(exc))
+                logger.error(
+                    "Vector store delete failed - Rolling back Postgres transaction", error=str(exc)
+                )
+                raise RuntimeError(
+                    f"State synchronization failure: Could not delete vector for {coord_key}. Action aborted."
+                ) from exc
+
         if deleted:
             VectorEmbedding.objects.filter(
                 memory__coordinate_key=coord_key,
@@ -208,6 +223,7 @@ class MemoryService:
         self,
         query: str,
         top_k: int = 5,
+        offset: int = 0,
         memory_type: str | None = None,
         tenant: str = "default",
         filters: dict[str, Any] | None = None,
@@ -215,16 +231,20 @@ class MemoryService:
         """Search memories using Django ORM.
 
         Vector similarity search via Milvus when configured; fallback to ORM text search.
+        Fix Flaw 7: Supporting pagination with offset.
         """
         if self.vector_store and self.embedder:
             try:
                 vector = self.embedder.embed(query)
                 vector_results = self.vector_store.search(
                     query_vector=vector,
-                    top_k=top_k,
+                    top_k=top_k + offset,  # We fetch enough to cover the offset
                     namespace=self.namespace,
                     tenant=tenant,
                 )
+                # Apply offset to vector results
+                vector_results = vector_results[offset:]
+
                 coord_keys = [res["coordinate_key"] for res in vector_results]
                 memories = list(
                     Memory.objects.filter(
@@ -265,11 +285,19 @@ class MemoryService:
             for key, value in filters.items():
                 queryset = queryset.filter(**{f"payload__{key}": value})
 
-        # Basic text search in payload (for non-vector search)
+        # Basic search (for non-vector search) - Fix Flaw 3: leveraging GinIndex
         if query:
-            queryset = queryset.filter(Q(payload__icontains=query) | Q(metadata__icontains=query))
+            # We use __contains which maps to Postgres @> (indexed)
+            # This is significantly faster than __icontains (sequential scan)
+            # We check common keys used in SOMA payloads: 'text', 'content', 'summary'
+            queryset = queryset.filter(
+                Q(payload__contains={"text": query})
+                | Q(payload__contains={"content": query})
+                | Q(payload__contains={"summary": query})
+                | Q(metadata__contains={"original_query": query})
+            )
 
-        memories = queryset.order_by("-importance", "-created_at")[:top_k]
+        memories = queryset.order_by("-importance", "-created_at")[offset : offset + top_k]
 
         AuditLog.objects.create(
             action=AuditLog.Action.SEARCH,
@@ -373,9 +401,13 @@ class GraphService:
         coord: tuple[float, ...],
         link_type: str | None = None,
         limit: int = 10,
+        offset: int = 0,
         tenant: str = "default",
     ) -> list[dict[str, Any]]:
-        """Get neighbors of a coordinate using Django ORM."""
+        """Get neighbors of a coordinate using Django ORM.
+
+        Fix Flaw 7: Supporting pagination with offset.
+        """
         coord_key = Memory.coord_to_key(coord)
 
         queryset = GraphLink.objects.filter(
@@ -387,7 +419,7 @@ class GraphService:
         if link_type:
             queryset = queryset.filter(link_type=link_type)
 
-        links = queryset[:limit]
+        links = queryset.order_by("-created_at")[offset : offset + limit]
 
         return [
             {
@@ -405,9 +437,13 @@ class GraphService:
         to_coord: tuple[float, ...],
         link_type: str | None = None,
         tenant: str = "default",
+        max_depth: int = 5,
     ) -> list[tuple[float, ...]] | None:
-        """Find shortest path using BFS with Django ORM."""
-        from collections import deque
+        """Find shortest path using a Postgres Recursive CTE (O(1) query).
+
+        Fix Flaw 6: Supporting dynamic max_depth for contract harmony.
+        """
+        from django.db import connection
 
         from_key = Memory.coord_to_key(from_coord)
         to_key = Memory.coord_to_key(to_coord)
@@ -415,56 +451,129 @@ class GraphService:
         if from_key == to_key:
             return [from_coord]
 
-        visited = {from_key}
-        queue = deque([(from_key, [from_coord])])
+        # Parameter binding
+        params = [self.namespace, tenant, from_key, to_key]
+        type_filter = ""
+        if link_type:
+            type_filter = "AND link_type = %s"
+            params.insert(2, link_type)
 
-        while queue:
-            current_key, path = queue.popleft()
+        query = f"""
+            WITH RECURSIVE path_search AS (
+                -- Base Case
+                SELECT
+                    to_coordinate_key as current_key,
+                    to_coordinate as current_coord,
+                    ARRAY[from_coordinate_key, to_coordinate_key]::text[] as visited_keys,
+                    ARRAY[from_coordinate, to_coordinate]::float8[][] as path_coords,
+                    1 as depth
+                FROM sfm_graph_links
+                WHERE namespace = %s
+                  AND tenant = %s
+                  {type_filter}
+                  AND from_coordinate_key = %s
 
-            queryset = GraphLink.objects.filter(
-                namespace=self.namespace,
-                tenant=tenant,
-                from_coordinate_key=current_key,
+                UNION ALL
+
+                -- Recursive Step
+                SELECT
+                    l.to_coordinate_key,
+                    l.to_coordinate,
+                    ps.visited_keys || l.to_coordinate_key::text,
+                    ps.path_coords || l.to_coordinate::float8[],
+                    ps.depth + 1
+                FROM sfm_graph_links l
+                JOIN path_search ps ON l.from_coordinate_key = ps.current_key
+                WHERE l.namespace = %s
+                  AND l.tenant = %s
+                  {type_filter.replace("link_type = %s", "l.link_type = %s")}
+                  AND NOT l.to_coordinate_key = ANY(ps.visited_keys)
+                  -- Contract Harmony: Use dynamic max_depth (Flaw 6 Fix)
+                  AND ps.depth < %s
             )
-            if link_type:
-                queryset = queryset.filter(link_type=link_type)
+            SELECT path_coords
+            FROM path_search
+            WHERE current_key = %s
+            ORDER BY depth ASC
+            LIMIT 1;
+        """
 
-            for link in queryset:
-                next_key = link.to_coordinate_key
-                if next_key == to_key:
-                    return path + [tuple(link.to_coordinate)]
+        # Parameters for the query
+        if link_type:
+            full_params = [
+                self.namespace,
+                tenant,
+                link_type,
+                from_key,  # Base
+                self.namespace,
+                tenant,
+                link_type,  # Recursive
+                max_depth,  # Dynamic Limit
+                to_key,  # Final Select
+            ]
+        else:
+            full_params = [
+                self.namespace,
+                tenant,
+                from_key,  # Base
+                self.namespace,
+                tenant,  # Recursive
+                max_depth,  # Dynamic Limit
+                to_key,  # Final Select
+            ]
 
-                if next_key not in visited:
-                    visited.add(next_key)
-                    queue.append((next_key, path + [tuple(link.to_coordinate)]))
+        with connection.cursor() as cursor:
+            cursor.execute(query, full_params)
+            row = cursor.fetchone()
+
+        if row and row[0]:
+            return [tuple(coord) for coord in row[0]]
 
         return None
 
     def export_graph(self, path: str) -> None:
-        """Export graph to JSON using Django ORM."""
+        """Export graph to JSON using streaming iterators to prevent OOM (Flaw 5 Hardening)."""
         from .models import Memory
 
-        # Get nodes (memories)
-        nodes = list(Memory.objects.filter(namespace=self.namespace).values())
-        formatted_nodes = [{"id": str(n["coordinate"]), "data": n["payload"]} for n in nodes]
-
-        # Get edges (links)
-        edges = list(GraphLink.objects.filter(namespace=self.namespace).values())
-        formatted_edges = [
-            {
-                "source": str(e["from_coordinate"]),
-                "target": str(e["to_coordinate"]),
-                "relation": e["link_type"],
-            }
-            for e in edges
-        ]
-
-        data = {"nodes": formatted_nodes, "edges": formatted_edges}
-
-        import json
+        # We use .iterator() to avoid loading everything into the Django QuerySet cache.
+        # This keeps memory usage O(1) relative to the database size.
 
         with open(path, "w") as f:
-            json.dump(data, f)
+            f.write('{"nodes": [')
+
+            # Export Nodes
+            first = True
+            for node in (
+                Memory.objects.filter(namespace=self.namespace)
+                .values("coordinate", "payload")
+                .iterator()
+            ):
+                if not first:
+                    f.write(",")
+                node_data = {"id": str(node["coordinate"]), "data": node["payload"]}
+                f.write(json.dumps(node_data))
+                first = False
+
+            f.write('], "edges": [')
+
+            # Export Edges
+            first = True
+            for edge in (
+                GraphLink.objects.filter(namespace=self.namespace)
+                .values("from_coordinate", "to_coordinate", "link_type")
+                .iterator()
+            ):
+                if not first:
+                    f.write(",")
+                edge_data = {
+                    "source": str(edge["from_coordinate"]),
+                    "target": str(edge["to_coordinate"]),
+                    "relation": edge["link_type"],
+                }
+                f.write(json.dumps(edge_data))
+                first = False
+
+            f.write("]}")
 
     def health_check(self) -> bool:
         """Check database health using Django ORM."""

@@ -46,31 +46,52 @@ Core component of the **Soma Cognitive Triad**:
 - **HashiCorp Vault**: (Optional, Recommended for Secrets)
 - **Open Policy Agent**: (Optional, Recommended for AuthZ)
 
-### 3.2 Quick Start (Production)
+### 3.2 Quick Start (Standalone)
 ```bash
 # 1. Clone & Setup
 git clone https://github.com/somatechlat/somafractalmemory.git
 cd somafractalmemory
 
-# 2. Configure Environment
-cp .env.example .env
-# EDIT .env WITH REAL CREDENTIALS
+# 2. Launch Stack (--env-file is REQUIRED)
+docker compose -f infra/standalone/docker-compose.yml \
+  --env-file infra/standalone/.env up -d
 
-# 3. Launch Stack
-docker compose -f infra/standalone/docker-compose.yml up -d
+# 3. Verify health
+curl -s http://localhost:10101/health | python3 -m json.tool
 ```
 
 ### 3.3 Configuration Parameters
-| Variable | Description | Default |
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SOMA_API_PORT` | API Service Port | `10101` |
-| `SOMA_POSTGRES_URL` | Database Connection | `postgresql://...` |
-| `SOMA_MILVUS_HOST` | Vector Store Host | `localhost` |
-| `SOMA_REDIS_HOST` | Cache Host | `localhost` |
-| `SOMA_VAULT_URL` | Vault URL (Secrets) | `""` |
-| `SOMA_OPA_URL` | OPA URL (AuthZ) | `http://opa:10818` |
-| `SOMA_OPA_FAIL_OPEN` | AuthZ Safety Mode | `False` (Fail Closed) |
+
+Settings are loaded from `somafractalmemory/settings/infra.py` and `standalone.py`.
+
+| Variable | Description | Default | Source |
+|:---|:---|:---|:---|
+| `SOMA_API_PORT` | API listen port | `10101` | `infra.py:83` |
+| `SOMA_DB_HOST` | PostgreSQL host | `localhost` | `django_core.py:61` |
+| `SOMA_DB_PORT` | PostgreSQL port | `5432` | `django_core.py:62` |
+| `SOMA_DB_USER` | PostgreSQL user | `postgres` | `django_core.py:59` |
+| `SOMA_DB_PASSWORD` | PostgreSQL password | — | Vault injection |
+| `SOMA_REDIS_HOST` | Redis host | `localhost` | `infra.py:46` |
+| `SOMA_REDIS_PORT` | Redis port | `6379` | `infra.py:47` |
+| `SOMA_MILVUS_HOST` | Milvus host | `localhost` | `infra.py:54` |
+| `SOMA_MILVUS_PORT` | Milvus port | `19530` | `infra.py:55` |
+| `VAULT_ADDR` | Vault server URL | — | Container env |
+| `VAULT_TOKEN` | Vault auth token | — | Container env |
+| `SOMA_OPA_URL` | OPA AuthZ URL | `http://opa:8181` | `infra.py:157` |
+| `SOMA_OPA_FAIL_OPEN` | Fail-open on OPA error | `False` | `infra.py:159` |
+| `SOMA_API_TOKEN` | API bearer token | — | Container env |
+| `SOMA_ALLOWED_HOSTS` | Django ALLOWED_HOSTS | `localhost,127.0.0.1` | Container env |
+
+### 3.4 Port Authority (10xxx Range)
+
+| Service | Host Port | Internal Port |
+|:---|:---|:---|
+| API | **10101** | 10101 |
+| PostgreSQL | **10432** | 5432 |
+| Redis | **10379** | 6379 |
+| Milvus | **10530** | 19530 |
+| Vault | **10200** | 8200 |
+| OPA | **10818** | 8181 |
 
 ---
 

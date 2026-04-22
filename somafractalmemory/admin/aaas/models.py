@@ -1,5 +1,5 @@
 """
-SomaFractalMemory AAAS Models.
+SomaFractalMemory Agent-as-a-Service (AAAS) Models.
 
 API key authentication and usage tracking.
 Can work standalone or integrate with SomaBrain.
@@ -60,6 +60,7 @@ class APIKey(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_api_keys"
         ordering = ["-created_at"]
         verbose_name = "API Key"
@@ -138,6 +139,7 @@ class UsageRecord(models.Model):
     class Meta:
         """Meta class implementation."""
 
+        app_label = "somafractalmemory"
         db_table = "sfm_usage_records"
         ordering = ["-timestamp"]
         verbose_name = "Usage Record"
@@ -145,6 +147,11 @@ class UsageRecord(models.Model):
         indexes = [
             models.Index(fields=["tenant", "hour_bucket"]),
             models.Index(fields=["tenant", "operation", "hour_bucket"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "operation", "hour_bucket"], name="unique_usage_bucket"
+            )
         ]
 
     def __str__(self) -> str:

@@ -14,19 +14,19 @@ SomaFractalMemory is a fractal memory system that stores and retrieves data usin
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   Django + gunicorn                          │
-│                   (WSGI Server)                              │
-│                   Port: 10101                                 │
+│                   Django + uvicorn                           │
+│                   (ASGI Server)                              │
+│                   Port: 10101                                │
 └─────────────────────────┬───────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Django Ninja API                           │
 │              (Request Routing & Validation)                  │
-├──────────────┬──────────────┬──────────────┬───────────────┤
-│    Health    │   Memory     │   Search     │    Graph      │
-│   Router     │   Router     │   Router     │   Router      │
-└──────────────┴──────────────┴──────────────┴───────────────┘
+├────────┬──────────────┬──────────────┬──────────┬──────────┤
+│ Health │   Memory     │   Search     │  Graph   │   AAAS   │
+│ Router │   Router     │ GET+POST     │  Router  │  Admin   │
+└────────┴──────────────┴──────────────┴──────────┴──────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -56,19 +56,21 @@ The API is built with Django Ninja, which provides:
 
 | File | Purpose |
 |------|---------|
-| `core.py` | API initialization, dependencies |
-| `schemas.py` | Pydantic models for requests/responses |
-| `messages.py` | Centralized i18n message strings |
-| `routers/health.py` | Health check endpoints |
-| `routers/memory.py` | Memory CRUD operations |
-| `routers/search.py` | Vector search endpoints |
-| `routers/graph.py` | Graph traversal endpoints |
+| `core.py` | API initialization, dependencies, router registration |
+| `schemas.py` | Pydantic/Django Ninja schemas for requests/responses |
+| `routers/health.py` | Health check endpoints (`/healthz`, `/readyz`, `/health`, `/stats`) |
+| `routers/memory.py` | Memory CRUD — POST/GET/DELETE `/memories` |
+| `routers/search.py` | Search — `GET /memories/search` (query params) + `POST /memories/search` (body) |
+| `routers/graph.py` | Graph traversal — `/graph/link`, `/graph/neighbors`, `/graph/path` |
+| `routers/aaas_admin.py` | AAAS admin — tenant/key management under `/admin` |
+
+Message strings are centralized in `somafractalmemory/admin/common/messages.py` (not in the api directory).
 
 ### Service Layer
 
 Business logic is centralized in the service layer.
 
-**Location**: `somafractalmemory/services.py`
+**Location**: `somafractalmemory/admin/core/services.py`
 
 The `MemoryService` class provides:
 - `store()` - Store a memory with coordinate addressing
@@ -167,9 +169,12 @@ CREATE TABLE sfm_memories (
 );
 
 -- Indexes
-CREATE UNIQUE INDEX ON sfm_memories(namespace, coordinate_key);
+-- Unique constraint includes tenant — one coordinate per (namespace, tenant) pair
+CREATE UNIQUE INDEX ON sfm_memories(namespace, tenant, coordinate_key);
 CREATE INDEX ON sfm_memories(tenant, namespace);
-CREATE INDEX ON sfm_memories(memory_type);
+CREATE INDEX ON sfm_memories(namespace, memory_type);
+-- GIN index on JSONB payload — enables O(log N) JSON containment queries
+CREATE INDEX sfm_memories_payload_gin ON sfm_memories USING gin(payload);
 ```
 
 ### sfm_graph_links
@@ -190,10 +195,12 @@ CREATE TABLE sfm_graph_links (
 );
 
 -- Indexes
-CREATE UNIQUE INDEX ON sfm_graph_links(namespace, from_coordinate_key, to_coordinate_key, link_type);
+-- Unique constraint includes tenant — links are isolated per tenant
+CREATE UNIQUE INDEX ON sfm_graph_links(namespace, tenant, from_coordinate_key, to_coordinate_key, link_type);
 CREATE INDEX ON sfm_graph_links(namespace, from_coordinate_key);
 CREATE INDEX ON sfm_graph_links(namespace, to_coordinate_key);
-CREATE INDEX ON sfm_graph_links(link_type);
+CREATE INDEX ON sfm_graph_links(namespace, link_type);
+CREATE INDEX ON sfm_graph_links(tenant, namespace);
 ```
 
 ## Service Dependencies
@@ -260,8 +267,10 @@ Redis provides:
 
 ### Worker Configuration
 
-gunicorn runs with:
-- 2 workers (configurable via `GUNICORN_WORKERS`)
-- 2 threads per worker
-- 120 second timeout
-- 1000 max requests per worker (recycling)
+uvicorn (ASGI) runs production traffic. Typical configuration:
+- Workers controlled by `WEB_CONCURRENCY` (default: 1 async worker)
+- Async I/O — no thread-per-request overhead
+- Long-lived connections (SSE, WebSocket) supported natively
+
+> Note: `gunicorn` is listed in the SomaBrain `pyproject.toml` as a transport option but
+> **SomaFractalMemory uses `uvicorn[standard]`** as declared in its own `pyproject.toml`.

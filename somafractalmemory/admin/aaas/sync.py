@@ -1,5 +1,5 @@
 """
-Usage Sync Service for SomaFractalMemory.
+Agent-as-a-Service (AAAS) Usage Sync for SomaFractalMemory.
 
 Synchronizes usage records from SFM to SomaBrain central
 for consolidated billing through Lago.

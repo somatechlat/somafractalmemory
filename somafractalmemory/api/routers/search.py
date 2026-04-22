@@ -2,17 +2,21 @@
 
 All database access through Django ORM models.
 All strings use centralized messages for i18n.
+Auth via standalone facade — zero AAAS dependency.
 """
 
 from typing import Any
 
 from django.http import HttpRequest
 from ninja import Router
-from ninja.errors import HttpError
 
-from somafractalmemory.admin.aaas.auth import MultiAuth, can_access_namespace, has_permission
-from somafractalmemory.admin.common.messages import ErrorCode, get_message
 from somafractalmemory.admin.common.utils.logger import get_logger
+from somafractalmemory.api.auth import StandaloneAuth
+from somafractalmemory.api.utils import (
+    ensure_namespace_access,
+    ensure_permission,
+    get_tenant_from_request,
+)
 
 from ..schemas import MemorySearchRequest, MemorySearchResponse
 
@@ -27,45 +31,23 @@ def _get_service():
     return get_mem()
 
 
-def _get_tenant_from_request(request: HttpRequest) -> str:
-    """Extract tenant from request headers."""
-    auth = getattr(request, "auth", {}) or {}
-    if auth.get("tenant"):
-        return auth["tenant"]
-    tenant = request.headers.get("X-Soma-Tenant")
-    if tenant:
-        return tenant.strip()
-    return "default"
-
-
-def _ensure_permission(request: HttpRequest, permission: str) -> None:
-    """Ensure caller has the required permission."""
-    if not has_permission(request, permission):
-        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
-
-
-def _ensure_namespace_access(request: HttpRequest) -> None:
-    """Ensure caller can access the current namespace."""
-    from somafractalmemory.api.core import get_mem
-
-    namespace = get_mem().namespace
-    if not can_access_namespace(request, namespace):
-        raise HttpError(403, get_message(ErrorCode.PERMISSION_DENIED))
-
-
-@router.get("/search", response=MemorySearchResponse, auth=MultiAuth())
+@router.get("/search", response=MemorySearchResponse, auth=StandaloneAuth())
 def search_memories_get(
     request: HttpRequest,
     query: str,
     top_k: int = 5,
+    offset: int = 0,
     filters: str | None = None,
 ) -> MemorySearchResponse:
-    """GET version of the memory search endpoint using Django ORM."""
-    _ensure_permission(request, "read")
-    _ensure_namespace_access(request)
+    """GET version of the memory search endpoint using Django ORM.
 
+    Supports pagination with offset parameter.
+    """
+    ensure_permission(request, "read")
     service = _get_service()
-    tenant = _get_tenant_from_request(request)
+    ensure_namespace_access(request, service.namespace)
+
+    tenant = get_tenant_from_request(request)
 
     # Parse filters if provided
     parsed_filters: dict[str, Any] | None = None
@@ -77,11 +59,12 @@ def search_memories_get(
             if isinstance(parsed_candidate, dict):
                 parsed_filters = parsed_candidate
         except Exception as e:
-            logger.warning(f"Failed to parse search filters JSON: {e}")
+            logger.warning("Failed to parse search filters JSON: %s", e)
 
     results = service.search(
         query=query,
         top_k=top_k,
+        offset=offset,
         tenant=tenant,
         filters=parsed_filters,
     )
@@ -89,18 +72,19 @@ def search_memories_get(
     return MemorySearchResponse(memories=results)
 
 
-@router.post("/search", response=MemorySearchResponse, auth=MultiAuth())
+@router.post("/search", response=MemorySearchResponse, auth=StandaloneAuth())
 def search_memories(request: HttpRequest, req: MemorySearchRequest) -> MemorySearchResponse:
     """POST version of the memory search endpoint using Django ORM."""
-    _ensure_permission(request, "read")
-    _ensure_namespace_access(request)
-
+    ensure_permission(request, "read")
     service = _get_service()
-    tenant = _get_tenant_from_request(request)
+    ensure_namespace_access(request, service.namespace)
+
+    tenant = get_tenant_from_request(request)
 
     results = service.search(
         query=req.query,
         top_k=req.top_k,
+        offset=req.offset,
         tenant=tenant,
         filters=req.filters,
     )

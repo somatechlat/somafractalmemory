@@ -32,7 +32,7 @@
   "reportAttributeAccessIssue": "none",
   "reportOptionalSubscript": "none",
   "stubPath": "typings",
-  "pythonVersion": "3.11",
+  "pythonVersion": "3.12",
   "pythonPlatform": "Linux",
   "venvPath": ".",
   "venv": ".venv",

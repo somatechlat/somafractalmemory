@@ -52,6 +52,7 @@ class MemorySearchRequest(BaseModel):
 
     query: str
     top_k: int = 5
+    offset: int = 0
     memory_type: str | None = None
     filters: dict[str, Any] | None = None
 

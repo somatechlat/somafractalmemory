@@ -1,5 +1,5 @@
 """
-AAAS Admin Router for SomaFractalMemory.
+Agent-as-a-Service (AAAS) Admin Router for SomaFractalMemory.
 
 API Key management endpoints for standalone mode.
 Namespace-level access control.

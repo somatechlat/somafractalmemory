@@ -128,11 +128,12 @@ class MilvusVectorStore:
         if isinstance(vector, np.ndarray):
             vector = vector.tolist()
 
-        # Pad or truncate to correct dimension
-        if len(vector) < self.dim:
-            vector = vector + [0.0] * (self.dim - len(vector))
-        elif len(vector) > self.dim:
-            vector = vector[: self.dim]
+        # Strict dimension check - NO silent padding or truncation (Flaw 5 Fix)
+        if len(vector) != self.dim:
+            raise ValueError(
+                f"Vector dimension mismatch. Expected {self.dim}, got {len(vector)}. "
+                "Padding/truncation is prohibited for semantic integrity."
+            )
 
         data = [
             [coordinate_key],  # coordinate_key
@@ -169,11 +170,11 @@ class MilvusVectorStore:
         if isinstance(query_vector, np.ndarray):
             query_vector = query_vector.tolist()
 
-        # Pad or truncate
-        if len(query_vector) < self.dim:
-            query_vector = query_vector + [0.0] * (self.dim - len(query_vector))
-        elif len(query_vector) > self.dim:
-            query_vector = query_vector[: self.dim]
+        # Strict dimension check (Flaw 5 Fix)
+        if len(query_vector) != self.dim:
+            raise ValueError(
+                f"Query vector dimension mismatch. Expected {self.dim}, got {len(query_vector)}"
+            )
 
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 16}}
 
@@ -209,18 +210,22 @@ class MilvusVectorStore:
 
         return output
 
-    def delete(self, coordinate_key: str) -> bool:
-        """Delete a vector by coordinate key.
+    def delete(
+        self, coordinate_key: str, namespace: str = "default", tenant: str = "default"
+    ) -> bool:
+        """Delete a vector by coordinate key with strict tenant/namespace filtering.
 
         Args:
             coordinate_key: The coordinate key to delete
+            namespace: Memory namespace
+            tenant: Tenant ID
 
         Returns:
             True if deleted, False otherwise
         """
         self._ensure_connection()
 
-        expr = f'coordinate_key == "{coordinate_key}"'
+        expr = f'coordinate_key == "{coordinate_key}" && namespace == "{namespace}" && tenant == "{tenant}"'
         self._collection.delete(expr)
         return True
 

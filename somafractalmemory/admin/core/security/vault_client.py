@@ -5,6 +5,7 @@ ALL secrets fetched from HashiCorp Vault. NO secrets in ENV or DB.
 
 import logging
 import os
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -48,8 +49,22 @@ def _get_vault_client():
         raise VaultNotConfigured(f"Vault connection failed: {e}") from e
 
 
+# Result cache for secrets: (path, key) -> (data, expiry)
+_secret_cache: dict[tuple[str, str | None], tuple[Any, float]] = {}
+CACHE_TTL = 300  # 5 minutes
+
+
 def get_secret(path: str, key: str | None = None) -> Any:
-    """Get secret from Vault."""
+    """Get secret from Vault with 5-minute TTL caching to prevent DDOSing Vault."""
+    now = time.time()
+    cache_key = (path, key)
+
+    # Check cache
+    if cache_key in _secret_cache:
+        data, expiry = _secret_cache[cache_key]
+        if now < expiry:
+            return data
+
     client = _get_vault_client()
     if client is None:
         return None
@@ -67,11 +82,15 @@ def get_secret(path: str, key: str | None = None) -> Any:
         secret = client.secrets.kv.v2.read_secret_version(mount_point=mount_point, path=secret_path)
         data = secret["data"]["data"]
 
+        result = data
         if key:
             if key not in data:
                 raise SecretNotFound(f"Key '{key}' not found at path '{path}'")
-            return data[key]
-        return data
+            result = data[key]
+
+        # Update cache
+        _secret_cache[cache_key] = (result, now + CACHE_TTL)
+        return result
 
     except Exception as e:
         if "SecretNotFound" in str(type(e)):
