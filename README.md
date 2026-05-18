@@ -14,6 +14,7 @@
 
 - **Project**: SomaFractalMemory
 - **Version**: 0.2.0
+- **API Version**: 2.0.0 (OpenAPI schema version; decoupled from package version)
 - **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 - **Status**: Production Ready
 
@@ -99,8 +100,11 @@ Settings are loaded from `somafractalmemory/settings/infra.py` and `standalone.p
 
 ### 4.1 Production Run
 ```bash
-# Start Django Server via Gunicorn/Uvicorn
-gunicorn somafractalmemory.config.wsgi:application --bind 0.0.0.0:10101
+# Development: uvicorn (ASGI) — declared in pyproject.toml
+uvicorn somafractalmemory.config.asgi:application --host 0.0.0.0 --port 10101
+
+# Production: gunicorn with uvicorn workers (install gunicorn separately)
+gunicorn somafractalmemory.config.asgi:application -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:10101
 ```
 
 ### 4.2 Development Mode

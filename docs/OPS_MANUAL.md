@@ -126,22 +126,13 @@ last_modified: "2025-10-25"
 
 This section contains operational and architectural guidance for SomaFractalMemory.
 
-- Security and Secrets (Dev vs Prod): [security-secrets.md](security-secrets.md)
- - Deployment (Docker): [deployment-docker.md](deployment-docker.md)
- - Configuration Reference: [config-reference.md](config-reference.md)
- - Endpoint Catalog: [endpoints.md](endpoints.md)
- - Engineering rules and workflow: see [Vibe Coding Rules](../README.md#vibe-coding-rules)
+- Security and Secrets (Dev vs Prod): see below (embedded in this document)
+- Deployment (Docker): see [deployment.md](deployment.md)
+- Configuration Reference: see below (embedded in this document)
+- Endpoint Catalog: see below (embedded in this document)
+- Engineering rules and workflow: see [Vibe Coding Rules](../VIBE_CODING_RULES.md)
 
 Additional topics will be added here over time, including deployment, monitoring, and runbooks.
-
-```{toctree}
-:hidden:
-
-security-secrets.md
-deployment-docker.md
-config-reference.md
-endpoints.md
-```
 ---
 title: "Security and Secrets (Dev vs Prod)"
 project: "somafractalmemory"

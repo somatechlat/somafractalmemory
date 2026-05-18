@@ -155,10 +155,10 @@ class VectorEmbedding(models.Model):
 
 | Router | Purpose |
 |--------|---------|
-| `/api/memories/` | Memory CRUD |
-| `/api/memories/search` | Semantic search |
-| `/api/graph/` | Graph operations |
-| `/api/health/` | Health probes |
+| `/memories` | Memory CRUD |
+| `/memories/search` | Semantic search |
+| `/graph/*` | Graph operations |
+| `/healthz` | Health probes |
 
 ---
 
@@ -168,10 +168,10 @@ class VectorEmbedding(models.Model):
 
 | Variable | Purpose |
 |----------|---------|
-| `SFM_DATABASE_URL` | PostgreSQL DSN |
-| `SFM_MILVUS_HOST` | Milvus host |
-| `SFM_MILVUS_PORT` | Milvus port |
-| `SFM_SECRET_KEY` | Django secret |
+| `SOMA_POSTGRES_URL` | PostgreSQL DSN |
+| `SOMA_MILVUS_HOST` | Milvus host |
+| `SOMA_MILVUS_PORT` | Milvus port |
+| `SOMA_SECRET_KEY` | Django secret |
 
 ---
 
