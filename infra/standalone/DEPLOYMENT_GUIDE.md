@@ -40,7 +40,7 @@ curl -s http://localhost:10101/health | python3 -m json.tool
 
 SFM uses **HashiCorp Vault** for credential injection. The flow:
 
-1. `.env` file provides `SFM_VAULT_TOKEN`, `SFM_DB_PASSWORD`, `SFM_DB_USER`
+1. `.env` file provides `SOMA_VAULT_TOKEN`, `SOMA_DB_PASSWORD`, `SOMA_DB_USER`
 2. `vault-init` container writes these to Vault KV v2 at `somafractalmemory/database` and `somafractalmemory/redis`
 3. API container bootstraps with `VAULT_ADDR` + `VAULT_TOKEN`
 4. `infra.py` calls `vault_client.get_db_credentials()` → injects `SOMA_DB_USER`, `SOMA_DB_PASSWORD` into `os.environ`
@@ -90,11 +90,11 @@ All secrets and config live in `infra/standalone/.env`.
 
 | Variable | Required | Description |
 |:---|:---|:---|
-| `SFM_VAULT_TOKEN` | ✅ | Vault dev root token |
-| `SFM_DB_USER` | ✅ | PostgreSQL username |
-| `SFM_DB_PASSWORD` | ✅ | PostgreSQL password |
-| `SFM_MINIO_ROOT_USER` | ✅ | MinIO access key |
-| `SFM_MINIO_ROOT_PASSWORD` | ✅ | MinIO secret key |
+| `SOMA_VAULT_TOKEN` | ✅ | Vault dev root token |
+| `SOMA_DB_USER` | ✅ | PostgreSQL username |
+| `SOMA_DB_PASSWORD` | ✅ | PostgreSQL password |
+| `SOMA_MINIO_ROOT_USER` | ✅ | MinIO access key |
+| `SOMA_MINIO_ROOT_PASSWORD` | ✅ | MinIO secret key |
 | `SOMA_API_TOKEN` | ✅ | API bearer token |
 | `SOMA_ALLOWED_HOSTS` | No | Default: `localhost,127.0.0.1` |
 | `SOMA_LOG_LEVEL` | No | Default: `INFO` |
@@ -185,7 +185,7 @@ docker compose -f infra/standalone/docker-compose.yml --env-file infra/standalon
 curl -s http://localhost:10200/v1/sys/health | python3 -m json.tool
 
 # Read DB credentials from Vault
-curl -s -H "X-Vault-Token: $(grep SFM_VAULT_TOKEN infra/standalone/.env | cut -d= -f2)" \
+curl -s -H "X-Vault-Token: $(grep SOMA_VAULT_TOKEN infra/standalone/.env | cut -d= -f2)" \
   http://localhost:10200/v1/somafractalmemory/data/database | python3 -m json.tool
 ```
 

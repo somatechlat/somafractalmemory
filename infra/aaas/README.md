@@ -41,7 +41,7 @@ that sets:
 ```yaml
 environment:
   DJANGO_SETTINGS_MODULE: "somafractalmemory.settings"
-  SFM_AUTH_MODE: "integrated"  # or "standalone" for sfm_* keys only
+  SOMA_AUTH_MODE: "integrated"  # or "standalone" for sfm_* keys only
   SOMABRAIN_URL: "http://somabrain:10100"
   SOMABRAIN_API_TOKEN: "${SOMABRAIN_API_TOKEN}"
 ```

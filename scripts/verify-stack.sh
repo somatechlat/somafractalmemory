@@ -8,9 +8,9 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-SFM_API_URL="${SFM_API_URL:-http://localhost:10101}"
+SFM_API_URL="${SOMA_API_URL:-http://localhost:10101}"
 BRAIN_API_URL="${BRAIN_API_URL:-http://localhost:30101}"
-SFM_API_TOKEN="${SFM_API_TOKEN:-${SOMA_API_TOKEN:-}}"
+SFM_API_TOKEN="${SOMA_API_TOKEN:-}"
 BRAIN_MEMORY_TOKEN="${BRAIN_MEMORY_TOKEN:-${SOMABRAIN_MEMORY_HTTP_TOKEN:-}}"
 
 # Colours
@@ -98,7 +98,7 @@ check_memory_cycle() {
   log_info "Testing memory store/recall cycle via SFM API..."
 
   if [[ -z "$SFM_API_TOKEN" ]]; then
-    log_warn "SFM_API_TOKEN not set — skipping authenticated memory cycle test."
+    log_warn "SOMA_API_TOKEN not set — skipping authenticated memory cycle test."
     return
   fi
 
@@ -111,7 +111,7 @@ EOF
 
   # Store
   local store_response
-  store_response=$(curl -fsS -X POST "${SFM_API_URL}/api/v1/memories" \
+  store_response=$(curl -fsS -X POST "${SFM_API_URL}/memories" \
     -H "Authorization: Bearer ${SFM_API_TOKEN}" \
     -H "Content-Type: application/json" \
     -d "$store_payload" 2>/dev/null || echo "")
@@ -125,7 +125,7 @@ EOF
 
   # Recall
   local recall_response
-  recall_response=$(curl -fsS "${SFM_API_URL}/api/v1/memories/${test_coord}" \
+  recall_response=$(curl -fsS "${SFM_API_URL}/memories/${test_coord}" \
     -H "Authorization: Bearer ${SFM_API_TOKEN}" 2>/dev/null || echo "")
 
   if [[ -n "$recall_response" ]]; then
@@ -135,7 +135,7 @@ EOF
   fi
 
   # Cleanup
-  curl -fsS -X DELETE "${SFM_API_URL}/api/v1/memories/${test_coord}" \
+  curl -fsS -X DELETE "${SFM_API_URL}/memories/${test_coord}" \
     -H "Authorization: Bearer ${SFM_API_TOKEN}" >/dev/null 2>&1 || true
 }
 

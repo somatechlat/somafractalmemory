@@ -12,9 +12,9 @@ STACK_DIR="${STACK_DIR:-${REPO_ROOT}/../soma-stack}"
 COMPOSE_FILE="${COMPOSE_FILE:-${STACK_DIR}/docker-compose.soma-stack.yml}"
 ENV_FILE="${ENV_FILE:-${STACK_DIR}/.env.soma-stack}"
 
-SFM_HEALTH_URL="${SFM_HEALTH_URL:-http://localhost:10101/healthz}"
+SFM_HEALTH_URL="${SOMA_HEALTH_URL:-http://localhost:10101/healthz}"
 BRAIN_HEALTH_URL="${BRAIN_HEALTH_URL:-http://localhost:30101/health}"
-SFM_API_TOKEN="${SFM_API_TOKEN:-}"
+SFM_API_TOKEN="${SOMA_API_TOKEN:-}"
 
 # Colours for output
 RED='\033[0;31m'

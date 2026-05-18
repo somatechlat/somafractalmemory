@@ -41,7 +41,7 @@ class AuthMode:
 
 def get_auth_mode() -> str:
     """Get current auth mode from settings."""
-    return getattr(settings, "SFM_AUTH_MODE", AuthMode.STANDALONE)
+    return getattr(settings, "SOMA_AUTH_MODE", AuthMode.STANDALONE)
 
 
 # =============================================================================

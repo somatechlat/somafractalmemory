@@ -37,10 +37,10 @@ Host ports (standalone compose):
 
 These are required by `infra/standalone/docker-compose.yml`:
 - `SOMA_API_TOKEN`
-- `SFM_DB_PASSWORD`
-- `SFM_VAULT_TOKEN`
-- `SFM_MINIO_ROOT_USER`
-- `SFM_MINIO_ROOT_PASSWORD`
+- `SOMA_DB_PASSWORD`
+- `SOMA_VAULT_TOKEN`
+- `SOMA_MINIO_ROOT_USER`
+- `SOMA_MINIO_ROOT_PASSWORD`
 
 ## HTTP Surface (Code Truth)
 

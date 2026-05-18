@@ -11,7 +11,7 @@ violation, add it with file + line + reproduction notes.
 - Secret leakage: removed printing of `VAULT_TOKEN` in `somafractalmemory/admin/core/security/debug_vault.py`.
 - Hardcoded secrets in infra:
   - `infra/k8s/sfm-resilient.yaml` no longer commits `SOMA_API_TOKEN` / DB credentials; it now references a Secret `sfm-secrets`.
-  - `infra/standalone/docker-compose.yml` requires explicit secrets (`SOMA_API_TOKEN`, `SFM_DB_PASSWORD`, `SFM_VAULT_TOKEN`, MinIO creds); no default token fallbacks.
+  - `infra/standalone/docker-compose.yml` requires explicit secrets (`SOMA_API_TOKEN`, `SOMA_DB_PASSWORD`, `SOMA_VAULT_TOKEN`, MinIO creds); no default token fallbacks.
   - Removed unused, kompose-generated `infra/k8s/*.yaml` manifests that embedded tokens and stale commands; Tilt uses `infra/k8s/sfm-resilient.yaml`.
 - Doc drift fixed to match current code:
   - Removed `/api/v1`/`/api/v2` path drift; canonical routes are `/memories`, `/memories/search`, `/graph/*`.
