@@ -1,0 +1,54 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# SomaFractalMemory — Shared Network Override
+# Use this file to attach the standalone stack to an external soma-stack-net.
+# ═══════════════════════════════════════════════════════════════════════════════
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.shared-network.yml up -d
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  somafractalmemory-standalone-redis:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-vault:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-vault-init:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-postgres:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-opa:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-etcd:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-minio:
+    networks:
+      soma-stack-net:
+        aliases:
+          - minio
+
+  somafractalmemory-standalone-milvus:
+    networks:
+      - soma-stack-net
+
+  somafractalmemory-standalone-api:
+    networks:
+      - soma-stack-net
+    extra_hosts: []  # Remove host-gateway mapping; shared network provides DNS
+
+networks:
+  somafractalmemory-standalone-net:
+    external: false
+  soma-stack-net:
+    external: true
+    name: soma-stack-net
