@@ -23,7 +23,7 @@ print("""
 allow_k8s_contexts('sfm')
 
 DOCKERFILE_CONTENT = '''
-FROM python:3.10-slim
+FROM python:3.12-slim
 WORKDIR /app
 COPY . .
 RUN pip install --no-cache-dir -r api-requirements.txt

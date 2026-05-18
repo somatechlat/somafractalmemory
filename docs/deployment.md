@@ -45,10 +45,10 @@ Create a `.env` file (see `.env.example`):
 ```bash
 # Required secrets
 SOMA_API_TOKEN=your-secure-token-here
-SFM_DB_PASSWORD=your-secure-db-password
-SFM_VAULT_TOKEN=your-secure-vault-token
-SFM_MINIO_ROOT_USER=your-minio-user
-SFM_MINIO_ROOT_PASSWORD=your-minio-password
+SOMA_DB_PASSWORD=your-secure-db-password
+SOMA_VAULT_TOKEN=your-secure-vault-token
+SOMA_MINIO_ROOT_USER=your-minio-user
+SOMA_MINIO_ROOT_PASSWORD=your-minio-password
 ```
 
 ### Production Commands
@@ -114,26 +114,26 @@ api:
 | `SOMA_ALLOWED_HOSTS` | * | **Required**. Hostname allowlist |
 | `SOMA_API_PORT` | 10101 | API port |
 | `SOMA_MEMORY_NAMESPACE` | api_ns | Default namespace |
-| `SOMA_RATE_LIMIT_MAX` | 0 | Rate limit (0=disabled) |
-| `LOG_LEVEL` | INFO | Logging level |
+| `SOMA_RATE_LIMIT_MAX` | 60 | Rate limit (requests per window) |
+| `SOMA_LOG_LEVEL` | INFO | Logging level |
 
 ### Database Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POSTGRES_HOST` | postgres | Database host |
-| `POSTGRES_PORT` | 5432 | Database port |
-| `POSTGRES_USER` | soma | Database user |
-| `POSTGRES_PASSWORD` | soma | Database password |
-| `POSTGRES_DB` | somamemory | Database name |
+| `SOMA_DB_HOST` | localhost | Database host |
+| `SOMA_DB_PORT` | 5432 | Database port |
+| `SOMA_DB_USER` | postgres | Database user |
+| `SOMA_DB_PASSWORD` | postgres | Database password |
+| `SOMA_DB_NAME` | somafractalmemory | Database name |
 
 ### Cache Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_HOST` | redis | Redis host |
-| `REDIS_PORT` | 6379 | Redis port |
-| `REDIS_DB` | 0 | Redis database |
+| `SOMA_REDIS_HOST` | localhost | Redis host |
+| `SOMA_REDIS_PORT` | 6379 | Redis port |
+| `SOMA_REDIS_DB` | 0 | Redis database |
 
 ### Vector Store Configuration
 
@@ -206,11 +206,11 @@ Logs are written to stdout in JSON format:
 ```bash
 # Backup
 docker compose -f infra/standalone/docker-compose.yml exec -T somafractalmemory-standalone-postgres \
-  pg_dump -U "${SFM_DB_USER:-somafractalmemory}" "${SFM_DB_NAME:-somafractalmemory}" > backup.sql
+  pg_dump -U "${SOMA_DB_USER:-somafractalmemory}" "${SOMA_DB_NAME:-somafractalmemory}" > backup.sql
 
 # Restore
 docker compose -f infra/standalone/docker-compose.yml exec -T somafractalmemory-standalone-postgres \
-  psql -U "${SFM_DB_USER:-somafractalmemory}" "${SFM_DB_NAME:-somafractalmemory}" < backup.sql
+  psql -U "${SOMA_DB_USER:-somafractalmemory}" "${SOMA_DB_NAME:-somafractalmemory}" < backup.sql
 ```
 
 ### Volume Backup

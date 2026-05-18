@@ -43,6 +43,8 @@ class Memory(models.Model):
     importance: models.FloatField = models.FloatField(default=0.0, db_index=True)
     access_count: models.IntegerField = models.IntegerField(default=0)
     last_accessed: models.DateTimeField = models.DateTimeField(null=True, blank=True)
+    is_deleted: models.BooleanField = models.BooleanField(default=False, db_index=True)
+    deleted_at: models.DateTimeField = models.DateTimeField(null=True, blank=True)
     created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at: models.DateTimeField = models.DateTimeField(auto_now=True)
 
@@ -214,7 +216,7 @@ class MemoryNamespace(models.Model):
         """Update namespace statistics from actual counts."""
         from django.db.models import Count, Q
 
-        stats = Memory.objects.filter(namespace=self.name).aggregate(
+        stats = Memory.objects.filter(namespace=self.name, is_deleted=False).aggregate(
             total=Count("id"),
             episodic=Count("id", filter=Q(memory_type=Memory.MemoryType.EPISODIC)),
             semantic=Count("id", filter=Q(memory_type=Memory.MemoryType.SEMANTIC)),

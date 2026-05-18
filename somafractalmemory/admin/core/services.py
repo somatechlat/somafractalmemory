@@ -98,6 +98,8 @@ class MemoryService:
                 "memory_type": memory_type,
                 "payload": payload,
                 "metadata": metadata or {},
+                "is_deleted": False,
+                "deleted_at": None,
             },
         )
 
@@ -155,6 +157,7 @@ class MemoryService:
                 namespace=self.namespace,
                 coordinate_key=coord_key,
                 tenant=tenant,
+                is_deleted=False,
             )
             memory.touch()
 
@@ -180,44 +183,46 @@ class MemoryService:
 
     @transaction.atomic
     def delete(self, coordinate: tuple[float, ...], tenant: str = "default") -> bool:
-        """Delete a memory by coordinate."""
+        """Soft delete a memory by coordinate."""
+        from datetime import UTC, datetime
+
         coord_key = Memory.coord_to_key(coordinate)
 
-        deleted, _ = Memory.objects.filter(
-            namespace=self.namespace,
-            coordinate_key=coord_key,
-            tenant=tenant,
-        ).delete()
-
-        if deleted and self.vector_store:
-            try:
-                # Fix Flaw 1: Ensure Milvus deletion is successful to prevent orphans.
-                # If this fails, the exception will rollback the Postgres transaction.
-                self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
-            except Exception as exc:
-                logger.error(
-                    "Vector store delete failed - Rolling back Postgres transaction", error=str(exc)
-                )
-                raise RuntimeError(
-                    f"State synchronization failure: Could not delete vector for {coord_key}. Action aborted."
-                ) from exc
-
-        if deleted:
-            VectorEmbedding.objects.filter(
-                memory__coordinate_key=coord_key,
-                memory__namespace=self.namespace,
-                memory__tenant=tenant,
-            ).delete()
-
-        if deleted:
-            AuditLog.objects.create(
-                action=AuditLog.Action.DELETE,
+        try:
+            memory = Memory.objects.get(
                 namespace=self.namespace,
                 coordinate_key=coord_key,
                 tenant=tenant,
+                is_deleted=False,
             )
+        except Memory.DoesNotExist:
+            return False
 
-        return deleted > 0
+        memory.is_deleted = True
+        memory.deleted_at = datetime.now(UTC)
+        memory.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+
+        if self.vector_store:
+            try:
+                self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
+            except Exception as exc:
+                logger.error("Vector store delete failed", error=str(exc))
+                # Non-blocking: vector orphan is acceptable during soft delete
+
+        VectorEmbedding.objects.filter(
+            memory__coordinate_key=coord_key,
+            memory__namespace=self.namespace,
+            memory__tenant=tenant,
+        ).delete()
+
+        AuditLog.objects.create(
+            action=AuditLog.Action.DELETE,
+            namespace=self.namespace,
+            coordinate_key=coord_key,
+            tenant=tenant,
+        )
+
+        return True
 
     def search(
         self,
@@ -251,6 +256,7 @@ class MemoryService:
                         namespace=self.namespace,
                         tenant=tenant,
                         coordinate_key__in=coord_keys,
+                        is_deleted=False,
                     )
                 )
                 memory_map = {m.coordinate_key: m for m in memories}
@@ -276,6 +282,7 @@ class MemoryService:
         queryset = Memory.objects.filter(
             namespace=self.namespace,
             tenant=tenant,
+            is_deleted=False,
         )
 
         if memory_type:
@@ -320,7 +327,7 @@ class MemoryService:
         """Get memory statistics using Django ORM."""
         from django.db.models import Count, Q
 
-        stats = Memory.objects.filter(namespace=self.namespace).aggregate(
+        stats = Memory.objects.filter(namespace=self.namespace, is_deleted=False).aggregate(
             total=Count("id"),
             episodic=Count("id", filter=Q(memory_type=Memory.MemoryType.EPISODIC)),
             semantic=Count("id", filter=Q(memory_type=Memory.MemoryType.SEMANTIC)),
@@ -544,7 +551,7 @@ class GraphService:
             # Export Nodes
             first = True
             for node in (
-                Memory.objects.filter(namespace=self.namespace)
+                Memory.objects.filter(namespace=self.namespace, is_deleted=False)
                 .values("coordinate", "payload")
                 .iterator()
             ):

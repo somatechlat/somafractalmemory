@@ -4,6 +4,7 @@ All database access through Django ORM models.
 All strings use centralized messages for i18n.
 """
 
+import hmac
 import time
 from datetime import UTC
 
@@ -41,7 +42,7 @@ def _check_auth(request: HttpRequest) -> None:
         raise HttpError(401, get_message(ErrorCode.MISSING_AUTH_HEADER))
 
     provided = auth_header.split(" ", 1)[1]
-    if provided != API_TOKEN:
+    if not hmac.compare_digest(provided, API_TOKEN):
         raise HttpError(401, get_message(ErrorCode.INVALID_API_TOKEN))
 
 
@@ -75,6 +76,8 @@ def readyz(request: HttpRequest) -> HealthResponse:
 def health_detailed(request: HttpRequest) -> dict:
     """Comprehensive health check with server details and per-tenant stats.
 
+    Requires authentication to access sensitive system information.
+
     Returns:
         - Overall status (healthy/degraded/unhealthy)
         - Version and uptime
@@ -83,6 +86,8 @@ def health_detailed(request: HttpRequest) -> dict:
         - Per-tenant memory and graph counts
         - System information
     """
+    _check_auth(request)
+
     import os
     import platform
     import time
@@ -162,9 +167,9 @@ def health_detailed(request: HttpRequest) -> dict:
 
     # Database statistics
     try:
-        total_memories = Memory.objects.count()
-        episodic_count = Memory.objects.filter(memory_type="episodic").count()
-        semantic_count = Memory.objects.filter(memory_type="semantic").count()
+        total_memories = Memory.objects.filter(is_deleted=False).count()
+        episodic_count = Memory.objects.filter(memory_type="episodic", is_deleted=False).count()
+        semantic_count = Memory.objects.filter(memory_type="semantic", is_deleted=False).count()
         total_links = GraphLink.objects.count()
         total_namespaces = MemoryNamespace.objects.count()
 
@@ -181,9 +186,11 @@ def health_detailed(request: HttpRequest) -> dict:
     # Per-tenant stats
     tenants = []
     try:
-        tenant_list = Memory.objects.values_list("tenant", flat=True).distinct()
+        tenant_list = (
+            Memory.objects.filter(is_deleted=False).values_list("tenant", flat=True).distinct()
+        )
         for tenant in tenant_list:
-            tenant_memories = Memory.objects.filter(tenant=tenant)
+            tenant_memories = Memory.objects.filter(tenant=tenant, is_deleted=False)
             tenant_links = GraphLink.objects.filter(tenant=tenant).count()
             tenants.append(
                 {

@@ -122,7 +122,7 @@ SOMA_BATCH_FLUSH_MS = env.int("SOMA_BATCH_FLUSH_MS", default=0)
 # Feature Flags
 # -----------------------------------------------------------------------------
 SOMA_ASYNC_METRICS_ENABLED = env.bool("SOMA_ASYNC_METRICS_ENABLED", default=False)
-SOMA_FAST_CORE_ENABLED = env.bool("SFM_FAST_CORE", default=False)
+SOMA_FAST_CORE_ENABLED = env.bool("SOMA_FAST_CORE_ENABLED", default=False)
 SOMA_FAST_CORE_INITIAL_CAPACITY = env.int("SOMA_FAST_CORE_INITIAL_CAPACITY", default=1024)
 
 # -----------------------------------------------------------------------------

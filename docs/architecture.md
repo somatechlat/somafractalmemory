@@ -209,7 +209,7 @@ CREATE INDEX ON sfm_graph_links(tenant, namespace);
 
 - **Purpose**: Primary data storage
 - **Tables**: All memory and graph data
-- **Connection**: Django ORM via psycopg2
+- **Connection**: Django ORM via psycopg[binary] (psycopg3)
 
 ### Redis
 
