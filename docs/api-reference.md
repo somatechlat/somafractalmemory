@@ -42,6 +42,8 @@ Kubernetes liveness probe. Returns 200 if healthy, 503 if any backend is down.
 
 Detailed health check with service latencies and per-tenant statistics.
 
+**Auth**: Bearer token required.
+
 **Response**
 
 ```json

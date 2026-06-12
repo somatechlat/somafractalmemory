@@ -20,7 +20,7 @@ docker compose -f infra/standalone/docker-compose.yml \
 docker compose -f infra/standalone/docker-compose.yml ps
 
 # 4. Health check
-curl -s http://localhost:10101/health | python3 -m json.tool
+curl -s -H "Authorization: Bearer $(grep SOMA_API_TOKEN infra/standalone/.env | cut -d= -f2)" http://localhost:10101/health | python3 -m json.tool
 ```
 
 ---
@@ -140,7 +140,7 @@ docker exec somafractalmemory-standalone-api python manage.py makemigrations --c
 | Endpoint | Method | Auth | Purpose |
 |:---|:---|:---|:---|
 | `/healthz` | GET | No | Basic health (kv, vector, graph) |
-| `/health` | GET | No | Detailed health with latency + stats |
+| `/health` | GET | Yes | Detailed health with latency + stats |
 | `/memories` | POST | Bearer | Store a memory |
 | `/memories/<coord>` | GET | Bearer | Retrieve a memory |
 | `/memories/<coord>` | DELETE | Bearer | Delete a memory |

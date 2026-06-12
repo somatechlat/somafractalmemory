@@ -58,7 +58,7 @@ docker compose -f infra/standalone/docker-compose.yml \
   --env-file infra/standalone/.env up -d
 
 # 3. Verify health
-curl -s http://localhost:10101/health | python3 -m json.tool
+curl -s http://localhost:10101/healthz | python3 -m json.tool
 ```
 
 ### 3.3 Configuration Parameters

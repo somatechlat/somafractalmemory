@@ -22,7 +22,7 @@ def test_health_check():
     """Verify service reports healthy."""
     url = f"{SFM_URL}/health"
     print(f"Checking {url}...")
-    resp = requests.get(url)
+    resp = requests.get(url, headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert data["healthy"] is True
