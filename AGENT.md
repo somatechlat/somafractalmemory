@@ -60,3 +60,13 @@ Base URL: `http://127.0.0.1:10101`
 
 Most non-health routes require `Authorization: Bearer <token>` (see `somafractalmemory/admin/aaas/auth.py`).
 This module is part of the Agent-as-a-Service (AAAS) layer.
+
+## ISO Documentation
+
+ISO-compliant documentation lives in `docs/iso/`:
+
+- **SOMA-SFM-ARCH-001.md** — Architecture (ISO/IEC 42010): deployment modes, layered architecture, data models, algorithms, API surface, security, storage
+- **SOMA-SFM-AUDIT-001.md** — Audit Report (ISO 19011): executive scorecard (A-/B+), strengths, weaknesses, recommendations
+- **SOMA-SFM-SEC-001.md** — Security Assessment (ISO/IEC 27001): auth, authZ, Vault, OPA, Docker hardening, multi-tenancy
+- **SOMA-SFM-RISK-001.md** — Risk Register (ISO 31000): hash embedding quality, Milvus scaling, Vault availability, SomaBrain dependency
+- **SOMA-SFM-PROD-001.md** — Production Readiness (ISO/IEC 25010): scorecard 87/100, deployment checklist, SLA targets

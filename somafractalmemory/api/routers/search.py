@@ -13,6 +13,7 @@ from ninja import Router
 from somafractalmemory.admin.common.utils.logger import get_logger
 from somafractalmemory.api.auth import StandaloneAuth
 from somafractalmemory.api.utils import (
+    ensure_embedding_dim,
     ensure_namespace_access,
     ensure_permission,
     get_tenant_from_request,
@@ -38,6 +39,7 @@ def search_memories_get(
     top_k: int = 5,
     offset: int = 0,
     filters: str | None = None,
+    tenant_id: str | None = None,
 ) -> MemorySearchResponse:
     """GET version of the memory search endpoint using Django ORM.
 
@@ -47,7 +49,7 @@ def search_memories_get(
     service = _get_service()
     ensure_namespace_access(request, service.namespace)
 
-    tenant = get_tenant_from_request(request)
+    tenant = get_tenant_from_request(request, explicit_tenant=tenant_id)
 
     # Parse filters if provided
     parsed_filters: dict[str, Any] | None = None
@@ -74,19 +76,26 @@ def search_memories_get(
 
 @router.post("/search", response=MemorySearchResponse, auth=StandaloneAuth())
 def search_memories(request: HttpRequest, req: MemorySearchRequest) -> MemorySearchResponse:
-    """POST version of the memory search endpoint using Django ORM."""
+    """POST version of the memory search endpoint using Django ORM.
+
+    Accepts an optional precomputed query ``embedding`` (ranked by vector
+    similarity) and an optional ``tenant_id`` scoping the search.
+    """
     ensure_permission(request, "read")
     service = _get_service()
     ensure_namespace_access(request, service.namespace)
 
-    tenant = get_tenant_from_request(request)
+    ensure_embedding_dim(req.embedding)
+    tenant = get_tenant_from_request(request, explicit_tenant=req.tenant_id)
 
     results = service.search(
         query=req.query,
         top_k=req.top_k,
         offset=req.offset,
+        memory_type=req.memory_type,
         tenant=tenant,
         filters=req.filters,
+        query_embedding=req.embedding,
     )
 
     return MemorySearchResponse(memories=results)

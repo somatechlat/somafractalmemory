@@ -20,11 +20,19 @@ class HealthResponse(BaseModel):
 
 
 class MemoryStoreRequest(BaseModel):
-    """Request model for storing a memory."""
+    """Request model for storing a memory.
+
+    ``embedding`` is an optional precomputed vector (dim = SOMA_VECTOR_DIM /
+    MEM_EMBED_DIM). When present it is stored verbatim; when absent the hash
+    fallback embeds the payload and the record is flagged for lower ranking.
+    ``tenant_id`` scopes the write (falls back to X-Soma-Tenant / auth tenant).
+    """
 
     coord: str
     payload: dict[str, Any]
-    memory_type: Literal["episodic", "semantic"] = "episodic"
+    memory_type: Literal["episodic", "semantic", "belief"] = "episodic"
+    embedding: list[float] | None = None
+    tenant_id: str | None = None
 
 
 class MemoryStoreResponse(BaseModel):
@@ -32,6 +40,7 @@ class MemoryStoreResponse(BaseModel):
 
     coord: str
     memory_type: str
+    embedding_source: str = "hash"
 
 
 class MemoryGetResponse(BaseModel):
@@ -48,13 +57,20 @@ class MemoryDeleteResponse(BaseModel):
 
 
 class MemorySearchRequest(BaseModel):
-    """Request model for searching memories."""
+    """Request model for searching memories.
 
-    query: str
+    ``embedding`` is an optional precomputed query vector; when present it
+    drives vector-similarity ranking. With only ``query`` text the query is
+    embedded the same way as store (hash fallback).
+    """
+
+    query: str = ""
     top_k: int = 5
     offset: int = 0
     memory_type: str | None = None
     filters: dict[str, Any] | None = None
+    embedding: list[float] | None = None
+    tenant_id: str | None = None
 
 
 class MemorySearchResponse(BaseModel):

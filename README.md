@@ -146,7 +146,23 @@ curl http://localhost:10101/healthz
 
 ---
 
-## 6. Maintenance & Contribution
+## 6. ISO Documentation
+
+SomaFractalMemory maintains ISO-compliant documentation in `docs/iso/`:
+
+| Document | ID | Standard | Description |
+|:---------|:---|:---------|:------------|
+| [Architecture Specification](docs/iso/SOMA-SFM-ARCH-001.md) | SOMA-SFM-ARCH-001 | ISO/IEC 42010 | System architecture, deployment modes, data models, algorithms, API surface |
+| [Audit Report](docs/iso/SOMA-SFM-AUDIT-001.md) | SOMA-SFM-AUDIT-001 | ISO 19011 | Executive scorecard, strengths, weaknesses, recommendations |
+| [Security Assessment](docs/iso/SOMA-SFM-SEC-001.md) | SOMA-SFM-SEC-001 | ISO/IEC 27001 | Authentication, authorization, secrets management, container hardening |
+| [Risk Register](docs/iso/SOMA-SFM-RISK-001.md) | SOMA-SFM-RISK-001 | ISO 31000 | Risk identification, assessment, mitigation plans |
+| [Production Readiness](docs/iso/SOMA-SFM-PROD-001.md) | SOMA-SFM-PROD-001 | ISO/IEC 25010 | Readiness scorecard (87/100), deployment checklist, SLA targets |
+
+**Overall Assessment**: Production Ready (v0.2.0), Composite Grade A-/B+.
+
+---
+
+## 7. Maintenance & Contribution
 
 - **License**: Apache 2.0
 - **Maintainer**: SomaTech LAT

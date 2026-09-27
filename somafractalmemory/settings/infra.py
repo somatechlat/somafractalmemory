@@ -61,7 +61,16 @@ SOMA_NAMESPACE = env.str("SOMA_NAMESPACE", default="default")
 SOMA_MEMORY_NAMESPACE = env.str("SOMA_MEMORY_NAMESPACE", default="api_ns")
 SOMA_MEMORY_MODE = env.str("SOMA_MEMORY_MODE", default="evented_enterprise")
 SOMA_MODEL_NAME = env.str("SOMA_MODEL_NAME", default="microsoft/codebert-base")
-SOMA_VECTOR_DIM = env.int("SOMA_VECTOR_DIM", default=768)
+# Vector dimension for stored embeddings (Milvus collections are fixed-dim).
+# The agent seam computes embeddings once and sends them precomputed, at
+# MEM_EMBED_DIM (default 768). SOMA_VECTOR_DIM overrides when set explicitly;
+# otherwise MEM_EMBED_DIM is honoured so both sides share one vector space.
+#
+# 768 is not arbitrary: it is the hidden size of SOMA_MODEL_NAME
+# (microsoft/codebert-base, line 63) and the dim the Milvus collection was
+# created at. Lowering it shrinks capacity for no benefit and orphans the
+# collection. MEM_EMBED_DIM (agent) must equal SOMA_VECTOR_DIM (here).
+SOMA_VECTOR_DIM = env.int("SOMA_VECTOR_DIM", default=env.int("MEM_EMBED_DIM", default=768))
 SOMA_MAX_MEMORY_SIZE = env.int("SOMA_MAX_MEMORY_SIZE", default=100000)
 SOMA_PRUNING_INTERVAL_SECONDS = env.int("SOMA_PRUNING_INTERVAL_SECONDS", default=600)
 

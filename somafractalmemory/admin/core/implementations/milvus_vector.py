@@ -60,6 +60,7 @@ class MilvusVectorStore:
 
             if utility.has_collection(self.collection_name):
                 self._collection = Collection(self.collection_name)
+                self._assert_dimension()
                 self._collection.load()
             else:
                 self._create_collection()
@@ -73,6 +74,32 @@ class MilvusVectorStore:
         except Exception as e:
             logger.error(f"Failed to connect to Milvus: {e}")
             raise
+
+    def _assert_dimension(self) -> None:
+        """Fail loudly when an existing collection's vector dim is not ``self.dim``.
+
+        Milvus collections are fixed-dim at creation. Accepting a collection
+        built for another dimension is not a soft mismatch: every insert and
+        search then dies inside Milvus with a ``field_meta.get_sizeof()``
+        assertion, and the service silently falls back to ORM text search —
+        so recall returns exact-text-only hits scored 0.0 and looks merely
+        "weak" instead of broken. Refusing here surfaces the real problem.
+        """
+        stored = next(
+            (
+                getattr(f, "params", {}).get("dim")
+                for f in self._collection.schema.fields
+                if f.name == "vector"
+            ),
+            None,
+        )
+        if stored is not None and int(stored) != int(self.dim):
+            raise ValueError(
+                f"Milvus collection {self.collection_name!r} has vector dim {stored}, "
+                f"but this writer expects {self.dim} (SOMA_VECTOR_DIM / MEM_EMBED_DIM). "
+                f"Migrate the collection to dim {self.dim} — do not write into a "
+                f"mismatched one."
+            )
 
     def _create_collection(self) -> None:
         """Create the Milvus collection if it doesn't exist."""

@@ -1,6 +1,11 @@
 # ruff: noqa: E402
 """Test configuration file to ensure Prometheus metrics are registered before tests run."""
 
+import os
+
+# Allow several ninja TestClient instances across HTTP test modules.
+os.environ.setdefault("NINJA_SKIP_REGISTRY", "1")
+
 import django
 
 if not django.apps.apps.ready:

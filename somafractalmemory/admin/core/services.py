@@ -10,6 +10,7 @@ Django ORM. It provides services for:
 
 import hashlib
 import json
+import math
 from typing import Any
 
 from django.conf import settings
@@ -23,11 +24,71 @@ from .models import AuditLog, GraphLink, Memory, VectorEmbedding
 
 logger = get_logger(__name__)
 
+# Provenance flags recorded on every memory (metadata["embedding_source"]).
+# "precomputed" vectors arrive from the caller (agent seam) and are stored
+# verbatim; "hash" vectors are HashEmbedder fallback output and are ranked
+# lower at search time because they are not semantic.
+EMBEDDING_SOURCE_PRECOMPUTED = "precomputed"
+EMBEDDING_SOURCE_HASH = "hash"
+
+# Provenance labels persisted on VectorEmbedding.model_name.
+EMBEDDING_MODEL_PRECOMPUTED = "precomputed"
+EMBEDDING_MODEL_HASH = "hash-embedder"
+
+
+class EmbeddingDimensionError(ValueError):
+    """Raised when a supplied embedding does not match the configured dimension."""
+
+
+def _embedding_source_of(metadata: dict[str, Any] | None) -> str:
+    """Read the embedding provenance flag from memory metadata.
+
+    Records written before the precomputed-embedding contract carry no flag;
+    those vectors could only have come from the hash fallback.
+    """
+    if isinstance(metadata, dict):
+        source = metadata.get("embedding_source")
+        if source in (EMBEDDING_SOURCE_PRECOMPUTED, EMBEDDING_SOURCE_HASH):
+            return str(source)
+    return EMBEDDING_SOURCE_HASH
+
+
+def rank_by_embedding_source(
+    hits: list[dict[str, Any]],
+    hash_penalty: float = 0.25,
+) -> list[dict[str, Any]]:
+    """Rank search hits by similarity, demoting hash-fallback vectors.
+
+    HashEmbedder output lives in a different vector space than precomputed
+    semantic embeddings, so its cosine scores are not comparable. Hash-sourced
+    hits get their score multiplied by ``hash_penalty`` (precomputed hits keep
+    the raw score), then hits are sorted best-first.
+
+    Args:
+        hits: Hit dicts with "score" and "embedding_source" keys.
+        hash_penalty: Multiplier applied to hash-sourced scores.
+
+    Returns:
+        New list of hit dicts with normalized float scores, sorted best-first.
+    """
+    ranked: list[dict[str, Any]] = []
+    for hit in hits:
+        item = dict(hit)
+        raw = item.get("score")
+        raw_score = float(raw) if raw is not None else 0.0
+        if item.get("embedding_source") == EMBEDDING_SOURCE_PRECOMPUTED:
+            item["score"] = raw_score
+        else:
+            item["score"] = raw_score * hash_penalty
+        ranked.append(item)
+    ranked.sort(key=lambda h: (-float(h["score"]), str(h.get("coord", ""))))
+    return ranked
+
 
 class HashEmbedder:
     """Deterministic hash-based embedding generator (no external deps)."""
 
-    def __init__(self, dim: int = 768):
+    def __init__(self, dim: int = 256):
         self.dim = dim
 
     def embed(self, text: str) -> list[float]:
@@ -48,15 +109,22 @@ class MemoryService:
     This service connects the API layer to the Django ORM models, handling
     transactions, audit logging, and coordinate transformations.
 
+    Embeddings: callers may supply a precomputed vector which is stored and
+    queried verbatim. Without one, the hash fallback embeds the payload/query
+    text and the record is flagged so search can rank it lower.
+
     Attributes:
         namespace (str): The isolation namespace for all operations.
     """
+
+    # Score multiplier for hash-fallback hits (see rank_by_embedding_source).
+    HASH_EMBEDDING_SCORE_PENALTY = 0.25
 
     def __init__(self, namespace: str = "default"):
         """Initialize the instance."""
 
         self.namespace = namespace
-        self.vector_dim = getattr(settings, "SOMA_VECTOR_DIM", 768)
+        self.vector_dim = getattr(settings, "SOMA_VECTOR_DIM", 256)
         self.embedder = HashEmbedder(dim=self.vector_dim)
         self.vector_store = self._build_vector_store()
 
@@ -77,6 +145,40 @@ class MemoryService:
             logger.warning("Failed to initialize MilvusVectorStore", error=str(exc))
             return None
 
+    def _check_embedding_dim(self, embedding: list[float]) -> None:
+        """Validate a supplied embedding against the configured vector dimension.
+
+        Raises:
+            EmbeddingDimensionError: wrong length or non-finite values.
+        """
+        if len(embedding) != self.vector_dim:
+            raise EmbeddingDimensionError(
+                f"Embedding dimension {len(embedding)} does not match expected {self.vector_dim}"
+            )
+        for value in embedding:
+            if not isinstance(value, int | float) or not math.isfinite(value):
+                raise EmbeddingDimensionError("Embedding must contain only finite numbers")
+
+    def _resolve_embedding(
+        self,
+        payload: dict[str, Any],
+        embedding: list[float] | None,
+    ) -> tuple[list[float], str]:
+        """Resolve the vector for a record and its provenance flag.
+
+        A supplied embedding is used verbatim — it is never re-hashed. When it
+        is omitted the hash fallback embeds the payload text.
+
+        Returns:
+            (vector, source) where source is EMBEDDING_SOURCE_PRECOMPUTED or
+            EMBEDDING_SOURCE_HASH.
+        """
+        if embedding is not None:
+            self._check_embedding_dim(embedding)
+            return list(embedding), EMBEDDING_SOURCE_PRECOMPUTED
+        payload_text = json.dumps(payload, sort_keys=True)
+        return self.embedder.embed(payload_text), EMBEDDING_SOURCE_HASH
+
     @transaction.atomic
     def store(
         self,
@@ -85,9 +187,23 @@ class MemoryService:
         memory_type: str = "episodic",
         tenant: str = "default",
         metadata: dict[str, Any] | None = None,
+        embedding: list[float] | None = None,
     ) -> Memory:
-        """Store a memory using Django ORM."""
+        """Store a memory using Django ORM.
+
+        A supplied ``embedding`` is stored verbatim (never re-hashed) and the
+        record is flagged ``embedding_source="precomputed"``. Without one the
+        hash fallback embeds the payload text and flags ``"hash"`` so search
+        can rank the record lower.
+
+        Raises:
+            EmbeddingDimensionError: supplied embedding has the wrong dimension.
+        """
         coord_key = Memory.coord_to_key(coordinate)
+        vector, embedding_source = self._resolve_embedding(payload, embedding)
+
+        meta = dict(metadata or {})
+        meta["embedding_source"] = embedding_source
 
         memory, created = Memory.objects.update_or_create(
             namespace=self.namespace,
@@ -97,21 +213,19 @@ class MemoryService:
                 "coordinate": list(coordinate),
                 "memory_type": memory_type,
                 "payload": payload,
-                "metadata": metadata or {},
+                "metadata": meta,
                 "is_deleted": False,
                 "deleted_at": None,
             },
         )
 
         # Store vector embedding (best effort)
-        if self.vector_store and self.embedder:
+        if self.vector_store:
             try:
-                payload_text = json.dumps(payload, sort_keys=True)
-                vector = self.embedder.embed(payload_text)
-
-                # Fix Flaw 2: Prevent vector cloning by deleting old vector for this coordinate if it exists
+                # Fix Flaw 2: Prevent vector cloning by deleting old vector for this
+                # coordinate (scoped to namespace + tenant) if it exists
                 try:
-                    self.vector_store.delete(coord_key)
+                    self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
                 except Exception:
                     pass  # Ignore if not found or store inaccessible during cleanup
 
@@ -127,11 +241,20 @@ class MemoryService:
                     defaults={
                         "milvus_id": milvus_id,
                         "vector_dim": self.vector_dim,
-                        "model_name": getattr(settings, "SOMA_MODEL_NAME", "hash-embedder"),
+                        "model_name": (
+                            EMBEDDING_MODEL_PRECOMPUTED
+                            if embedding_source == EMBEDDING_SOURCE_PRECOMPUTED
+                            else EMBEDDING_MODEL_HASH
+                        ),
                     },
                 )
             except Exception as exc:
                 logger.warning("Vector store insert failed", error=str(exc), exc_info=True)
+        elif embedding is not None:
+            logger.warning(
+                "Precomputed embedding not persisted — vector store unavailable",
+                coordinate_key=coord_key,
+            )
 
         # Log the operation
         AuditLog.objects.create(
@@ -139,7 +262,7 @@ class MemoryService:
             namespace=self.namespace,
             coordinate_key=coord_key,
             tenant=tenant,
-            details={"memory_type": memory_type},
+            details={"memory_type": memory_type, "embedding_source": embedding_source},
         )
 
         return memory
@@ -171,9 +294,11 @@ class MemoryService:
 
             return {
                 "coordinate": memory.coordinate,
+                "coord": memory.coordinate_key,
                 "payload": memory.payload,
                 "memory_type": memory.memory_type,
                 "metadata": memory.metadata,
+                "embedding_source": _embedding_source_of(memory.metadata),
                 "importance": memory.importance,
                 "created_at": memory.created_at.isoformat(),
                 "updated_at": memory.updated_at.isoformat(),
@@ -232,52 +357,93 @@ class MemoryService:
         memory_type: str | None = None,
         tenant: str = "default",
         filters: dict[str, Any] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[dict[str, Any]]:
         """Search memories using Django ORM.
 
-        Vector similarity search via Milvus when configured; fallback to ORM text search.
+        Ranking is by vector similarity via Milvus when configured. A supplied
+        ``query_embedding`` is used verbatim; when only text is given the query
+        is embedded exactly like :meth:`store` (hash fallback). Hits whose
+        stored vector came from the hash fallback are scored lower so
+        precomputed-vector memories rank first. Falls back to ORM text search.
+
         Fix Flaw 7: Supporting pagination with offset.
+
+        Raises:
+            EmbeddingDimensionError: wrong query embedding dimension.
         """
-        if self.vector_store and self.embedder:
-            try:
+        vector_query = query_embedding is not None
+
+        if self.vector_store:
+            if query_embedding is not None:
+                self._check_embedding_dim(query_embedding)
+                vector = list(query_embedding)
+            else:
                 vector = self.embedder.embed(query)
+
+            try:
+                # Fetch extra candidates so demotion of hash-fallback hits can
+                # reshuffle the page without pushing real hits out of reach.
+                candidate_k = max(top_k + offset, 1) * 3
                 vector_results = self.vector_store.search(
                     query_vector=vector,
-                    top_k=top_k + offset,  # We fetch enough to cover the offset
+                    top_k=candidate_k,
                     namespace=self.namespace,
                     tenant=tenant,
                 )
-                # Apply offset to vector results
-                vector_results = vector_results[offset:]
 
                 coord_keys = [res["coordinate_key"] for res in vector_results]
-                memories = list(
-                    Memory.objects.filter(
-                        namespace=self.namespace,
-                        tenant=tenant,
-                        coordinate_key__in=coord_keys,
-                        is_deleted=False,
-                    )
+                queryset = Memory.objects.filter(
+                    namespace=self.namespace,
+                    tenant=tenant,
+                    coordinate_key__in=coord_keys,
+                    is_deleted=False,
                 )
-                memory_map = {m.coordinate_key: m for m in memories}
-                ordered: list[dict[str, Any]] = []
+                if memory_type:
+                    queryset = queryset.filter(memory_type=memory_type)
+                if filters:
+                    for key, value in filters.items():
+                        queryset = queryset.filter(**{f"payload__{key}": value})
+
+                memory_map = {m.coordinate_key: m for m in queryset}
+                hits: list[dict[str, Any]] = []
                 for res in vector_results:
                     mem = memory_map.get(res["coordinate_key"])
                     if not mem:
                         continue
-                    ordered.append(
+                    hits.append(
                         {
                             "coordinate": mem.coordinate,
+                            "coord": mem.coordinate_key,
                             "payload": mem.payload,
                             "memory_type": mem.memory_type,
                             "importance": mem.importance,
                             "score": res.get("score"),
+                            "embedding_source": _embedding_source_of(mem.metadata),
+                            "created_at": mem.created_at.isoformat(),
                         }
                     )
-                if ordered:
-                    return ordered
+                ordered = rank_by_embedding_source(hits, self.HASH_EMBEDDING_SCORE_PENALTY)
+                page = ordered[offset : offset + top_k]
+                if page:
+                    AuditLog.objects.create(
+                        action=AuditLog.Action.SEARCH,
+                        namespace=self.namespace,
+                        tenant=tenant,
+                        details={
+                            "query": query,
+                            "top_k": top_k,
+                            "filters": filters,
+                            "query_embedding": vector_query,
+                        },
+                    )
+                    return page
             except Exception as exc:
                 logger.warning("Vector search failed, falling back to ORM", error=str(exc))
+
+        # A vector-only query must not degrade into a browse of every memory.
+        if vector_query and not query:
+            return []
 
         queryset = Memory.objects.filter(
             namespace=self.namespace,
@@ -316,9 +482,13 @@ class MemoryService:
         return [
             {
                 "coordinate": m.coordinate,
+                "coord": m.coordinate_key,
                 "payload": m.payload,
                 "memory_type": m.memory_type,
                 "importance": m.importance,
+                "score": float(m.importance),
+                "embedding_source": _embedding_source_of(m.metadata),
+                "created_at": m.created_at.isoformat(),
             }
             for m in memories
         ]
