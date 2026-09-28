@@ -88,8 +88,8 @@ def rank_by_embedding_source(
 class HashEmbedder:
     """Deterministic hash-based embedding generator (no external deps)."""
 
-    def __init__(self, dim: int = 256):
-        self.dim = dim
+    def __init__(self, dim: int | None = None):
+        self.dim = int(dim) if dim else int(settings.SOMA_VECTOR_DIM)
 
     def embed(self, text: str) -> list[float]:
         """Generate a deterministic vector of length dim from text."""
