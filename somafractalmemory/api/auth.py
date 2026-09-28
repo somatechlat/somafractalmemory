@@ -46,7 +46,7 @@ class StandaloneAuth(HttpBearer):
 
         expected_token = _get_expected_token()
         if not expected_token:
-            logger.warning("SOMA_API_TOKEN not configured — auth disabled")
+            logger.warning("SOMA_API_TOKEN not configured — rejecting all callers (fail-closed)")
             return None
 
         if hmac.compare_digest(token.encode("utf-8"), expected_token.encode("utf-8")):
@@ -75,7 +75,8 @@ def _get_expected_token() -> str | None:
 def can_access_namespace(request: HttpRequest, namespace: str) -> bool:
     """Check if the authenticated request can access a namespace.
 
-    In standalone mode, all authenticated requests have wildcard access.
+    Fail-closed (R-05 / F-07, T-5): an empty allow-list grants nothing.
+    Standalone auth always sets ``["*"]``, so the happy path is unaffected.
 
     Args:
         request: The HTTP request with auth context
@@ -88,7 +89,7 @@ def can_access_namespace(request: HttpRequest, namespace: str) -> bool:
     allowed = auth.get("allowed_namespaces", [])
 
     if not allowed:
-        return True
+        return False
 
     return namespace in allowed or "*" in allowed
 

@@ -144,13 +144,13 @@ def health_detailed(request: HttpRequest) -> dict:
 
     # Check Milvus
     try:
-        from pymilvus import connections
+        from pymilvus import MilvusClient
 
         milvus_start = time.time()
         milvus_host = os.environ.get("SOMA_MILVUS_HOST", "localhost")
         milvus_port = os.environ.get("SOMA_MILVUS_PORT", "19530")
-        connections.connect(alias="health_check", host=milvus_host, port=milvus_port, timeout=2)
-        connections.disconnect(alias="health_check")
+        client = MilvusClient(uri=f"http://{milvus_host}:{milvus_port}", timeout=2)
+        client.list_collections()
         milvus_latency = (time.time() - milvus_start) * 1000
         services.append(
             {

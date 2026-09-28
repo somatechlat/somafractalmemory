@@ -212,6 +212,9 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       DJANGO_SETTINGS_MODULE: "somafractalmemory.settings.standalone"
+      # Shared seam dim: agent MEM_EMBED_DIM == brain EMBED_DIM == this
+      SOMA_VECTOR_DIM: "768"
+      MEM_EMBED_DIM: "768"
       # VAULT BOOTSTRAP ONLY
       VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
       VAULT_TOKEN: "${SOMA_VAULT_TOKEN:?set SOMA_VAULT_TOKEN}"

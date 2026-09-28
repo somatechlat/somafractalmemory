@@ -124,7 +124,12 @@ class MemoryService:
         """Initialize the instance."""
 
         self.namespace = namespace
-        self.vector_dim = getattr(settings, "SOMA_VECTOR_DIM", 256)
+        # Seam dim unity (ARCHITECTURE-INVARIANTS §2): SOMA_VECTOR_DIM ==
+        # MEM_EMBED_DIM == SOMABRAIN_EMBED_DIM. Never invent a fallback.
+        vector_dim = getattr(settings, "SOMA_VECTOR_DIM", None)
+        if not vector_dim:
+            raise RuntimeError("SOMA_VECTOR_DIM is not configured — refusing to guess a vector dim")
+        self.vector_dim = int(vector_dim)
         self.embedder = HashEmbedder(dim=self.vector_dim)
         self.vector_store = self._build_vector_store()
 

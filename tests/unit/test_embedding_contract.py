@@ -198,9 +198,12 @@ class TestTenantScoping:
         request = FakeRequest(auth={"tenant": "standalone", "auth_type": "standalone_token"})
         assert get_tenant_from_request(request) == "standalone"
 
-    def test_default_when_nothing_supplied(self):
+    def test_missing_tenant_raises_400(self):
+        """No auth tenant, no body/query tenant, no header → 400 (fail-closed)."""
         request = FakeRequest()
-        assert get_tenant_from_request(request) == "default"
+        with pytest.raises(HttpError) as exc:
+            get_tenant_from_request(request)
+        assert exc.value.status_code == 400
 
     def test_real_auth_binding_wins_over_explicit_tenant(self):
         request = FakeRequest(auth={"tenant": "bound-tenant", "auth_type": "jwt"})

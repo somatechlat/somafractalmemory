@@ -44,7 +44,10 @@ def get_tenant_from_request(request: HttpRequest, explicit_tenant: str | None = 
         2. Explicit ``tenant_id`` from the request body/query (seam contract)
         3. X-Soma-Tenant header
         4. Auth context tenant (standalone mode label)
-        5. Default: "default"
+
+    Fail-closed (R-05 / F-06, T-5): when no tenant can be resolved the request
+    is rejected with HTTP 400. There is no silent ``"default"`` fallback — that
+    mixed callers into one shared tenant by omission.
 
     In standalone mode the bearer token does not bind a data tenant — every
     caller shares one token — so the caller selects the data tenant via
@@ -57,6 +60,9 @@ def get_tenant_from_request(request: HttpRequest, explicit_tenant: str | None = 
 
     Returns:
         Tenant identifier string
+
+    Raises:
+        HttpError 400: If no tenant can be resolved from any source
     """
     auth = getattr(request, "auth", {}) or {}
     auth_tenant = auth.get("tenant")
@@ -72,7 +78,10 @@ def get_tenant_from_request(request: HttpRequest, explicit_tenant: str | None = 
     if header_tenant and header_tenant.strip():
         return header_tenant.strip()
 
-    return auth_tenant or "default"
+    if auth_tenant and str(auth_tenant).strip():
+        return str(auth_tenant).strip()
+
+    raise HttpError(400, get_message(ErrorCode.MISSING_TENANT))
 
 
 def ensure_embedding_dim(embedding: list[float] | None) -> None:

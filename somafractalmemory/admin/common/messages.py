@@ -29,6 +29,7 @@ class ErrorCode(str, Enum):
     EMPTY_COORDINATE = "empty_coordinate"
     UNSUPPORTED_MEMORY_TYPE = "unsupported_memory_type"
     INVALID_FILTERS = "invalid_filters"
+    MISSING_TENANT = "missing_tenant"
 
     # Vector Operations
     VECTOR_STORE_FAILED = "vector_store_failed"
@@ -104,6 +105,9 @@ MESSAGES: dict[str | ErrorCode | SuccessCode, str] = {
     ErrorCode.EMPTY_COORDINATE: _("Coordinate cannot be empty"),
     ErrorCode.UNSUPPORTED_MEMORY_TYPE: _("Unsupported memory type: {memory_type}"),
     ErrorCode.INVALID_FILTERS: _("Invalid filter format"),
+    ErrorCode.MISSING_TENANT: _(
+        "Tenant could not be resolved; provide tenant_id or the X-Soma-Tenant header"
+    ),
     # Vector Operations
     ErrorCode.VECTOR_STORE_FAILED: _("Failed to store vector"),
     ErrorCode.VECTOR_STORE_ERROR: _("Vector store error during {operation}"),
