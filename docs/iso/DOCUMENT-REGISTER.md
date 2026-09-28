@@ -38,12 +38,12 @@ a row marked `Non-compliant` is a tracked gap, not a silent exception.
 
 | Document Identifier | File | Title | Version | Status | Approver | Next Review | Compliance |
 |---|---|---|---|---|---|---|---|
-| SOMA-01-DOCS-002 | docs/iso/DOCUMENT-REGISTER.md | Document Register | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-GUIDE-OPS-001 | docs/OPS_MANUAL.md | 📘 Endpoint Catalog | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
+| SOMA-SFM-DOC-REGISTER-001 | docs/iso/DOCUMENT-REGISTER.md | Document Register | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
+| SOMA-SFM-GUIDE-OPS-001 | docs/OPS_MANUAL.md | 📘 Endpoint Catalog | 1.1.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-PROD-001 | docs/PRODUCTION_READINESS.md | Production Readiness Checklist | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-INDEX-001 | docs/README.md | Documentation | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
+| SOMA-SFM-INDEX-001 | docs/README.md | Documentation Index | 1.1.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-SRS-001 | docs/SRS-SOMAFRACTALMEMORY-MASTER.md | SomaFractalMemory — Master Technical Specification | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-GUIDE-USER-001 | docs/USER_GUIDE.md | Frequently Asked Questions (FAQ) | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
+| SOMA-SFM-GUIDE-USER-001 | docs/USER_GUIDE.md | User Guide | 1.1.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-API-001 | docs/api-reference.md | API Reference | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-ARCH-001 | docs/architecture.md | Architecture | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-DEPLOY-001 | docs/deployment.md | Deployment Guide | 1.0.0 | Draft | — | 2026-12-28 | Compliant |

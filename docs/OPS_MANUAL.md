@@ -11,7 +11,7 @@ last_modified: "2025-10-29"
 |---|---|
 | Document Title | 📘 Endpoint Catalog |
 | Document Identifier | SOMA-SFM-GUIDE-OPS-001 |
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Date | 2026-09-28 |
 | Status | Draft |
 | Author | SomaTech Engineering |
@@ -26,6 +26,7 @@ last_modified: "2025-10-29"
 | Version | Date | Author | Description |
 |---|---|---|---|
 | 1.0.0 | 2026-09-28 | SomaTech Engineering | Initial issue. Brought under the house ISO document-control contract. |
+| 1.1.0 | 2026-09-28 | SomaTech Engineering | Replaced the link to `../VIBE_CODING_RULES.md`, which resolves outside `docs/` and so could never be a site page, with a path reference. Replaced "additional topics will be added here over time" with pointers to the documents that already cover deployment and production readiness. |
 
 
 Auth: Bearer token unless noted. Accepts SOMA_API_TOKEN (shared) or `sfm_*` API keys. Token is required for all memory/search/graph routes.
@@ -153,9 +154,13 @@ This section contains operational and architectural guidance for SomaFractalMemo
 - Deployment (Docker): see [deployment.md](deployment.md)
 - Configuration Reference: see below (embedded in this document)
 - Endpoint Catalog: see below (embedded in this document)
-- Engineering rules and workflow: see [Vibe Coding Rules](../VIBE_CODING_RULES.md)
+- Engineering rules and workflow: see `VIBE_CODING_RULES.md` at the repository
+  root. It is deliberately not linked here: it sits outside `docs/`, so it is
+  not part of the published site.
 
-Additional topics will be added here over time, including deployment, monitoring, and runbooks.
+Deployment, monitoring and runbook material is in
+[deployment.md](deployment.md) and
+[PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
 ---
 title: "Security and Secrets (Dev vs Prod)"
 project: "somafractalmemory"

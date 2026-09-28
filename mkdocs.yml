@@ -4,16 +4,43 @@ site_author: SomaTechLat
 repo_url: https://github.com/somatechlat/somafractalmemory
 repo_name: somatechlat/somafractalmemory
 
+# Every page listed here must exist: `mkdocs build --strict` runs in
+# .github/workflows/docs.yml and treats a dangling nav entry as a failure.
+# The tree below is the real docs/ tree — the previous nav pointed at
+# technical-manual/ and development-manual/, neither of which exists.
 nav:
   - Home: README.md
-  - Technical Manual:
-    - Overview: technical-manual/index.md
-    - Security and Secrets: technical-manual/security-secrets.md
-    - Deployment (Docker): technical-manual/deployment-docker.md
-    - Configuration Reference: technical-manual/config-reference.md
-    - Endpoint Catalog: technical-manual/endpoints.md
-  - Development Manual:
-    - Developer Environment (VS Code): development-manual/local-setup.md
+  - Guides:
+    - User Guide: USER_GUIDE.md
+    - Operations Manual: OPS_MANUAL.md
+    - Production Readiness: PRODUCTION_READINESS.md
+    - Architecture: architecture.md
+    - Deployment: deployment.md
+    - API Reference: api-reference.md
+    - Style Guide: style-guide.md
+    - SRS: SRS-SOMAFRACTALMEMORY-MASTER.md
+  - Quality Management System:
+    - Document Register: iso/DOCUMENT-REGISTER.md
+    - Document Control & Traceability: iso/SOMA-SFM-DOCS-001.md
+    - Quality Manual: iso/SOMA-SFM-QMS-001.md
+    - Architecture: iso/SOMA-SFM-ARCH-001.md
+    - Software Development Plan: iso/SOMA-SFM-SDP-001.md
+    - Requirements: iso/SOMA-SFM-SRS-001.md
+    - Security: iso/SOMA-SFM-SEC-001.md
+    - Verification & Validation: iso/SOMA-SFM-VV-001.md
+    - Risk Register: iso/SOMA-SFM-RISK-001.md
+    - Audit: iso/SOMA-SFM-AUDIT-001.md
+    - Compatibility: iso/SOMA-SFM-COMPAT-001.md
+    - Production: iso/SOMA-SFM-PROD-001.md
+  - Project Records:
+    - Execution Plan: project/SOMA-SFM-EXEC-001.md
+    - Architecture Redesign: project/SOMA-ARCH-REDESIGN-001.md
+    - Feature Matrix: project/SOMA-FEAT-MATRIX-001.md
+    - Module Architecture: project/SOMA-MOD-ARCH-001.md
+    - Module Specification: project/SOMA-MOD-SPEC-001.md
+    - UI Specification: project/SOMA-UI-SPEC-001.md
+    - UI/UX: project/SOMA-UI-UX-001.md
+    - UI Mockups: project/SOMA-UI-MOCKUPS-001.md
 
 theme:
   name: material
@@ -40,10 +67,11 @@ plugins:
       type: date
   - minify:
       minify_html: true
-  - social:
-      cards_color:
-        fill: "#3f51b5"
-        text: "#ffffff"
+  # The `social` plugin is intentionally absent. It generates Open Graph share
+  # cards and warns under --strict because `site_url` is unset. This repository
+  # publishes no site — there is no pages workflow and no gh-pages branch — so
+  # the cards would link nowhere. The `extra.social` footer links below are
+  # theme links and are unaffected.
 
 markdown_extensions:
   - admonition
@@ -86,5 +114,3 @@ extra:
       link: https://github.com/somatechlat/somafractalmemory
     - icon: fontawesome/brands/docker
       link: https://hub.docker.com/r/somatechlat/somafractalmemory
-  version:
-    provider: mike

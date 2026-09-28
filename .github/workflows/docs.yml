@@ -1,81 +1,66 @@
 name: Documentation Checks
 
+# Document-control enforcement for everything under docs/.
+# Implements SOMA-SFM-DOCS-001 §5.2, rules C-01..C-12.
+#
+# This workflow previously called `scripts/audit-docs.py` twice and uploaded
+# `docs/doc-health-report.json`. Neither file has ever existed in this
+# repository, so the job could not have passed. It also rendered PlantUML for
+# `docs/**/*.puml`, of which there are none, and auto-committed the result back
+# to the branch. Those steps are gone. What runs now is the checker that
+# actually exists, against the register that is actually generated.
+
 "on":
   pull_request:
     branches: [ main ]
     paths:
       - 'docs/**'
+      - 'mkdocs.yml'
+      - 'scripts/check_docs.py'
+      - 'scripts/gen_register.py'
       - '.github/workflows/docs.yml'
   push:
     branches:
       - main
     paths:
       - 'docs/**'
+      - 'mkdocs.yml'
+      - 'scripts/check_docs.py'
+      - 'scripts/gen_register.py'
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sundays
 
 jobs:
-  docs-check:
-    name: Validate Documentation
+  document-control:
+    name: ISO document control
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # For changelog validation
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: Install dependencies
+      # C-01..C-12: required control fields, Revision History shape, filename
+      # and identifier agreement, and C-10 register <-> QMS matrix agreement.
+      - name: Document-control compliance
+        run: python3 scripts/check_docs.py
+
+      # The register is derived data. If regenerating it produces a diff, a
+      # document was added or edited without running `make docs-register`.
+      - name: Register is generated, not hand-edited
         run: |
-          python -m pip install --upgrade pip
-          pip install pyyaml markdownlint-cli2 remark-validate-links
-
-      - name: Run markdown lint
-        run: |
-          npm install -g markdownlint-cli2
-          markdownlint-cli2 "docs/**/*.md"
-
-      - name: Validate internal links
-        run: python scripts/audit-docs.py
-
-      - name: Validate changelog
-        run: python scripts/validate-changelog.py
-
-      - name: Check doc freshness
-        run: |
-          python scripts/audit-docs.py
-          if [ -f docs/doc-health-report.json ]; then
-            cat docs/doc-health-report.json
+          python3 scripts/gen_register.py
+          if ! git diff --exit-code docs/iso/DOCUMENT-REGISTER.md; then
+            echo "::error file=docs/iso/DOCUMENT-REGISTER.md::Document Register is stale. Run 'make docs-register' and commit the result."
+            exit 1
           fi
 
-      - name: Generate documentation site
+      # --strict turns a dangling nav entry or a broken in-page link into a
+      # failure, so a page can never be renamed or deleted without this
+      # catching the reference. The nav lists real files only.
+      - name: Site builds against the real document tree
         run: |
-          pip install mkdocs-material
-          mkdocs build
-
-      - name: Upload documentation health report
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: doc-health-report
-          path: docs/doc-health-report.json
-
-  plantuml-diagrams:
-    name: Render PlantUML Diagrams
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Generate PlantUML Diagrams
-        uses: cloudbees/plantuml-github-action@v1
-        with:
-          args: -v -tpng docs/**/*.puml
-
-      - name: Commit diagram changes
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: "docs: update PlantUML diagrams"
-          file_pattern: "docs/**/*.png"
+          pip install --quiet mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-minify-plugin
+          mkdocs build --strict
