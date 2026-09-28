@@ -1,32 +1,32 @@
 # SOMA-SFM-QMS-001: SomaFractalMemory Quality Manual
 
-> **Document ID**: SOMA-SFM-QMS-001
-> **Version**: 1.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO 9001:2015 — Quality Management Systems — Requirements
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-QMS-001 |
-| Version | 1.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-QMS-001: SomaFractalMemory Quality Manual |
+| Document Identifier | SOMA-SFM-QMS-001 |
+| Version | 1.0.2 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Engineering |
-| Reviewer | Quality Assurance Lead |
 | Approver | CTO, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO 9001:2015 — Quality Management Systems — Requirements |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2026-06-15 | Engineering | Initial Quality Manual aligned with v0.2.0 production release |
+| 1.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-QMS-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
+| 1.0.2 | 2026-09-28 | SomaTech Engineering | Document Reference Matrix added (12 documents, ISO series under `docs/iso/`). Every cell is derived from each document's own Document Control table. |
 
 ### Normative References
 
@@ -320,4 +320,34 @@ The highest-priority improvement item is the replacement of the current `HashEmb
 
 ---
 
-*End of SOMA-SFM-QMS-001 v1.0.0*
+## Section 8: Document Reference Matrix
+
+This matrix is the authoritative cross-reference of the QMS document set held under `docs/iso/`.
+It is not a second control record: every value below is read from the
+named document's own `## Document Control` table, so the matrix cannot
+claim a standard the document does not. `ISO Reference` is copied from
+that table verbatim — including `—` where a document cites none.
+
+Documents outside this set (contributor guides under `docs/`, project
+records under `docs/project/`) are still held in the Document Register
+`docs/iso/DOCUMENT-REGISTER.md`; they are supporting documentation, not
+QMS documents, and are therefore not listed here.
+
+| Document | Identifier | ISO Reference | File |
+|---|---|---|---|
+| SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification | SOMA-SFM-ARCH-001 | ISO/IEC 42010 — Systems and Software Engineering — Architecture Description | `docs/iso/SOMA-SFM-ARCH-001.md` |
+| SOMA-SFM-AUDIT-001: SomaFractalMemory Audit Report | SOMA-SFM-AUDIT-001 | ISO 19011:2018 — Guidelines for Auditing Management Systems | `docs/iso/SOMA-SFM-AUDIT-001.md` |
+| Soma Cognitive Triad Version Compatibility Matrix | SOMA-SFM-COMPAT-001 | ISO 9001:2015 — Quality Management Systems — Requirements | `docs/iso/SOMA-SFM-COMPAT-001.md` |
+| Document Register | SOMA-SFM-DOC-REGISTER-001 | ISO 9001:2015 — Quality Management Systems — Requirements | `docs/iso/DOCUMENT-REGISTER.md` |
+| Document Control and Traceability Procedure | SOMA-SFM-DOCS-001 | ISO 9001:2015 — Quality Management Systems — Requirements | `docs/iso/SOMA-SFM-DOCS-001.md` |
+| SOMA-SFM-PROD-001: SomaFractalMemory Production Readiness Assessment | SOMA-SFM-PROD-001 | ISO/IEC 25010:2011 — Systems and Software Quality Requirements and Evaluation (SQuaRE) | `docs/iso/SOMA-SFM-PROD-001.md` |
+| SOMA-SFM-QMS-001: SomaFractalMemory Quality Manual | SOMA-SFM-QMS-001 | ISO 9001:2015 — Quality Management Systems — Requirements | `docs/iso/SOMA-SFM-QMS-001.md` |
+| SOMA-SFM-RISK-001: SomaFractalMemory Risk Register | SOMA-SFM-RISK-001 | ISO 31000:2018 — Risk Management — Guidelines | `docs/iso/SOMA-SFM-RISK-001.md` |
+| SOMA-SFM-SDP-001: SomaFractalMemory Software Development Plan | SOMA-SFM-SDP-001 | ISO/IEC 12207:2017 — Systems and Software — Software Life Cycle Processes | `docs/iso/SOMA-SFM-SDP-001.md` |
+| SOMA-SFM-SEC-001: SomaFractalMemory Security Assessment | SOMA-SFM-SEC-001 | ISO/IEC 27001:2022 — Information Security Management Systems | `docs/iso/SOMA-SFM-SEC-001.md` |
+| SOMA-SFM-SRS-001: SomaFractalMemory Software Requirements Specification | SOMA-SFM-SRS-001 | ISO/IEC/IEEE 29148:2018 — Systems and Software Engineering — Life Cycle Processes — Requirements Engineering | `docs/iso/SOMA-SFM-SRS-001.md` |
+| SOMA-SFM-VV-001: SomaFractalMemory Verification and Validation Plan | SOMA-SFM-VV-001 | ISO/IEC/IEEE 16085:2006 — Systems and Software Engineering — Life Cycle Processes — Risk Management (adapted for V&V) | `docs/iso/SOMA-SFM-VV-001.md` |
+
+---
+
+*End of SOMA-SFM-QMS-001 v1.0.3*

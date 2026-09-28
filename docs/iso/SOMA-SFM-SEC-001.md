@@ -1,33 +1,32 @@
 # SOMA-SFM-SEC-001: SomaFractalMemory Security Assessment
 
-> **Document ID**: SOMA-SFM-SEC-001
-> **Version**: 2.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO/IEC 27001:2022 — Information Security Management Systems
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-SEC-001 |
-| Version | 2.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-SEC-001: SomaFractalMemory Security Assessment |
+| Document Identifier | SOMA-SFM-SEC-001 |
+| Version | 2.0.1 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Security Engineering |
-| Reviewer | Security Architect |
 | Approver | CISO, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO/IEC 27001:2022 — Information Security Management Systems |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2025-10-01 | Security | Initial security review |
 | 2.0.0 | 2026-06-15 | Security | Production-ready assessment for v0.2.0; added Vault, OPA, Docker hardening review |
+| 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-SEC-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
 
 ---
 

@@ -1,33 +1,32 @@
 # SOMA-SFM-AUDIT-001: SomaFractalMemory Audit Report
 
-> **Document ID**: SOMA-SFM-AUDIT-001
-> **Version**: 2.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO 19011:2018 — Guidelines for Auditing Management Systems
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-AUDIT-001 |
-| Version | 2.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-AUDIT-001: SomaFractalMemory Audit Report |
+| Document Identifier | SOMA-SFM-AUDIT-001 |
+| Version | 2.0.1 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Engineering |
-| Reviewer | Quality Assurance Lead |
 | Approver | CTO, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO 19011:2018 — Guidelines for Auditing Management Systems |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2025-09-15 | Engineering | Initial audit against v0.1.0 codebase |
 | 2.0.0 | 2026-06-15 | Engineering | Updated for v0.2.0; production-ready assessment |
+| 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-AUDIT-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
 
 ---
 

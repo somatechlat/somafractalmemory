@@ -1,4 +1,5 @@
 .PHONY: setup test lint api cli clean uv-install lock \
+	docs-check docs-register \
 	help prereqs prereqs-docker \
     compose-build compose-up compose-down compose-down-v compose-logs compose-ps compose-restart compose-health \
 	helm-install-local-dev helm-uninstall-local-dev \
@@ -6,6 +7,8 @@
 
 # Variables
 API_PORT ?= 10101
+# Document-control tooling is stdlib-only, so it does not need `uv`.
+PYTHON ?= python3
 
 help: ## Show this help
 	@echo "Available targets:" && \
@@ -73,6 +76,14 @@ test:
 
 lint:
 	~/.local/bin/uv run mypy somafractalmemory
+
+docs-check: ## ISO document-control compliance for docs/ (SOMA-SFM-DOCS-001)
+	@echo "Checking ISO document control compliance..."
+	@$(PYTHON) scripts/check_docs.py
+
+docs-register: ## Regenerate docs/iso/DOCUMENT-REGISTER.md from the tree
+	@echo "Regenerating docs/iso/DOCUMENT-REGISTER.md..."
+	@$(PYTHON) scripts/gen_register.py
 
 api:
 	~/.local/bin/uv run uvicorn somafractalmemory.config.asgi:application --reload --port $(API_PORT)

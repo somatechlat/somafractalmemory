@@ -1,32 +1,31 @@
 # SOMA-SFM-SRS-001: SomaFractalMemory Software Requirements Specification
 
-> **Document ID**: SOMA-SFM-SRS-001
-> **Version**: 1.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO/IEC/IEEE 29148:2018 — Systems and Software Engineering — Life Cycle Processes — Requirements Engineering
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-SRS-001 |
-| Version | 1.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-SRS-001: SomaFractalMemory Software Requirements Specification |
+| Document Identifier | SOMA-SFM-SRS-001 |
+| Version | 1.0.1 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Engineering |
-| Reviewer | Requirements Review Board |
 | Approver | CTO, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO/IEC/IEEE 29148:2018 — Systems and Software Engineering — Life Cycle Processes — Requirements Engineering |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2026-06-15 | Engineering | Initial SRS aligned with v0.2.0 production release |
+| 1.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-SRS-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
 
 ### Normative References
 

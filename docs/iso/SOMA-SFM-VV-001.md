@@ -1,32 +1,31 @@
 # SOMA-SFM-VV-001: SomaFractalMemory Verification and Validation Plan
 
-> **Document ID**: SOMA-SFM-VV-001
-> **Version**: 1.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO/IEC/IEEE 16085:2006 — Systems and Software Engineering — Life Cycle Processes — Risk Management (adapted for V&V)
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-VV-001 |
-| Version | 1.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-VV-001: SomaFractalMemory Verification and Validation Plan |
+| Document Identifier | SOMA-SFM-VV-001 |
+| Version | 1.0.1 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Engineering |
-| Reviewer | QA Lead |
 | Approver | VP Engineering, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO/IEC/IEEE 16085:2006 — Systems and Software Engineering — Life Cycle Processes — Risk Management (adapted for V&V) |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2026-06-15 | Engineering | Initial V&V Plan aligned with v0.2.0 production release |
+| 1.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-VV-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
 
 ### Normative References
 

@@ -1,4 +1,27 @@
 # SomaFractalMemory — Master Technical Specification
+
+## Document Control
+
+| Field | Value |
+|---|---|
+| Document Title | SomaFractalMemory — Master Technical Specification |
+| Document Identifier | SOMA-SFM-GUIDE-SRS-001 |
+| Version | 1.0.0 |
+| Date | 2026-09-28 |
+| Status | Draft |
+| Author | SomaTech Engineering |
+| Approver | — |
+| Classification | Internal |
+| ISO Reference | ISO 9001:2015 — Quality Management Systems — Requirements |
+| Next Review | 2026-12-28 |
+
+
+## Revision History
+
+| Version | Date | Author | Description |
+|---|---|---|---|
+| 1.0.0 | 2026-09-28 | SomaTech Engineering | Initial issue. Brought under the house ISO document-control contract. |
+
 ## ISO/IEC 25010 Compliant Documentation
 
 | Document ID | SRS-SOMAFRACTALMEMORY-MASTER-001 |

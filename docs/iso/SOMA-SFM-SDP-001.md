@@ -1,32 +1,31 @@
 # SOMA-SFM-SDP-001: SomaFractalMemory Software Development Plan
 
-> **Document ID**: SOMA-SFM-SDP-001
-> **Version**: 1.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO/IEC 12207:2017 — Systems and Software — Software Life Cycle Processes
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-SDP-001 |
-| Version | 1.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-SDP-001: SomaFractalMemory Software Development Plan |
+| Document Identifier | SOMA-SFM-SDP-001 |
+| Version | 1.0.1 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Engineering |
-| Reviewer | Quality Assurance Lead |
 | Approver | VP Engineering, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO/IEC 12207:2017 — Systems and Software — Software Life Cycle Processes |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2026-06-15 | Engineering | Initial SDP aligned with v0.2.0 production release |
+| 1.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-SDP-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
 
 ### Normative References
 

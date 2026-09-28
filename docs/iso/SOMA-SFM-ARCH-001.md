@@ -1,34 +1,33 @@
 # SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification
 
-> **Document ID**: SOMA-SFM-ARCH-001
-> **Version**: 2.0.0
-> **Date**: 2026-06-15
-> **Classification**: PROPRIETARY / COMMERCIAL SENSITIVE
 > **Standard**: ISO/IEC 42010 — Systems and Software Engineering — Architecture Description
 > **Owner**: SomaTech LAT
-> **Status**: APPROVED
 
 ---
 
 ## Document Control
 
 | Field | Value |
-|:------|:------|
-| Document ID | SOMA-SFM-ARCH-001 |
-| Version | 2.0.0 |
-| Status | APPROVED |
-| Classification | PROPRIETARY / COMMERCIAL SENSITIVE |
+|---|---|
+| Document Title | SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification |
+| Document Identifier | SOMA-SFM-ARCH-001 |
+| Version | 2.0.1 |
+| Date | 2026-09-28 |
+| Status | Approved |
 | Author | SomaTech LAT Engineering |
-| Reviewer | Architecture Review Board |
 | Approver | CTO, SomaTech LAT |
+| Classification | Confidential |
+| ISO Reference | ISO/IEC 42010 — Systems and Software Engineering — Architecture Description |
+| Next Review | 2026-12-28 |
 
-### Revision History
+## Revision History
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2025-09-01 | Engineering | Initial architecture specification |
 | 1.1.0 | 2025-11-15 | Engineering | Added AAAS deployment mode, OPA integration |
 | 2.0.0 | 2026-06-15 | Engineering | Production-ready revision; updated for v0.2.0, added Helm charts, Vault integration, circuit breaker, batch processing |
+| 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-ARCH-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
 
 ### Distribution
 
