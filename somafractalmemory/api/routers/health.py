@@ -118,15 +118,23 @@ def health_detailed(request: HttpRequest) -> dict:
             {"name": "postgresql", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
 
-    # Check Redis
+    # Check Redis — configuration from Django settings only. A credential is
+    # never defaulted to localhost and never read from os.environ in a router.
     try:
         import redis
 
         redis_start = time.time()
-        redis_host = os.environ.get("SOMA_REDIS_HOST", "localhost")
-        redis_port = int(os.environ.get("SOMA_REDIS_PORT", "6379"))
-        redis_password = os.environ.get("SOMA_REDIS_PASSWORD", None)
-        r = redis.Redis(host=redis_host, port=redis_port, password=redis_password, socket_timeout=2)
+        redis_host = getattr(settings, "SOMA_REDIS_HOST", None)
+        redis_port = getattr(settings, "SOMA_REDIS_PORT", None)
+        redis_password = getattr(settings, "SOMA_REDIS_PASSWORD", None)
+        if not redis_host or not redis_port:
+            raise RuntimeError("SOMA_REDIS_HOST/SOMA_REDIS_PORT is not configured")
+        r = redis.Redis(
+            host=redis_host,
+            port=int(redis_port),
+            password=redis_password,
+            socket_timeout=2,
+        )
         r.ping()
         redis_latency = (time.time() - redis_start) * 1000
         services.append(
@@ -134,7 +142,7 @@ def health_detailed(request: HttpRequest) -> dict:
                 "name": "redis",
                 "healthy": True,
                 "latency_ms": round(redis_latency, 2),
-                "details": {"host": redis_host, "port": redis_port},
+                "details": {"host": redis_host, "port": int(redis_port)},
             }
         )
     except Exception as e:
@@ -142,13 +150,15 @@ def health_detailed(request: HttpRequest) -> dict:
             {"name": "redis", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
 
-    # Check Milvus
+    # Check Milvus — configuration from Django settings only.
     try:
         from pymilvus import MilvusClient
 
         milvus_start = time.time()
-        milvus_host = os.environ.get("SOMA_MILVUS_HOST", "localhost")
-        milvus_port = os.environ.get("SOMA_MILVUS_PORT", "19530")
+        milvus_host = getattr(settings, "SOMA_MILVUS_HOST", None)
+        milvus_port = getattr(settings, "SOMA_MILVUS_PORT", None)
+        if not milvus_host or not milvus_port:
+            raise RuntimeError("SOMA_MILVUS_HOST/SOMA_MILVUS_PORT is not configured")
         client = MilvusClient(uri=f"http://{milvus_host}:{milvus_port}", timeout=2)
         client.list_collections()
         milvus_latency = (time.time() - milvus_start) * 1000
@@ -210,7 +220,7 @@ def health_detailed(request: HttpRequest) -> dict:
         "platform": platform.platform(),
         "hostname": platform.node(),
         "process_id": os.getpid(),
-        "django_settings": os.environ.get("DJANGO_SETTINGS_MODULE", "unknown"),
+        "django_settings": getattr(settings, "SETTINGS_MODULE", "unknown"),
     }
 
     # Determine overall status
