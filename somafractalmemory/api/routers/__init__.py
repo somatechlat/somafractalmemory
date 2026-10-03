@@ -1,7 +1,6 @@
 """Django Ninja routers for SomaFractalMemory API.
 
-Standalone mode — no AAAS admin router.
-AAAS endpoints are a separate deployment concern (see infra/aaas/).
+Standalone mode — no admin product surface.
 """
 
 from .graph import router as graph_router

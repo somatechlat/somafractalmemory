@@ -137,8 +137,7 @@ api.add_router("/memories", memory_router, tags=["memories"])
 api.add_router("", health_router, tags=["system"])
 api.add_router("/graph", graph_router, tags=["graph"])
 
-# NOTE: AAAS admin router is NOT mounted in standalone mode.
-# See infra/aaas/ for AAAS deployment configuration.
+# NOTE: Standalone mode only. No admin product surface is mounted here.
 
 
 __all__ = [
