@@ -224,16 +224,13 @@ class MemoryService:
             },
         )
 
-        # Store vector embedding (best effort)
+        # Store vector embedding. A failed delete must abort the write:
+        # inserting after a failed delete is how one coordinate gets two
+        # vectors ("vector cloning"). store() is @transaction.atomic, so
+        # raising here leaves the ORM row untouched.
         if self.vector_store:
+            self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
             try:
-                # Fix Flaw 2: Prevent vector cloning by deleting old vector for this
-                # coordinate (scoped to namespace + tenant) if it exists
-                try:
-                    self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
-                except Exception:
-                    pass  # Ignore if not found or store inaccessible during cleanup
-
                 milvus_id = self.vector_store.insert(
                     coordinate_key=coord_key,
                     vector=vector,
