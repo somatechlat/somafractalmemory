@@ -17,9 +17,11 @@ there is no ``ALLOWED_HOSTS = ["*"]``. Missing means the process does not boot.
 
 Where the values come from
 --------------------------
-1. Vault — the system of record (Rule 164).
+1. Vault — the system of record (Rule 164). When Vault topology is present,
+   a Vault failure raises. It never falls through to ENV.
 2. The deployment's secret injection (compose ``*_FILE`` / k8s
-   ``secretKeyRef``), presented as environment variables at process start.
+   ``secretKeyRef``), presented as environment variables at process start —
+   only when this deployment has no Vault at all.
 
 This module reads them **once**, holds them in memory and never writes them
 back into ``os.environ``. Writing a secret into the process environment is how
@@ -52,36 +54,53 @@ def _credential(what: str, *names: str, vault: tuple[str, str] | None = None) ->
     Args:
         what: Human name used in the error, e.g. ``"Django SECRET_KEY"``.
         *names: Environment variable names, in priority order.
-        vault: Optional ``(path, key)`` in Vault. When given, Vault is tried
-            first; the environment is the fallback injection channel while the
-            compose/k8s -> Vault migration (Rule 164) is still in flight.
+        vault: Optional ``(path, key)`` in Vault. When Vault topology is present
+            it is the source of record and any lookup failure raises. Only when
+            the deployment has no Vault at all does the injection channel below
+            apply (compose ``*_FILE`` / k8s ``secretKeyRef``).
 
     Returns:
         The resolved value. Never empty.
 
     Raises:
-        ImproperlyConfigured: if every source is absent or empty. That is the
-            Rule 91 failure mode -- the process must not boot on a guess.
+        ImproperlyConfigured: if every source is absent or empty, or if Vault
+            was consulted and failed. That is the Rule 91 failure mode -- the
+            process must not boot on a guess, and a swallowed Vault error is a
+            bypass (Rule 164).
     """
     if vault is not None:
         try:
             from somafractalmemory.admin.core.security.vault_client import (
                 get_secret,
+                vault_topology_present,
             )
 
-            value = get_secret(vault[0], vault[1])
-            if value:
-                return str(value)
+            if vault_topology_present():
+                value = get_secret(vault[0], vault[1])
+                if value:
+                    return str(value)
+                raise ImproperlyConfigured(
+                    f"{what}: Vault returned an empty secret at "
+                    f"vault:{vault[0]}[{vault[1]}]. VIBE Rule 91: an empty "
+                    f"secret is not permission to invent a value."
+                )
+            # No Vault topology at all: fall through to the deployment's
+            # injection channel -- not to a code default.
         except ImportError as exc:
             raise ImproperlyConfigured(
                 f"{what}: Vault client is not importable ({exc}). Rule 164 -- secrets "
                 f"come from Vault; a missing client is a deployment error, not a "
                 f"licence to invent a value."
             ) from exc
-        except Exception:
-            # Vault unreachable or unconfigured. Fall through to the
-            # environment injection channel -- not to a default.
-            pass
+        except ImproperlyConfigured:
+            # VaultNotConfigured / VaultAuthError / SecretNotFound already say
+            # what failed. Do not swallow them into an ENV fallback.
+            raise
+        except Exception as exc:
+            raise ImproperlyConfigured(
+                f"{what}: Vault lookup failed ({exc}). "
+                "VIBE Rule 164: a swallowed Vault error is a bypass. Fail closed."
+            ) from exc
 
     for name in names:
         value = env.str(name, default=None)
