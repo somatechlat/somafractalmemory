@@ -8,16 +8,32 @@ import time
 
 import django
 import pytest
-
-# Force Setup
 from django.conf import settings
 
+# ---------------------------------------------------------------------------
+# Test-only configuration. TEST DATA, not a deployment default.
+#
+# ``somafractalmemory.settings.django_core`` refuses to boot without a real
+# SECRET_KEY, database user/password and ALLOWED_HOSTS (VIBE Rule 91: no code
+# defaults for credentials). These values are explicitly marked as test
+# fixtures so they can never be mistaken for production configuration.
+#
+# They must be set BEFORE ``django.setup()``, which is what imports settings.
+# ---------------------------------------------------------------------------
+_TEST_ENV = {
+    "SOMA_SECRET_KEY": "test-only-insecure-secret-key-not-for-production",
+    "SOMA_DB_USER": "test_user",
+    "SOMA_DB_PASSWORD": "test_password_not_a_real_credential",
+    "SOMA_ALLOWED_HOSTS": "testserver,localhost,127.0.0.1",
+    "SOMA_API_TOKEN": "test-token",
+}
+for _key, _value in _TEST_ENV.items():
+    os.environ.setdefault(_key, _value)
+
+# Force Setup
 if not settings.configured:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "somafractalmemory.settings")
 django.setup()
-
-# Ensure API surfaces can import with mandatory auth in test runs.
-os.environ.setdefault("SOMA_API_TOKEN", "test-token")
 
 
 def _tcp_open(host: str, port: int, timeout: float = 1.0) -> bool:

@@ -1,44 +1,25 @@
-import os
+"""Infrastructure settings for SomaFractalMemory.
+
+This module used to begin with a Vault bootstrap that fetched database and
+Redis credentials and **wrote them into ``os.environ``**. That is a Rule 164
+violation dressed as a feature: a secret in the process environment is visible
+in ``ps``, ``/proc/*/environ`` and every child process. It was also ordered
+wrong -- ``settings/__init__`` imports ``django_core`` before ``infra``, so the
+injection ran after the values it was meant to supply had already been read,
+and only ``settings.standalone`` compensated for that with an explicit
+re-read hack.
+
+Credential resolution now lives in ``django_core._credential``: Vault first,
+the deployment's injection channel second, never a code default (Rule 91),
+never written back to the environment. This module holds topology and
+behaviour knobs only.
+"""
+
 from pathlib import Path
 
 import environ
 
 env = environ.Env()
-
-
-try:
-    from somafractalmemory.admin.core.security.vault_client import (
-        VaultNotConfigured,
-        get_db_credentials,
-        get_redis_credentials,
-    )
-
-    try:
-        # DB Injection
-        db_creds = get_db_credentials()
-        if db_creds:
-            _user = db_creds.get("username", "postgres")
-            _pass = db_creds.get("password", "")
-            _host = db_creds.get("host", "localhost")
-            _port = db_creds.get("port", 5432)
-            _name = db_creds.get("dbname", "somafractalmemory")
-            os.environ["SOMA_DB_USER"] = _user
-            os.environ["SOMA_DB_PASSWORD"] = _pass
-            os.environ["SOMA_DB_HOST"] = _host
-            os.environ["SOMA_DB_PORT"] = str(_port)
-            os.environ["SOMA_DB_NAME"] = _name
-
-        # Redis Injection
-        redis_creds = get_redis_credentials()
-        if redis_creds:
-            os.environ["SOMA_REDIS_HOST"] = redis_creds.get("host", "localhost")
-            os.environ["SOMA_REDIS_PORT"] = str(redis_creds.get("port", 6379))
-            os.environ["SOMA_REDIS_PASSWORD"] = redis_creds.get("password", "")
-
-    except (VaultNotConfigured, Exception):
-        pass
-except ImportError:
-    pass
 
 # -----------------------------------------------------------------------------
 # Redis Configuration
@@ -46,6 +27,9 @@ except ImportError:
 SOMA_REDIS_HOST = env.str("SOMA_REDIS_HOST", default=None)
 SOMA_REDIS_PORT = env.int("SOMA_REDIS_PORT", default=6379)
 SOMA_REDIS_DB = env.str("SOMA_REDIS_DB", default="0")
+# Absent (None) is a real topology: a Redis with no AUTH. It is not an empty
+# password and it is not a silent fallback -- when this deployment requires
+# Redis AUTH, the operator sets SOMA_REDIS_PASSWORD or Vault supplies it.
 SOMA_REDIS_PASSWORD = env.str("SOMA_REDIS_PASSWORD", default=None)
 
 # -----------------------------------------------------------------------------
