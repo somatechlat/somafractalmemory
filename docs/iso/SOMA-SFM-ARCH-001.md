@@ -11,14 +11,15 @@
 |---|---|
 | Document Title | SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification |
 | Document Identifier | SOMA-SFM-ARCH-001 |
-| Version | 2.0.1 |
-| Date | 2026-09-28 |
-| Status | Approved |
+| Version | 2.1.0 |
+| Date | 2026-10-03 |
+| Status | Draft |
 | Author | SomaTech LAT Engineering |
-| Approver | CTO, SomaTech LAT |
+| Approver | — |
 | Classification | Confidential |
 | ISO Reference | ISO/IEC 42010 — Systems and Software Engineering — Architecture Description |
-| Next Review | 2026-12-28 |
+| Next Review | 2027-01-03 |
+| Related | `somafractalmemory/settings/model.py` (TUNABLES registry), `somafractalmemory/settings/infra.py` (deleted-knob record) |
 
 ## Revision History
 
@@ -28,6 +29,7 @@
 | 1.1.0 | 2025-11-15 | Engineering | Added AAAS deployment mode, OPA integration |
 | 2.0.0 | 2026-06-15 | Engineering | Production-ready revision; updated for v0.2.0, added Helm charts, Vault integration, circuit breaker, batch processing |
 | 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-ARCH-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
+| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed claims of reservoir/decorated importance, decay/pruning, rate-limit middleware, OPA client and AAAS MultiAuth (`admin/aaas/auth.py` does not exist; `APIKey` was dropped in migration `0006`). §2.2/§7.1/§8.1 now state AAAS as not deployed. End-of-document stamp corrected. Status returned to Draft (meaning change per SOMA-SFM-DOCS-001 §3.4). |
 
 ### Distribution
 
@@ -60,7 +62,7 @@ SFM implements a **hierarchical memory system** with three tiers:
 - **Hierarchical Memory**: Episodic, semantic, and summary memory types with fractal coordinate addressing
 - **Multi-Tenancy**: Cryptographic namespace isolation per tenant
 - **Graph Operations**: Link memories with typed, weighted edges; shortest-path traversal via PostgreSQL recursive CTE
-- **Fractal Organization**: Weighted importance scoring with reservoir-based normalization and configurable decay
+- **Ordering**: Caller-supplied `Memory.importance` float used for ORM fallback ordering. There is no reservoir normalization and no configurable decay — see §4.4 and §4.5.
 
 ### 1.3 Scope
 
@@ -117,49 +119,43 @@ SFM supports two deployment modes with distinct configurations.
 | **Auth** | Simple bearer token (`SOMA_API_TOKEN`) |
 | **Token Validation** | `hmac.compare_digest` (constant-time comparison) |
 | **Settings Module** | `somafractalmemory.settings.standalone` |
-| **Infrastructure** | Own PostgreSQL, Redis, Milvus, Vault, OPA |
+| **Infrastructure** | Own PostgreSQL, Redis, Milvus, Vault (OPA container is composed but has no client in this tree) |
 | **Docker Compose** | `infra/standalone/docker-compose.yml` |
 | **Helm Chart** | `infra/helm/` (values-local-dev.yaml, values-prod-ha.yaml) |
 
 **Infrastructure Stack (Standalone)**:
 
-| Service | Image | Host Port | Internal Port |
-|:--------|:------|:----------|:--------------|
-| API | somafractalmemory:latest | 10101 | 10101 |
-| PostgreSQL | postgres:15-alpine | 10432 | 5432 |
-| Redis | redis:7.2-alpine | 10379 | 6379 |
-| Milvus | milvusdb/milvus:v2.3.3 | 10530 | 19530 |
-| Vault | hashicorp/vault:1.13.3 | 10200 | 8200 |
-| OPA | openpolicyagent/opa:0.54.0 | 10818 | 8181 |
-| Etcd | quay.io/coreos/etcd:v3.5.5 | — | 2379 |
-| MinIO | minio/minio | — | 9000 |
+| Service | Image | Host Port | Internal Port | Client in this tree |
+|:--------|:------|:----------|:--------------|:-------------------|
+| API | somafractalmemory:latest | 10101 | 10101 | — |
+| PostgreSQL | postgres:15-alpine | 10432 | 5432 | Django ORM |
+| Redis | redis:7.2-alpine | 10379 | 6379 | health probe only |
+| Milvus | milvusdb/milvus:v2.3.3 | 10530 | 19530 | `milvus_vector.py` |
+| Vault | hashicorp/vault:1.13.3 | 10200 | 8200 | `vault_client.py` |
+| OPA | openpolicyagent/opa:0.54.0 | 10818 | 8181 | **none** — composed, not called. `SOMA_OPA_*` knobs were deleted with the absent client. |
+| Etcd | quay.io/coreos/etcd:v3.5.5 | — | 2379 | (Milvus metadata) |
+| MinIO | minio/minio | — | 9000 | (Milvus object store) |
 
 ### 2.2 AAAS Mode (Agent-as-a-Service)
 
-**Purpose**: Integrated deployment as part of the Soma Cognitive Triad.
+**Status: NOT DEPLOYED.** AAAS is a documented future deployment concern, not
+a mode this codebase can run. The evidence:
 
-| Parameter | Value |
-|:----------|:------|
-| **Port** | 63901 |
-| **Auth** | SomaBrain `sbk_*` token validation via `/api/v1/auth/verify` |
-| **Auth Fallback** | Local `sfm_*` API keys, `SOMA_API_TOKEN` simple bearer |
-| **Settings Module** | `somafractalmemory.settings.standalone` (shared) |
-| **Integration** | SomaAgent01 (port 63900, REST consumer), SomaBrain (port 63996, auth provider) |
+| Claim in earlier revisions | Code truth |
+|:---------------------------|:-----------|
+| `somafractalmemory/admin/aaas/auth.py` (`MultiAuth`, `APIKeyAuth`) | **Absent.** No `admin/aaas/` package exists. |
+| `APIKey` / `UsageRecord` models | **Dropped.** Migration `0006_drop_apikey_usagerecord.py` deletes both. |
+| SomaBrain `sbk_*` validation via `/api/v1/auth/verify` | **Absent.** No HTTP client calls SomaBrain. `api/auth.py:1-9` states "No API key management, no SomaBrain integration". |
+| Per-tenant API keys (`sfm_*`) | **Absent.** |
 
-**Auth Flow (AAAS)**:
+What ships is **Standalone only**: `StandaloneAuth` against `SOMA_API_TOKEN`
+(`somafractalmemory/api/auth.py`). `api/core.py:128` mounts the memory, search,
+graph and health routers and notes "Standalone mode only. No admin product
+surface is mounted here." `infra/aaas/README.md` also records AAAS as
+NOT YET DEPLOYED (that README lists modules that no longer exist in the tree).
 
-```
-Client Request
-  │
-  ├─ sfm_* prefix → Local validation (SHA-256 key hash lookup)
-  │
-  ├─ sbk_* prefix → SomaBrain central auth
-  │     GET http://somabrain:63996/api/v1/auth/verify
-  │     Authorization: Bearer sbk_*
-  │     timeout: 3.0s (hardened)
-  │
-  └─ SOMA_API_TOKEN → Simple bearer (hmac.compare_digest)
-```
+Future AAAS work, if undertaken, must be specified before it is documented as
+present. Until then this section is a boundary marker, not a feature.
 
 ---
 
@@ -173,8 +169,8 @@ SFM follows a strict three-layer architecture:
 ┌─────────────────────────────────────────────────────────┐
 │                    API Layer                             │
 │  Django Ninja Routers (memory, search, graph, health)   │
-│  Authentication: StandaloneAuth / APIKeyAuth / MultiAuth│
-│  Rate Limiting: Django Middleware                        │
+│  Authentication: StandaloneAuth (SOMA_API_TOKEN bearer) │
+│  Rate Limiting: none (no middleware; knobs deleted)     │
 ├─────────────────────────────────────────────────────────┤
 │                   Service Layer                          │
 │  MemoryService: CRUD, search, stats, health_check       │
@@ -189,7 +185,7 @@ SFM follows a strict three-layer architecture:
 │                 Storage Backends                         │
 │  PostgreSQL 15+  │  Milvus 2.3+  │  Redis 7.0+          │
 │  (metadata)      │  (vectors)    │  (cache)              │
-│  Vault (KV v2)   │  OPA (authZ)  │                      │
+│  Vault (KV v2)   │  (no OPA client in this tree)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -463,17 +459,15 @@ All models defined in `somafractalmemory/admin/core/models.py`.
 
 ### 7.1 Authentication
 
-**Standalone Mode**:
-- `StandaloneAuth` (Django Ninja `HttpBearer`)
+**Standalone Mode (the only mode in this tree)**:
+- `StandaloneAuth` (Django Ninja `HttpBearer`) — `somafractalmemory/api/auth.py`
 - Validates `SOMA_API_TOKEN` using `hmac.compare_digest` (constant-time comparison)
 - Prevents timing attacks on token validation
 - All authenticated requests bound to `standalone` tenant
+- Unconfigured token rejects every caller (fail-closed)
 
-**AAAS Mode**:
-- `MultiAuth` composite: `APIKeyAuth` → `SimpleTokenAuth` fallback
-- `sfm_*` prefix: Local SHA-256 hash lookup against `APIKey` model
-- `sbk_*` prefix: Remote validation via SomaBrain (`GET /api/v1/auth/verify`, 3s timeout)
-- `SOMA_API_TOKEN`: Simple bearer with `hmac.compare_digest`
+**AAAS Mode**: not deployed (see §2.2). There is no `MultiAuth`, no `APIKeyAuth`,
+and no SomaBrain token validation in this tree.
 
 ### 7.2 Authorization
 
@@ -515,23 +509,20 @@ read_only: false  # Django needs write access to /tmp
 
 ### 8.1 SomaBrain Integration
 
-| Aspect | Detail |
-|:-------|:-------|
-| **URL** | `http://somabrain:63996/api/v1/auth/verify` |
-| **Protocol** | HTTP GET with `Authorization: Bearer sbk_*` |
-| **Timeout** | 3.0 seconds (hardened against thread exhaustion) |
-| **Response** | `{tenant_slug, tenant_id, api_key_id, scopes, is_test}` |
-| **Failure Mode** | Returns `None` (auth denied), logs error |
-| **Source** | `somafractalmemory/admin/aaas/auth.py:130-168` |
+**Not implemented in this tree.** Earlier revisions described a SomaBrain
+`/api/v1/auth/verify` client in `somafractalmemory/admin/aaas/auth.py`. That
+module does not exist. No process in this codebase opens an HTTP client to
+SomaBrain. The SomaBrain relationship today is documentary (the triad
+topology in §1.4), not a code integration.
 
 ### 8.2 SomaAgent01 Integration
 
 | Aspect | Detail |
 |:-------|:-------|
-| **Role** | REST API consumer |
+| **Role** | REST API consumer of the SFM HTTP API |
 | **Port** | 63900 |
 | **Protocol** | HTTP calls to SFM API |
-| **Auth** | Uses `sbk_*` tokens validated via SomaBrain |
+| **Auth** | Presents `SOMA_API_TOKEN` bearer (StandaloneAuth). The agent never holds a direct SFM client — the memory seam is SomaBrain-owned (T-1). |
 
 ---
 
@@ -653,6 +644,32 @@ Credentials with no code default (fail-closed, Rule 91): `SOMA_SECRET_KEY`,
 AuthZ is the bearer token via `StandaloneAuth`; there is no OPA client, circuit
 breaker, rate limiter, CORS middleware or body-size cap in this tree.
 
+### Deleted knobs (settings-only ghosts)
+
+The following keys once appeared in configuration tables and environment
+examples. They were deleted because **a config knob with no reader is a lie**:
+nothing in this codebase reads them, and inventing a feature just to give a
+knob a reader would violate the thin/fast/latency order. The authoritative
+record is the module docstring of `somafractalmemory/settings/infra.py:25-77`.
+
+| Deleted knob(s) | Feature it pretended to parameterise | Code truth |
+|:----------------|:-------------------------------------|:-----------|
+| `SOMA_MEMORY_MODE`, `SOMA_MODEL_NAME` | mode switch / local model loader | embeddings arrive precomputed or from `HashEmbedder`; no model loader |
+| `SOMA_FORCE_HASH_EMBEDDINGS` | force hash embedder | there is no second embedder to force off |
+| `SOMA_PRUNING_INTERVAL_SECONDS`, `SOMA_MAX_MEMORY_SIZE`, `SOMA_DECAY_*` | decay, eviction, prune scheduling | no decay scorer, no eviction, no prune command |
+| `SOMA_IMPORTANCE_*` | reservoir / winsorized / logistic normalization | `importance` is a caller-supplied float |
+| `SOMA_HYBRID_RECALL_DEFAULT`, `SOMA_HYBRID_BOOST`, `SOMA_SIMILARITY_ALLOW_NEGATIVE` | hybrid score fusion, negative-score clamp | ranking is vector score + hash penalty + ORM fallback; no fusion |
+| `SOMA_ENABLE_BATCH_UPSERT`, `SOMA_BATCH_SIZE`, `SOMA_BATCH_FLUSH_MS` | batch write path | `store()` writes one row per call |
+| `SOMA_JWT_*` | JWT auth stack | auth is the `SOMA_API_TOKEN` bearer via `StandaloneAuth` |
+| `SOMA_OPA_*`, `SOMA_CIRCUIT_*` | OPA client, circuit breaker | no OPA client, no breaker in this tree |
+| `SOMA_RATE_LIMIT_*`, `SOMA_CORS_ORIGINS`, `SOMA_MAX_REQUEST_BODY_MB` | rate limit / CORS / body-size middleware | none of the three exist in `MIDDLEWARE` (`settings/django_core.py:181-185`). `api.core.get_rate_limiter` used to return `None` and claim otherwise; the stub is gone with the knobs. |
+| `SOMA_LANGFUSE_*`, `SOMA_FAST_CORE_*`, `SOMA_ASYNC_METRICS_ENABLED`, `SOMA_SERIALIZER`, `SOMA_POSTGRES_URL`, `SOMA_API_PORT`, `SOMA_SECRETS_PATH`, `SOMA_NAMESPACE` | tracing, feature flags, serializer, legacy DSN, bind port, secret prefix, duplicate namespace label | no reader; see `settings/infra.py` for each reason |
+
+What remains is the `TUNABLES` registry in
+`somafractalmemory/settings/model.py:76-166` — every key there has a named
+reader. `SOMA_SIMILARITY_METRIC` (`cosine|ip|l2`) is live: it is read by
+`milvus_vector.py` at collection creation.
+
 ---
 
-*End of SOMA-SFM-ARCH-001 v2.0.0*
+*End of SOMA-SFM-ARCH-001 v2.1.0*

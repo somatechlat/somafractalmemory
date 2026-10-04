@@ -6,14 +6,14 @@
 |---|---|
 | Document Title | API Reference |
 | Document Identifier | SOMA-SFM-GUIDE-API-001 |
-| Version | 1.0.0 |
-| Date | 2026-09-28 |
+| Version | 1.1.0 |
+| Date | 2026-10-03 |
 | Status | Draft |
 | Author | SomaTech Engineering |
 | Approver | — |
 | Classification | Internal |
 | ISO Reference | ISO 9001:2015 — Quality Management Systems — Requirements |
-| Next Review | 2026-12-28 |
+| Next Review | 2027-01-03 |
 
 
 ## Revision History
@@ -21,6 +21,7 @@
 | Version | Date | Author | Description |
 |---|---|---|---|
 | 1.0.0 | 2026-09-28 | SomaTech Engineering | Initial issue. Brought under the house ISO document-control contract. |
+| 1.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Authentication is the `SOMA_API_TOKEN` bearer only — there is no `sfm_*` API-key path (`APIKey` was dropped in migration `0006`). |
 
 
 Complete reference for all SomaFractalMemory API endpoints.
@@ -33,13 +34,15 @@ http://localhost:10101
 
 ## Authentication
 
-All endpoints except health probes require Bearer token authentication (SOMA_API_TOKEN or `sfm_*` API key):
+All endpoints except health probes require Bearer token authentication against
+the shared `SOMA_API_TOKEN`:
 
 ```
 Authorization: Bearer YOUR_TOKEN
 ```
 
-Set the shared token via `SOMA_API_TOKEN` environment variable or use an issued API key.
+There is no per-key credential in this tree. The `sfm_*` API-key path was
+removed with the `APIKey` model (migration `0006_drop_apikey_usagerecord.py`).
 
 ---
 

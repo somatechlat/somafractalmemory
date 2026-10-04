@@ -11,14 +11,14 @@
 |---|---|
 | Document Title | SOMA-SFM-SRS-001: SomaFractalMemory Software Requirements Specification |
 | Document Identifier | SOMA-SFM-SRS-001 |
-| Version | 1.0.1 |
-| Date | 2026-09-28 |
-| Status | Approved |
+| Version | 1.1.0 |
+| Date | 2026-10-03 |
+| Status | Draft |
 | Author | SomaTech LAT Engineering |
-| Approver | CTO, SomaTech LAT |
+| Approver | — |
 | Classification | Confidential |
 | ISO Reference | ISO/IEC/IEEE 29148:2018 — Systems and Software Engineering — Life Cycle Processes — Requirements Engineering |
-| Next Review | 2026-12-28 |
+| Next Review | 2027-01-03 |
 
 ## Revision History
 
@@ -26,6 +26,7 @@
 |:--------|:-----|:-------|:------------|
 | 1.0.0 | 2026-06-15 | Engineering | Initial SRS aligned with v0.2.0 production release |
 | 1.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-SRS-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
+| 1.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. REQ-SFM-NFR-PERF-003 (rate limiting) and REQ-SFM-NFR-REL-001 (circuit breaker) re-stated as **NOT IMPLEMENTED** — those knobs were deleted (`settings/infra.py`). CONSTR-007 (SomaBrain `sbk_*` validation) and CONSTR-011 (fail-closed OPA) re-stated: neither client exists in this tree. Auth domain reduced to the `SOMA_API_TOKEN` bearer. Status returned to Draft (meaning change). |
 
 ### Normative References
 
@@ -73,7 +74,7 @@ This SRS covers the following functional domains:
 - **Semantic Search**: Vector-based similarity search with filtering and pagination
 - **Graph Operations**: Typed, weighted links between memories with neighbor queries and shortest-path traversal
 - **Multi-Tenancy**: Namespace and tenant isolation with cryptographic boundaries
-- **Authentication**: Bearer token, HMAC, and SomaBrain token validation
+- **Authentication**: Shared bearer token (`SOMA_API_TOKEN`) with constant-time HMAC comparison
 - **Audit Logging**: Immutable operation log for every CRUD and search action
 
 ### 1.4 Definitions and Acronyms
@@ -84,8 +85,8 @@ This SRS covers the following functional domains:
 | Coordinate | A tuple of floats (e.g., `(1.0, 2.0, 3.0)`) serving as a fractal memory address |
 | Namespace | Logical grouping of memories with isolated Milvus collections |
 | Tenant | An organisational unit whose data is cryptographically separated |
-| AAAS | Agent-as-a-Service (integrated deployment mode) |
-| OPA | Open Policy Agent (external authorization engine) |
+| AAAS | Agent-as-a-Service (integrated deployment mode — **not deployed**; see SOMA-SFM-ARCH-001 §2.2) |
+| OPA | Open Policy Agent. Composed as a container; **no client exists in this tree**. |
 
 ---
 
@@ -155,13 +156,13 @@ This SRS covers the following functional domains:
 |:-------|:------------|:-------|:-------------|
 | REQ-SFM-NFR-PERF-001 | Memory store and retrieve operations SHALL complete in under 50ms (p50) under normal load. | < 50ms p50 | Performance baseline |
 | REQ-SFM-NFR-PERF-002 | Semantic search operations SHALL complete in under 200ms (p99) for collections up to 1M vectors. | < 200ms p99 | Load test |
-| REQ-SFM-NFR-PERF-003 | The system SHALL support configurable rate limiting via `SOMA_RATE_LIMIT_MAX` and `SOMA_RATE_LIMIT_WINDOW` environment variables. | Configurable | API test |
+| REQ-SFM-NFR-PERF-003 | **NOT IMPLEMENTED.** Earlier revisions required configurable rate limiting via `SOMA_RATE_LIMIT_MAX` / `SOMA_RATE_LIMIT_WINDOW`. Those knobs were deleted: no rate-limit middleware exists (`settings/infra.py:65-68`). A requirement for a gate that does not exist is a defect, not a placeholder. If rate limiting is wanted it must be specified and implemented first. | **OPEN** | — |
 
 ### 3.2 Reliability
 
 | Req ID | Requirement | Target | Verification |
 |:-------|:------------|:-------|:-------------|
-| REQ-SFM-NFR-REL-001 | The system SHALL implement a circuit breaker for external service calls (SomaBrain auth, Milvus) with configurable failure threshold and reset interval. | Configurable | Resilience test |
+| REQ-SFM-NFR-REL-001 | **NOT IMPLEMENTED.** Earlier revisions required a circuit breaker for external service calls. No breaker exists in this tree and `SOMA_CIRCUIT_*` knobs were deleted (`settings/infra.py:69-71`). There is also no SomaBrain auth client to wrap. Fail-closed behaviour lives at the actual gates (Vault, dim checks, tenant resolution). | **OPEN** | — |
 | REQ-SFM-NFR-REL-002 | The system SHALL degrade gracefully when Milvus is unavailable by falling back to PostgreSQL-based search. | No data loss | Resilience test |
 | REQ-SFM-NFR-REL-003 | The system SHALL support health probes (`/healthz`, `/readyz`) for Kubernetes liveness and readiness checks. Liveness SHALL return HTTP 503 if any backend is unhealthy. | 503 on failure | Health test |
 
@@ -189,18 +190,18 @@ This SRS covers the following functional domains:
 
 | System | Interface | Protocol | Direction | Auth | Detail |
 |:-------|:----------|:---------|:----------|:-----|:-------|
-| SomaBrain | Auth verification | HTTP GET `/api/v1/auth/verify` | Inbound request | `sbk_*` Bearer token | 3s timeout, returns tenant + scopes |
-| SomaAgent01 | Memory API consumer | REST (HTTP) | Inbound request | `sbk_*` or `sfm_*` Bearer | Store, search, graph operations |
+| SomaBrain | Auth verification | **Not implemented** | — | — | No client in this tree. AAAS `sbk_*` validation was never landed (`admin/aaas/auth.py` absent). |
+| SomaAgent01 | Memory API consumer | REST (HTTP) | Inbound request | `SOMA_API_TOKEN` Bearer | Store, search, graph operations |
 
 ### 4.2 Storage Backend Interfaces
 
-| Backend | Interface | Protocol | Port (Standalone) | Port (AAAS) | Purpose |
-|:--------|:----------|:---------|:-------------------|:------------|:--------|
-| PostgreSQL 15+ | Django ORM | TCP | 10432 | 5432 | Metadata, graph links, audit log |
-| Milvus 2.3+ | `pymilvus` gRPC | gRPC | 10530 | 19530 | Vector embeddings, similarity search |
-| Redis 7.0+ | Django cache backend | TCP | 10379 | 6379 | Session cache, rate limiting |
-| HashiCorp Vault 1.13 | `hvac` HTTP client | HTTP | 10200 | 8200 | Secrets (DB creds, Redis creds) |
-| OPA 0.54 | HTTP policy evaluation | HTTP | 10818 | 8181 | Authorization policy decisions |
+| Backend | Interface | Protocol | Port (Standalone) | Purpose |
+|:--------|:----------|:---------|:-------------------|:--------|
+| PostgreSQL 15+ | Django ORM | TCP | 10432 | Metadata, graph links, audit log |
+| Milvus 2.3+ | `pymilvus` gRPC | gRPC | 10530 | Vector embeddings, similarity search |
+| Redis 7.0+ | health probe only | TCP | 10379 | Presence check in `/health` |
+| HashiCorp Vault 1.13 | `hvac` HTTP client | HTTP | 10200 | Secrets (DB creds, Redis creds) |
+| OPA 0.54 | **none** | — | 10818 | Composed container with no client. Not a control. |
 
 ### 4.3 API Interface Summary
 
@@ -233,7 +234,7 @@ This SRS covers the following functional domains:
 
 | ID | Constraint | Rationale |
 |:---|:-----------|:----------|
-| CONSTR-007 | SomaBrain `sbk_*` tokens validated via `/api/v1/auth/verify` on port 63996 | Centralized auth for Soma Cognitive Triad |
+| CONSTR-007 | **Superseded.** SomaBrain `sbk_*` token validation via `/api/v1/auth/verify` is **not implemented** in this tree. `admin/aaas/auth.py` does not exist. See SOMA-SFM-ARCH-001 §2.2. | — |
 | CONSTR-008 | Standalone mode binds all requests to `standalone` tenant | Single-tenant simplification for standalone deployment |
 | CONSTR-009 | Milvus collections named `sfm_{namespace}` | Naming convention for namespace isolation |
 
@@ -242,8 +243,8 @@ This SRS covers the following functional domains:
 | ID | Constraint | Rationale |
 |:---|:-----------|:----------|
 | CONSTR-010 | All Docker containers must use `cap_drop: [ALL]` and `no-new-privileges: true` | Security hardening (SOMA-SFM-SEC-001) |
-| CONSTR-011 | OPA must be configured fail-closed (`SOMA_OPA_FAIL_OPEN = False`) in production | Authorization fails safe |
-| CONSTR-012 | Vault KV v2 secrets must be populated before SFM startup | Credential dependency |
+| CONSTR-011 | **Superseded.** There is no OPA client in this tree, so `SOMA_OPA_FAIL_OPEN` cannot be configured. The `SOMA_OPA_*` knobs were deleted (`settings/infra.py:69-71`). Fail-closed behaviour lives at the real gates (bearer token, namespace/tenant checks, Vault). | — |
+| CONSTR-012 | Vault KV v2 secrets must be populated before SFM startup | Credential dependency. Vault failure raises; there is no ENV fallback. |
 
 ---
 

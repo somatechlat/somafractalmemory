@@ -11,14 +11,14 @@ last_modified: "2025-10-29"
 |---|---|
 | Document Title | 📘 Endpoint Catalog |
 | Document Identifier | SOMA-SFM-GUIDE-OPS-001 |
-| Version | 1.1.0 |
-| Date | 2026-09-28 |
+| Version | 1.2.0 |
+| Date | 2026-10-03 |
 | Status | Draft |
 | Author | SomaTech Engineering |
 | Approver | — |
 | Classification | Internal |
 | ISO Reference | ISO 9001:2015 — Quality Management Systems — Requirements |
-| Next Review | 2026-12-28 |
+| Next Review | 2027-01-03 |
 
 
 ## Revision History
@@ -27,6 +27,7 @@ last_modified: "2025-10-29"
 |---|---|---|---|
 | 1.0.0 | 2026-09-28 | SomaTech Engineering | Initial issue. Brought under the house ISO document-control contract. |
 | 1.1.0 | 2026-09-28 | SomaTech Engineering | Replaced the link to `../VIBE_CODING_RULES.md`, which resolves outside `docs/` and so could never be a site page, with a path reference. Replaced "additional topics will be added here over time" with pointers to the documents that already cover deployment and production readiness. |
+| 1.2.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed the JWT block, the OPA policy block, the rate-limiting block, the CORS block, `SOMA_MAX_REQUEST_BODY_MB`, `SOMA_API_PORT`, `SOMA_POSTGRES_URL` and `SOMA_SECRETS_PATH`. Those knobs were deleted because nothing reads them (`settings/infra.py:25-77`). `/stats` is no longer described as rate-limited. Configuration section rewritten to the `TUNABLES` registry. |
 
 
 Auth: Bearer token unless noted. Accepts SOMA_API_TOKEN (shared) or `sfm_*` API keys. Token is required for all memory/search/graph routes.
@@ -60,13 +61,13 @@ Auth: Bearer token unless noted. Accepts SOMA_API_TOKEN (shared) or `sfm_*` API 
 
 ## System
 
-- GET /stats — no auth (rate-limited)
+- GET /stats — no auth
 - GET /metrics — Prometheus metrics, no auth
 - GET /ping — no auth (pong)
 
 Notes
-- Rate limiting: controlled by SOMA_RATE_LIMIT_MAX and SOMA_RATE_LIMIT_WINDOW_SECONDS; Redis-backed if available
-- OPA policy (optional): requests are evaluated against OPA_URL + OPA_POLICY_PATH; dev client allows if OPA is unavailable
+- **Rate limiting: none.** No rate-limit middleware exists. `SOMA_RATE_LIMIT_*` knobs were deleted with the absent gate (`settings/infra.py:65-68`).
+- **OPA: none.** There is no OPA client in this tree. An OPA container is composed in `infra/standalone/docker-compose.yml` but nothing calls it. `SOMA_OPA_*` knobs were deleted (`settings/infra.py:69-71`).
 ---
 title: "Configuration Reference"
 last_modified: "2025-10-29"
@@ -76,64 +77,72 @@ last_modified: "2025-10-29"
 
 Authoritative overview of environment variables and precedence.
 
+**Every tunable is declared once on the `TUNABLES` registry in
+`somafractalmemory/settings/model.py`.** A key that is not in `TUNABLES`
+cannot be resolved (fail-closed, Rule 91). Keys deleted from that registry
+were deleted because nothing reads them — a config knob with no reader is a
+lie. The full deletion record is `somafractalmemory/settings/infra.py:25-77`.
+
 ## 🔐 Authentication / Authorization
 
-- SOMA_API_TOKEN — static bearer token (string)
-- SOMA_API_TOKEN_FILE — path to file containing the token (string)
-- JWT_ENABLED — enable JWT mode (bool-like)
-- JWT_SECRET — HS256 secret (string)
-- JWT_PUBLIC_KEY — RS256 public key (PEM)
-- JWT_ISSUER — expected issuer (optional)
-- JWT_AUDIENCE — expected audience (optional)
+- `SOMA_API_TOKEN` — static bearer token (string). **Required.** Compared with
+  `hmac.compare_digest`. Unconfigured rejects every caller (fail-closed).
+- Auth is the standalone bearer only. There is **no JWT mode**, no per-key
+  credentials and no SomaBrain token validation in this tree.
 
 ## 🛂 Policy (OPA)
 
-- SOMA_OPA_URL — e.g., http://opa:8181 (default http://opa:8181)
-- SOMA_OPA_TIMEOUT — timeout in seconds (default 1.0)
-- SOMA_OPA_FAIL_OPEN — "true" allows access on error (default "false" / Fail Closed)
-  - Policy path is hardcoded to `soma/authz/allow` or configured via code.
+**None.** There is no OPA client. An OPA container is composed in
+`infra/standalone/docker-compose.yml` but nothing evaluates requests against
+it. `SOMA_OPA_URL`, `SOMA_OPA_TIMEOUT` and `SOMA_OPA_FAIL_OPEN` were deleted
+with the absent gate.
 
 ## 🚦 Rate limiting
 
-- SOMA_RATE_LIMIT_MAX — requests per window (<=0 disables)
-- SOMA_RATE_LIMIT_WINDOW_SECONDS — window length in seconds (<=0 disables)
-- Backend: Redis if reachable (host/port/db), otherwise in-memory
+**None.** No rate-limit middleware exists. `SOMA_RATE_LIMIT_MAX` and
+`SOMA_RATE_LIMIT_WINDOW_SECONDS` were deleted. `api.core.get_rate_limiter`
+used to return `None` and claim otherwise; the stub is gone with the knobs.
 
 ## 🌐 CORS
 
-- SOMA_CORS_ORIGINS — comma-separated origins (e.g., https://a.com,https://b.com)
+**None.** No CORS middleware exists (`settings/django_core.py:181-185`).
+`SOMA_CORS_ORIGINS` was deleted.
 
-## 🗄️ Storage (precedence)
+## 🗄️ Storage
 
-Postgres URL resolution (first set wins):
-1. SOMA_POSTGRES_URL
-2. settings.postgres_url (centralized settings, if present)
-3. POSTGRES_URL
-4. Fallback: postgresql://soma@postgres:5432/somamemory
+Postgres (through Django ORM `DATABASES`):
+- `SOMA_DB_NAME` (default `somafractalmemory`), `SOMA_DB_HOST` (default `localhost`), `SOMA_DB_PORT` (default `5432`)
+- `SOMA_DB_USER` / `SOMA_DB_PASSWORD` — credentials, no code default. Vault
+  first (`somafractalmemory/database`), then the deployment's injection channel.
+  A Vault failure raises. There is no `SOMA_POSTGRES_URL` legacy DSN and no
+  code-default fallback URL.
 
-Redis config:
-- REDIS_URL (parsed) OR individual: REDIS_HOST, REDIS_PORT, REDIS_DB
+Redis:
+- `SOMA_REDIS_HOST` (absent = no Redis), `SOMA_REDIS_PORT` (default `6379`), `SOMA_REDIS_DB` (default `0`), `SOMA_REDIS_PASSWORD` (absent = no AUTH)
 
-Milvus config (Standard):
-- SOMA_MILVUS_HOST (default "milvus")
-- SOMA_MILVUS_PORT (default 19530)
+Milvus:
+- `SOMA_MILVUS_HOST` (absent = no Milvus), `SOMA_MILVUS_PORT` (default `19530`), `SOMA_MILVUS_TIMEOUT_S` (default `10.0`)
+- `SOMA_VECTOR_DIM` (default `768`), `SOMA_SIMILARITY_METRIC` (default `cosine`), `SOMA_MILVUS_NLIST` (default `128`), `SOMA_MILVUS_NPROBE` (default `16`)
 
-HASHICORP VAULT (Secrets):
-- SOMA_VAULT_URL — e.g. http://vault:8200 (Required for secrets in prod)
-- SOMA_VAULT_ROLE — Kubernetes role for auth
-- SOMA_SECRETS_PATH — Path to secret in Vault
+HashiCorp Vault (secrets):
+- `SOMA_VAULT_URL` — Vault address (bootstrap also reads `SOMA_VAULT_ADDR` / `VAULT_ADDR`)
+- Credentials are resolved per-secret in `settings.django_core._credential`.
+  There is no generic `SOMA_SECRETS_PATH` prefix.
 
 ## 🔭 Observability
 
-- LOG_LEVEL — default INFO
-- /metrics — Prometheus scrape
-- OpenTelemetry tracing enabled by default; console exporter fallback in dev
+- `SOMA_LOG_LEVEL` (default `INFO`), `SOMA_LOG_JSON` (default `false`)
+- `SOMA_PROBE_TIMEOUT_S` (default `2.0`)
+- `/metrics` — Prometheus scrape
+- OpenTelemetry tracing enabled by default; console exporter fallback in dev.
+  There is no Langfuse integration (`SOMA_LANGFUSE_*` deleted).
 
 ## 📦 API / server
 
-- SOMA_API_PORT — container port (default 10101)
-- API_PORT — host-published port (Compose mapping)
-- SOMA_MAX_REQUEST_BODY_MB — max request size (default 5MB)
+- The process binds where gunicorn/daphne is told to bind. There is no
+  `SOMA_API_PORT` settings reader.
+- No request body cap. `SOMA_MAX_REQUEST_BODY_MB` was deleted with the absent
+  middleware.
 
 ## 🧪 Quick checks
 
@@ -185,22 +194,24 @@ Options (precedence: shell > .env > compose defaults):
 - `.env` file at repo root (see `.env.example`), then `docker compose -f infra/standalone/docker-compose.yml up -d`.
 
 Common variables:
-- SOMA_API_TOKEN: Bearer token for API access (string)
-- SOMA_API_TOKEN_FILE: Path to a file containing the token (string)
-- JWT_ENABLED (optional): Enable JWT auth mode (bool-like)
-- JWT_SECRET (optional): HMAC secret if JWT (HS256) is used (string)
-- JWT_PUBLIC_KEY (optional): RSA public key if JWT (RS256) is used (PEM)
-- JWT_ISSUER/JWT_AUDIENCE (optional): Validate iss/aud claims
-- POSTGRES_PASSWORD: Postgres password (string)
-- SOMA_API_PORT: API port inside container (int; default 10101)
+- `SOMA_API_TOKEN`: Bearer token for API access (string)
+- `SOMA_DB_USER` / `SOMA_DB_PASSWORD`: Postgres credentials (Vault first, no code default)
+- `SOMA_SECRET_KEY`: Django crypto key
+
+There is **no JWT mode**. `JWT_ENABLED`, `JWT_SECRET`, `JWT_PUBLIC_KEY`,
+`JWT_ISSUER` and `JWT_AUDIENCE` were deleted: nothing validated a JWT
+(`settings/infra.py:53-54`). There is no `SOMA_API_PORT` settings reader.
 
 ## Production guidance
 
 - **Never** commit real secrets to the repository.
 - **Mandatory in Production**: Use HashiCorp Vault.
-  - Set `SOMA_VAULT_URL` and `SOMA_VAULT_ROLE`.
-  - Secrets are injected into process memory at startup.
-- Rotate tokens regularly and audit usage.
+  - Set `SOMA_VAULT_URL`.
+  - Secrets are resolved in process memory by `django_core._credential`; they
+    are **never** written back to the environment (Rule 164).
+  - A Vault failure **raises**. It is not a graceful fallback.
+- Rotate the bearer token regularly and audit usage. Rotation is a coordinated
+  restart: standalone mode has one shared `SOMA_API_TOKEN`.
 
 ## Rotation and audit
 

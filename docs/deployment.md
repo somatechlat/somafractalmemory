@@ -6,14 +6,14 @@
 |---|---|
 | Document Title | Deployment Guide |
 | Document Identifier | SOMA-SFM-GUIDE-DEPLOY-001 |
-| Version | 1.0.0 |
-| Date | 2026-09-28 |
+| Version | 1.1.0 |
+| Date | 2026-10-03 |
 | Status | Draft |
 | Author | SomaTech Engineering |
 | Approver | — |
 | Classification | Internal |
 | ISO Reference | ISO 9001:2015 — Quality Management Systems — Requirements |
-| Next Review | 2026-12-28 |
+| Next Review | 2027-01-03 |
 
 
 ## Revision History
@@ -21,6 +21,7 @@
 | Version | Date | Author | Description |
 |---|---|---|---|
 | 1.0.0 | 2026-09-28 | SomaTech Engineering | Initial issue. Brought under the house ISO document-control contract. |
+| 1.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed `SOMA_API_PORT` and `SOMA_RATE_LIMIT_MAX` from the configuration reference — those knobs were deleted (`settings/infra.py`). Defaults now match `TUNABLES` in `settings/model.py`. Added the deleted-key list so operators do not set knobs that do nothing. |
 
 
 This guide covers deploying SomaFractalMemory in production.
@@ -128,42 +129,65 @@ api:
 
 ## Configuration Reference
 
+Every tunable is declared once on the `TUNABLES` registry in
+`somafractalmemory/settings/model.py`. Keys that no longer exist were deleted
+because nothing reads them — see `settings/infra.py`. Do not configure a key
+that is not in `TUNABLES`.
+
 ### API Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOMA_API_TOKEN` | - | **Required**. Authentication token |
+| `SOMA_API_TOKEN` | - | **Required**. Authentication token (fail-closed: unconfigured rejects every caller) |
 | `SOMA_SECRET_KEY` | - | **Required**. Django crypto key |
-| `SOMA_ALLOWED_HOSTS` | * | **Required**. Hostname allowlist |
-| `SOMA_API_PORT` | 10101 | API port |
-| `SOMA_MEMORY_NAMESPACE` | api_ns | Default namespace |
-| `SOMA_RATE_LIMIT_MAX` | 60 | Rate limit (requests per window) |
-| `SOMA_LOG_LEVEL` | INFO | Logging level |
+| `SOMA_ALLOWED_HOSTS` | - | **Required**. Hostname allowlist |
+| `SOMA_MEMORY_NAMESPACE` | `api_ns` | Default namespace |
+| `SOMA_LOG_LEVEL` | `INFO` | Logging level |
+| `SOMA_LOG_JSON` | `false` | Render logs as JSON |
 
 ### Database Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOMA_DB_HOST` | localhost | Database host |
-| `SOMA_DB_PORT` | 5432 | Database port |
-| `SOMA_DB_USER` | postgres | Database user |
-| `SOMA_DB_PASSWORD` | postgres | Database password |
-| `SOMA_DB_NAME` | somafractalmemory | Database name |
+| `SOMA_DB_HOST` | `localhost` | Database host |
+| `SOMA_DB_PORT` | `5432` | Database port |
+| `SOMA_DB_USER` | - | Database user (Vault: `somafractalmemory/database` → `username`) |
+| `SOMA_DB_PASSWORD` | - | Database password (Vault: `somafractalmemory/database` → `password`) |
+| `SOMA_DB_NAME` | `somafractalmemory` | Database name |
+
+Credentials have **no code default**. Vault is consulted first; a Vault failure
+raises. There is no ENV fallback and no `SOMA_POSTGRES_URL` legacy DSN.
 
 ### Cache Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOMA_REDIS_HOST` | localhost | Redis host |
-| `SOMA_REDIS_PORT` | 6379 | Redis port |
-| `SOMA_REDIS_DB` | 0 | Redis database |
+| `SOMA_REDIS_HOST` | `null` | Redis host. Absent means no Redis is deployed. |
+| `SOMA_REDIS_PORT` | `6379` | Redis port |
+| `SOMA_REDIS_DB` | `0` | Redis database |
 
 ### Vector Store Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOMA_MILVUS_HOST` | milvus | Milvus host |
-| `SOMA_MILVUS_PORT` | 19530 | Milvus port |
+| `SOMA_MILVUS_HOST` | `null` | Milvus host. Absent means no Milvus is deployed. |
+| `SOMA_MILVUS_PORT` | `19530` | Milvus port |
+| `SOMA_VECTOR_DIM` | `768` | Vector dimension (must equal the agent seam's `MEM_EMBED_DIM`) |
+| `SOMA_SIMILARITY_METRIC` | `cosine` | Milvus distance metric (`cosine\|ip\|l2`) |
+| `SOMA_MILVUS_NLIST` | `128` | IVF_FLAT cluster count at collection creation |
+| `SOMA_MILVUS_NPROBE` | `16` | IVF_FLAT clusters probed per search |
+
+### Deleted keys (do not set)
+
+These once appeared in deployment material. They were deleted because no
+feature reads them. Setting them does nothing.
+
+`SOMA_API_PORT`, `SOMA_RATE_LIMIT_MAX`, `SOMA_RATE_LIMIT_WINDOW_SECONDS`,
+`SOMA_CORS_ORIGINS`, `SOMA_MAX_REQUEST_BODY_MB`, `SOMA_OPA_URL`,
+`SOMA_OPA_TIMEOUT`, `SOMA_OPA_FAIL_OPEN`, `SOMA_JWT_*`, `SOMA_POSTGRES_URL`,
+`SOMA_FORCE_HASH_EMBEDDINGS`, `SOMA_ENABLE_BATCH_UPSERT`, `SOMA_DECAY_*`,
+`SOMA_PRUNING_INTERVAL_SECONDS`, `SOMA_MAX_MEMORY_SIZE`, `SOMA_IMPORTANCE_*`,
+`SOMA_HYBRID_*`, `SOMA_CIRCUIT_*`. Full record: `settings/infra.py`.
 
 ---
 

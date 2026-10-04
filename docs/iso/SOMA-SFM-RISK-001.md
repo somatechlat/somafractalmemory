@@ -11,14 +11,15 @@
 |---|---|
 | Document Title | SOMA-SFM-RISK-001: SomaFractalMemory Risk Register |
 | Document Identifier | SOMA-SFM-RISK-001 |
-| Version | 2.0.1 |
-| Date | 2026-09-28 |
-| Status | Approved |
+| Version | 2.1.0 |
+| Date | 2026-10-03 |
+| Status | Draft |
 | Author | SomaTech LAT Engineering |
-| Approver | CTO, SomaTech LAT |
+| Approver | — |
 | Classification | Confidential |
 | ISO Reference | ISO 31000:2018 — Risk Management — Guidelines |
-| Next Review | 2026-12-28 |
+| Next Review | 2027-01-03 |
+| Related | `somafractalmemory/settings/infra.py` (deleted-knob record) |
 
 ## Revision History
 
@@ -27,6 +28,7 @@
 | 1.0.0 | 2025-10-01 | Engineering | Initial risk register |
 | 2.0.0 | 2026-06-15 | Engineering | Updated for v0.2.0; added Vault availability, circuit breaker risks |
 | 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-RISK-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
+| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. RISK-001 mitigation no longer cites the deleted `SOMA_FORCE_HASH_EMBEDDINGS` knob. RISK-003 corrected: Vault failure **raises** (no ENV fallback) — `settings/django_core._credential`. RISK-004 retitled: there is no SomaBrain auth client in this tree (`admin/aaas/auth.py` does not exist), so the risk is the AAAS integration's absence, not its outage. Circuit-breaker mitigation text removed (no breaker exists). Status returned to Draft (meaning change). |
 
 ---
 
@@ -77,7 +79,7 @@
 | **Rating** | **HIGH (15)** |
 | **Source** | `somafractalmemory/admin/core/services.py:27-42` |
 | **Current Controls** | Hash embeddings are deterministic and L2-normalized; ORM fallback with GIN-indexed JSONB payload search |
-| **Mitigation** | Replace with sentence-transformer model (e.g., `all-MiniLM-L6-v2`). Keep hash embedder as fallback for testing via `SOMA_FORCE_HASH_EMBEDDINGS=True`. |
+| **Mitigation** | Replace with sentence-transformer model (e.g., `all-MiniLM-L6-v2`). The precomputed-embedding contract is the real path; `HashEmbedder` is the documented fallback when no vector is supplied. `SOMA_FORCE_HASH_EMBEDDINGS` was deleted: there is no second embedder to force off. |
 | **Owner** | ML Engineering Lead |
 | **Target Date** | v0.3.0 |
 
@@ -103,29 +105,29 @@
 |:------|:------|
 | **Risk ID** | RISK-003 |
 | **Category** | Operational / Availability |
-| **Description** | SFM fetches database and Redis credentials from HashiCorp Vault at startup. If Vault is unreachable during startup, credentials fall back to environment variables (which may be stale or absent). Runtime credential rotation requires container restart. |
+| **Description** | SFM fetches database and Redis credentials from HashiCorp Vault at startup. If Vault is unreachable, `settings.django_core._credential` **raises** — there is no ENV fallback and never a code default. A Vault outage is an availability failure for the API, not a silent degradation to stale env values. Runtime credential rotation requires container restart. |
 | **Likelihood** | 3 (Possible) |
 | **Impact** | 4 (Major) |
 | **Rating** | **HIGH (12)** |
-| **Source** | `somafractalmemory/admin/core/security/vault_client.py`, `somafractalmemory/settings/infra.py:9-41` |
-| **Current Controls** | `VaultNotConfigured` exception handled gracefully; 5-min TTL cache prevents runtime Vault overload; Vault init container auto-mounts secrets |
-| **Mitigation** | 1) Implement Vault HA (Raft consensus or external HA backend). 2) Add Vault health check to SFM readiness probe. 3) Automate secret rotation with Vault Agent sidecar. 4) Pre-populate environment variables as warm-standby. |
+| **Source** | `somafractalmemory/admin/core/security/vault_client.py`, `somafractalmemory/settings/django_core.py` (`_credential`) |
+| **Current Controls** | Vault error raises (fail-closed); 5-min TTL cache prevents runtime Vault overload; Vault init container auto-mounts secrets |
+| **Mitigation** | 1) Implement Vault HA (Raft consensus or external HA backend). 2) Add Vault health check to SFM readiness probe. 3) Automate secret rotation with Vault Agent sidecar. Note: pre-populating ENV as warm-standby is **prohibited** — a secret in the process environment is visible in `ps` and `/proc/*/environ` (Rule 164). |
 | **Owner** | SRE Lead |
 | **Target Date** | v0.2.5 |
 
-### RISK-004: SomaBrain Token Validation Dependency
+### RISK-004: AAAS Auth Integration Does Not Exist
 
 | Field | Value |
 |:------|:------|
 | **Risk ID** | RISK-004 |
-| **Category** | Integration / Availability |
-| **Description** | In AAAS mode, `sbk_*` token validation requires a synchronous HTTP call to SomaBrain (`http://somabrain:63996/api/v1/auth/verify`). If SomaBrain is down, all `sbk_*` authenticated requests fail. The 3-second timeout prevents thread exhaustion but causes request delays. |
-| **Likelihood** | 3 (Possible) |
+| **Category** | Integration / Scope |
+| **Description** | Earlier revisions described a SomaBrain `sbk_*` token-validation client in `somafractalmemory/admin/aaas/auth.py`, with a 3s timeout and local `sfm_*` key fallback. **None of that code exists.** `APIKey`/`UsageRecord` were dropped in migration `0006`. The only authentication in this tree is the standalone `SOMA_API_TOKEN` bearer. If AAAS multi-tenant auth is a product requirement, it is unimplemented, not degraded. |
+| **Likelihood** | 5 (Almost Certain) |
 | **Impact** | 4 (Major) |
-| **Rating** | **HIGH (12)** |
-| **Source** | `somafractalmemory/admin/aaas/auth.py:130-168` |
-| **Current Controls** | 3s hardened timeout; error returns `None` (deny); logging on timeout/error; local `sfm_*` keys work independently |
-| **Mitigation** | 1) Implement SomaBrain auth response caching (short TTL, e.g., 30s). 2) Add circuit breaker for SomaBrain auth calls. 3) Support offline mode where recent-valid tokens are cached locally. 4) Monitor SomaBrain auth latency and error rate. |
+| **Rating** | **HIGH (20)** |
+| **Source** | `somafractalmemory/api/auth.py:1-9` ("STANDALONE mode only… No API key management, no SomaBrain integration"); `somafractalmemory/migrations/0006_drop_apikey_usagerecord.py` |
+| **Current Controls** | Standalone bearer token only. Documentation now states AAAS as not deployed (`SOMA-SFM-ARCH-001` §2.2). |
+| **Mitigation** | If AAAS is required: specify the auth contract first, then implement a client. Do not document a gate that does not exist. A circuit breaker around a non-existent client is not a mitigation. |
 | **Owner** | Integration Lead |
 | **Target Date** | v0.3.0 |
 
@@ -222,7 +224,7 @@ Impact
 | RISK-001 | Hash embedding quality | HIGH | → | ML Engineering |
 | RISK-002 | Milvus scaling | HIGH | → | Infrastructure |
 | RISK-003 | Vault availability | HIGH | ↓ | SRE |
-| RISK-004 | SomaBrain auth dependency | HIGH | → | Integration |
+| RISK-004 | AAAS auth integration does not exist | HIGH | → | Integration |
 | RISK-005 | No internal TLS | MEDIUM | → | Infrastructure |
 | RISK-006 | Audit log growth | MEDIUM | ↑ | DBA |
 | RISK-007 | Redis stampede | MEDIUM | → | Performance |
@@ -246,4 +248,4 @@ Impact
 
 ---
 
-*End of SOMA-SFM-RISK-001 v2.0.0*
+*End of SOMA-SFM-RISK-001 v2.1.0*
