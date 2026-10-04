@@ -161,10 +161,14 @@ DEBUG = env.bool("SOMA_DEBUG", default=False)
 
 ALLOWED_HOSTS = _required_list("ALLOWED_HOSTS", "SOMA_ALLOWED_HOSTS")
 
-# API Authentication Token
-# Standardized to support SOMA_API_TOKEN or SOMA_API_TOKEN_FILE via environ's support
-# But we'll use explicit logic to be safe and match patterns
-SOMA_API_TOKEN = env.str("SOMA_API_TOKEN", default=None)
+# API Authentication Token — credential. Vault is the system of record.
+# A deployment with no Vault may inject it via its secret channel; there is
+# never a code default and never an empty string dressed up as "auth disabled".
+SOMA_API_TOKEN = _credential(
+    "SOMA_API_TOKEN",
+    "SOMA_API_TOKEN",
+    vault=("somafractalmemory/credentials", "soma_api_token"),
+)
 SOMA_API_TOKEN_FILE = env.str("SOMA_API_TOKEN_FILE", default=None)
 
 # -----------------------------------------------------------------------------
@@ -250,24 +254,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # -----------------------------------------------------------------------------
 # Helper function to load API token (matches existing logic)
 # -----------------------------------------------------------------------------
-def get_api_token() -> str | None:
-    """Load the API token from settings or file.
+def get_api_token() -> str:
+    """Return the API token resolved at boot.
 
-    Returns ``None`` when neither source is configured -- that is a real
-    state (auth is not enabled for this deployment), not a swallowed error.
-    A file that is configured but cannot be read is a deployment error and
-    raises rather than quietly disabling authentication.
+    ``_credential`` already refused to invent a value. This reader does not
+    add a second source of truth (R-VAL-03).
     """
-    if SOMA_API_TOKEN:
-        return SOMA_API_TOKEN
-
-    if SOMA_API_TOKEN_FILE:
-        p = Path(SOMA_API_TOKEN_FILE)
-        if not p.exists():
-            raise ImproperlyConfigured(
-                f"SOMA_API_TOKEN_FILE points at {p}, which does not exist. "
-                "VIBE Rule 91: an unreadable credential is not 'no credential'."
-            )
-        return p.read_text(encoding="utf-8").strip()
-
-    return None
+    return SOMA_API_TOKEN

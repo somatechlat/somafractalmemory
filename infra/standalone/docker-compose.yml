@@ -46,31 +46,62 @@ services:
       somafractalmemory-standalone-vault:
         condition: service_healthy
     environment:
-      SOMA_VAULT_TOKEN: "${SOMA_VAULT_TOKEN:?set SOMA_VAULT_TOKEN}"
-      SOMA_DB_USER: "${SOMA_DB_USER:-somafractalmemory}"
-      SOMA_DB_PASSWORD: "${SOMA_DB_PASSWORD:?set SOMA_DB_PASSWORD}"
-      SOMA_DB_NAME: "${SOMA_DB_NAME:-somafractalmemory}"
-      SOMA_REDIS_PASSWORD: "${SOMA_REDIS_PASSWORD:-}"
+      # Bootstrap topology only. Credentials are FILE paths into t=0 material —
+      # never values in ENV (Rule 164).
+      SOMA_VAULT_TOKEN_FILE: "${SOMA_VAULT_TOKEN_FILE:?set SOMA_VAULT_TOKEN_FILE}"
+      SOMA_VAULT_ADDR: "${SOMA_VAULT_ADDR:?set SOMA_VAULT_ADDR}"
+      SOMA_DB_USER: "${SOMA_DB_USER:?set SOMA_DB_USER}"
+      SOMA_DB_NAME: "${SOMA_DB_NAME:?set SOMA_DB_NAME}"
+      SOMA_DB_HOST: "${SOMA_DB_HOST:?set SOMA_DB_HOST}"
+      SOMA_DB_PORT: "${SOMA_DB_PORT:?set SOMA_DB_PORT}"
+      SOMA_REDIS_HOST: "${SOMA_REDIS_HOST:?set SOMA_REDIS_HOST}"
+      SOMA_REDIS_PORT: "${SOMA_REDIS_PORT:?set SOMA_REDIS_PORT}"
+      SOMA_DB_PASSWORD_FILE: "${SOMA_DB_PASSWORD_FILE:?set SOMA_DB_PASSWORD_FILE}"
+      SOMA_REDIS_PASSWORD_FILE: "${SOMA_REDIS_PASSWORD_FILE:?set SOMA_REDIS_PASSWORD_FILE}"
+      SOMA_API_TOKEN_FILE: "${SOMA_API_TOKEN_FILE:?set SOMA_API_TOKEN_FILE}"
+    volumes:
+      - ${SOMA_T0_SECRETS_DIR:?set SOMA_T0_SECRETS_DIR}:/run/secrets_t0:ro
     networks:
       - somafractalmemory-standalone-net
     entrypoint: [ "sh", "-c" ]
     command:
       - |
         apk add --no-cache curl jq
-        # Wait for vault to be ready
-        until curl -s http://somafractalmemory-standalone-vault:8200/v1/sys/health; do sleep 1; done
+
+        # Credentials come from t=0 files. A missing file is a refusal — this
+        # job will NOT invent a substitute (Rule 91 / Rule 164).
+        read_secret() {
+          f="$${1:?read_secret needs a path}"
+          if [ ! -s "$${f}" ]; then
+            echo "FATAL: secret file missing or empty: $${f}" >&2
+            exit 1
+          fi
+          tr -d '\r\n' < "$${f}"
+        }
+        VAULT_TOKEN="$$(read_secret "$${SOMA_VAULT_TOKEN_FILE}")"
+        SOMA_DB_PASSWORD="$$(read_secret "$${SOMA_DB_PASSWORD_FILE}")"
+        SOMA_REDIS_PASSWORD="$$(read_secret "$${SOMA_REDIS_PASSWORD_FILE}")"
+        SOMA_API_TOKEN="$$(read_secret "$${SOMA_API_TOKEN_FILE}")"
+
+        # Wait for vault
+        until curl -s "$${SOMA_VAULT_ADDR}/v1/sys/health"; do sleep 1; done
         # Mount KV v2
-        curl -H "X-Vault-Token: $${SOMA_VAULT_TOKEN}" -X POST -d '{"type":"kv-v2"}' http://somafractalmemory-standalone-vault:8200/v1/sys/mounts/somafractalmemory
+        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST -d '{"type":"kv-v2"}' "$${SOMA_VAULT_ADDR}/v1/sys/mounts/somafractalmemory"
 
         # Write Database Credentials
-        curl -H "X-Vault-Token: $${SOMA_VAULT_TOKEN}" -X POST \
-          -d "{\"data\": {\"username\": \"$${SOMA_DB_USER}\", \"password\": \"$${SOMA_DB_PASSWORD}\", \"host\": \"somafractalmemory-standalone-postgres\", \"port\": 5432, \"dbname\": \"$${SOMA_DB_NAME}\"}}" \
-          http://somafractalmemory-standalone-vault:8200/v1/somafractalmemory/data/database
+        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST \
+          -d "{\"data\": {\"username\": \"$${SOMA_DB_USER}\", \"password\": \"$${SOMA_DB_PASSWORD}\", \"host\": \"$${SOMA_DB_HOST}\", \"port\": $${SOMA_DB_PORT}, \"dbname\": \"$${SOMA_DB_NAME}\"}}" \
+          "$${SOMA_VAULT_ADDR}/v1/somafractalmemory/data/database"
 
         # Write Redis Credentials
-        curl -H "X-Vault-Token: $${SOMA_VAULT_TOKEN}" -X POST \
-          -d "{\"data\": {\"host\": \"somafractalmemory-standalone-redis\", \"port\": 6379, \"password\": \"$${SOMA_REDIS_PASSWORD}\"}}" \
-          http://somafractalmemory-standalone-vault:8200/v1/somafractalmemory/data/redis
+        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST \
+          -d "{\"data\": {\"host\": \"$${SOMA_REDIS_HOST}\", \"port\": $${SOMA_REDIS_PORT}, \"password\": \"$${SOMA_REDIS_PASSWORD}\"}}" \
+          "$${SOMA_VAULT_ADDR}/v1/somafractalmemory/data/redis"
+
+        # Write API token (the process authenticates with this bearer).
+        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST \
+          -d "{\"data\": {\"soma_api_token\": \"$${SOMA_API_TOKEN}\"}}" \
+          "$${SOMA_VAULT_ADDR}/v1/somafractalmemory/data/credentials"
 
         echo "Vault initialized and secrets populated."
 
@@ -80,8 +111,8 @@ services:
     container_name: somafractalmemory-standalone-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "${SOMA_DB_NAME:-somafractalmemory}"
-      POSTGRES_USER: "${SOMA_DB_USER:-somafractalmemory}"
+      POSTGRES_DB: "${SOMA_DB_NAME:?set SOMA_DB_NAME}"
+      POSTGRES_USER: "${SOMA_DB_USER:?set SOMA_DB_USER}"
       POSTGRES_PASSWORD: "${SOMA_DB_PASSWORD:?set SOMA_DB_PASSWORD}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -210,23 +241,27 @@ services:
       - somafractalmemory-standalone-net
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ${SOMA_T0_SECRETS_DIR:?set SOMA_T0_SECRETS_DIR}:/run/secrets_t0:ro
     environment:
       DJANGO_SETTINGS_MODULE: "somafractalmemory.settings.standalone"
-      # Shared seam dim: agent MEM_EMBED_DIM == brain EMBED_DIM == this
-      SOMA_VECTOR_DIM: "768"
-      MEM_EMBED_DIM: "768"
-      # VAULT BOOTSTRAP ONLY
-      VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
-      VAULT_TOKEN: "${SOMA_VAULT_TOKEN:?set SOMA_VAULT_TOKEN}"
-      SOMA_LOG_LEVEL: "INFO"
-      SOMA_ALLOWED_HOSTS: "${SOMA_ALLOWED_HOSTS:-localhost,127.0.0.1}"
-      SOMA_API_TOKEN: "${SOMA_API_TOKEN:?set SOMA_API_TOKEN}"
-      SOMA_API_PORT: "10101"
+      # Shared seam dim: agent MEM_EMBED_DIM == brain EMBED_DIM == this.
+      # Required — no schema default at the call site or in compose.
+      SOMA_VECTOR_DIM: "${SOMA_VECTOR_DIM:?set SOMA_VECTOR_DIM}"
+      MEM_EMBED_DIM: "${MEM_EMBED_DIM:?set MEM_EMBED_DIM}"
+      # VAULT BOOTSTRAP ONLY — address + token FILE, never the token value.
+      VAULT_ADDR: "${SOMA_VAULT_ADDR:?set SOMA_VAULT_ADDR}"
+      VAULT_TOKEN_FILE: "${SOMA_VAULT_TOKEN_FILE:?set SOMA_VAULT_TOKEN_FILE}"
+      SOMA_LOG_LEVEL: "${SOMA_LOG_LEVEL:?set SOMA_LOG_LEVEL}"
+      SOMA_ALLOWED_HOSTS: "${SOMA_ALLOWED_HOSTS:?set SOMA_ALLOWED_HOSTS}"
+      # API token is Vault material (somafractalmemory runtime secrets).
+      # There is deliberately no SOMA_API_TOKEN here.
+      SOMA_API_PORT: "${SOMA_API_PORT:?set SOMA_API_PORT}"
       # INFRA HOST NAMES ONLY (Credentials via Vault, with env fallback)
       SOMA_DB_HOST: "somafractalmemory-standalone-postgres"
-      SOMA_DB_USER: "${SOMA_DB_USER:-somafractalmemory}"
+      SOMA_DB_USER: "${SOMA_DB_USER:?set SOMA_DB_USER}"
       SOMA_DB_PASSWORD: "${SOMA_DB_PASSWORD}"
-      SOMA_DB_NAME: "${SOMA_DB_NAME:-somafractalmemory}"
+      SOMA_DB_NAME: "${SOMA_DB_NAME:?set SOMA_DB_NAME}"
       SOMA_REDIS_HOST: "somafractalmemory-standalone-redis"
       SOMA_MILVUS_HOST: "somafractalmemory-standalone-milvus"
       SOMA_OPA_URL: "http://somafractalmemory-standalone-opa:8181"
