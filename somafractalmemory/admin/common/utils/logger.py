@@ -4,12 +4,18 @@ structlog is the logging backend. It is a required dependency
 (``pyproject.toml``). There is no silent fallback to stdlib logging: a missing
 backend is a deployment error and must refuse to import, not quietly change
 the log format or drop structured fields.
+
+Level and JSON mode come from the settings model (``SOMA_LOG_LEVEL`` /
+``SOMA_LOG_JSON``). They are not read from ``os.environ`` here: the deployment
+authority is Django settings, which already applied the env override and the
+schema default.
 """
 
 import logging
-import os
 import sys
 from typing import Any
+
+from django.core.exceptions import ImproperlyConfigured
 
 try:
     import structlog
@@ -32,10 +38,29 @@ def get_logger(name: str) -> Any:
     return structlog.get_logger(name)
 
 
-def configure_logging(service_name: str, level: str = "INFO") -> Any:
-    """Configure global logging for a service."""
-    log_level = os.environ.get("SOMA_LOG_LEVEL", level).upper()
-    numeric_level = getattr(logging, log_level, logging.INFO)
+def configure_logging(service_name: str, level: str | None = None) -> Any:
+    """Configure global logging for a service.
+
+    Args:
+        service_name: Logger name returned to the caller.
+        level: Optional explicit level. When omitted, ``SOMA_LOG_LEVEL`` from
+            the settings model is used. Passing it is legal only for callers
+            that configure logging outside Django; inside Django the settings
+            model is the deployment authority.
+
+    Raises:
+        ImproperlyConfigured: the resolved level name is not a logging level
+            (Rule 91 — a typo is not permission to invent INFO).
+    """
+    from somafractalmemory.settings.model import resolve_setting
+
+    log_level_name = str(level or resolve_setting("SOMA_LOG_LEVEL")).upper()
+    numeric_level = getattr(logging, log_level_name, None)
+    if numeric_level is None:
+        raise ImproperlyConfigured(
+            f"log level {log_level_name!r} is not a Python logging level. "
+            "VIBE Rule 91: an unparseable setting is not permission to invent a value."
+        )
 
     structlog.configure(
         processors=[
@@ -46,7 +71,7 @@ def configure_logging(service_name: str, level: str = "INFO") -> Any:
             structlog.processors.format_exc_info,
             (
                 structlog.processors.JSONRenderer()
-                if os.environ.get("SOMA_LOG_JSON", "false").lower() == "true"
+                if bool(resolve_setting("SOMA_LOG_JSON"))
                 else structlog.dev.ConsoleRenderer()
             ),
         ],

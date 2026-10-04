@@ -5,6 +5,9 @@ Copyright (C) 2025 SomaTech LAT.
 Provides vector similarity search using Milvus 2.3+ via MilvusClient
 (the supported API — ORM-style Collection/connections is deprecated).
 Core component of the FNOM memory retrieval pipeline.
+
+Topology (host/port), connect timeout, distance metric and IVF index shape
+come from the settings model. No call site names a URL or a magic number.
 """
 
 from __future__ import annotations
@@ -14,7 +17,13 @@ from typing import Any
 
 import numpy as np
 
+from somafractalmemory.settings.model import milvus_uri, resolve_setting
+
 logger = logging.getLogger(__name__)
+
+# Milvus metric_type spelling is uppercase; the settings model names the
+# metric in lowercase (cosine|ip|l2) because that is how operators write it.
+_METRIC_ALIASES = {"cosine": "COSINE", "ip": "IP", "l2": "L2"}
 
 
 class MilvusVectorStore:
@@ -23,26 +32,28 @@ class MilvusVectorStore:
     Stores and retrieves vectors using Milvus for fast ANN search.
     """
 
-    def __init__(
-        self,
-        host: str = "localhost",
-        port: str | int = "19530",
-        collection_name: str = "soma_memory",
-        dim: int = 768,
-    ):
+    def __init__(self, collection_name: str, dim: int):
         """Initialize Milvus connection.
 
         Args:
-            host: Milvus server host
-            port: Milvus server port
             collection_name: Name of the Milvus collection
-            dim: Vector dimension
+            dim: Vector dimension (must match SOMA_VECTOR_DIM / MEM_EMBED_DIM)
         """
-        self.host = host
-        self.port = int(port)
         self.collection_name = collection_name
-        self.dim = dim
+        self.dim = int(dim)
         self._client: Any | None = None
+
+    def _metric_type(self) -> str:
+        """Resolve the Milvus distance metric from settings (fail-closed)."""
+        raw = str(resolve_setting("SOMA_SIMILARITY_METRIC")).strip().lower()
+        metric = _METRIC_ALIASES.get(raw)
+        if metric is None:
+            raise ValueError(
+                f"SOMA_SIMILARITY_METRIC={raw!r} is not a Milvus metric "
+                "(cosine|ip|l2). VIBE Rule 91: an unknown metric is not "
+                "permission to invent one."
+            )
+        return metric
 
     def _ensure_connection(self) -> None:
         """Ensure MilvusClient connection is established."""
@@ -52,15 +63,16 @@ class MilvusVectorStore:
         try:
             from pymilvus import MilvusClient
 
+            uri = milvus_uri()
             self._client = MilvusClient(
-                uri=f"http://{self.host}:{self.port}",
-                timeout=10,
+                uri=uri,
+                timeout=float(resolve_setting("SOMA_MILVUS_TIMEOUT_S")),
             )
             if self._client.has_collection(self.collection_name):
                 self._assert_dimension()
             else:
                 self._create_collection()
-            logger.info(f"Connected to Milvus at {self.host}:{self.port}")
+            logger.info(f"Connected to Milvus at {uri}")
         except ImportError:
             logger.error("pymilvus not installed")
             raise
@@ -116,8 +128,8 @@ class MilvusVectorStore:
         index_params.add_index(
             field_name="vector",
             index_type="IVF_FLAT",
-            metric_type="COSINE",
-            params={"nlist": 128},
+            metric_type=self._metric_type(),
+            params={"nlist": int(resolve_setting("SOMA_MILVUS_NLIST"))},
         )
 
         self._client.create_collection(
@@ -212,7 +224,10 @@ class MilvusVectorStore:
             collection_name=self.collection_name,
             data=[query_vector],
             anns_field="vector",
-            search_params={"metric_type": "COSINE", "params": {"nprobe": 16}},
+            search_params={
+                "metric_type": self._metric_type(),
+                "params": {"nprobe": int(resolve_setting("SOMA_MILVUS_NPROBE"))},
+            },
             limit=max(1, int(top_k)),
             filter=expr or None,
             output_fields=["coordinate_key", "namespace", "tenant"],

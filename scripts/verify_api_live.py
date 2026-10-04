@@ -5,8 +5,13 @@ import time
 
 import requests
 
-# Configuration
-BASE_URL = "http://localhost:10101"
+# Configuration. The deployment names its own API base URL and token; neither
+# has a code default (Rule 91) — a hardcoded localhost URL is a URL the
+# operator cannot change and a reviewer cannot see.
+BASE_URL = os.environ.get("SOMA_API_BASE_URL")
+if not BASE_URL:
+    print("ERROR: SOMA_API_BASE_URL is required (no defaults), e.g. http://127.0.0.1:10101")
+    sys.exit(2)
 TOKEN = os.environ.get("SOMA_API_TOKEN")
 if not TOKEN:
     print("ERROR: SOMA_API_TOKEN is required (no defaults).")

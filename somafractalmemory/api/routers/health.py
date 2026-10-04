@@ -123,6 +123,8 @@ def health_detailed(request: HttpRequest) -> dict:
     try:
         import redis
 
+        from somafractalmemory.settings.model import resolve_setting
+
         redis_start = time.time()
         redis_host = getattr(settings, "SOMA_REDIS_HOST", None)
         redis_port = getattr(settings, "SOMA_REDIS_PORT", None)
@@ -132,8 +134,9 @@ def health_detailed(request: HttpRequest) -> dict:
         r = redis.Redis(
             host=redis_host,
             port=int(redis_port),
+            db=int(resolve_setting("SOMA_REDIS_DB")),
             password=redis_password,
-            socket_timeout=2,
+            socket_timeout=float(resolve_setting("SOMA_PROBE_TIMEOUT_S")),
         )
         r.ping()
         redis_latency = (time.time() - redis_start) * 1000
@@ -150,16 +153,22 @@ def health_detailed(request: HttpRequest) -> dict:
             {"name": "redis", "healthy": False, "latency_ms": 0, "details": {"error": str(e)}}
         )
 
-    # Check Milvus — configuration from Django settings only.
+    # Check Milvus — configuration from Django settings only. The URI is
+    # assembled in settings.model.milvus_uri; this router never names a URL.
     try:
         from pymilvus import MilvusClient
+
+        from somafractalmemory.settings.model import milvus_uri, resolve_setting
 
         milvus_start = time.time()
         milvus_host = getattr(settings, "SOMA_MILVUS_HOST", None)
         milvus_port = getattr(settings, "SOMA_MILVUS_PORT", None)
         if not milvus_host or not milvus_port:
             raise RuntimeError("SOMA_MILVUS_HOST/SOMA_MILVUS_PORT is not configured")
-        client = MilvusClient(uri=f"http://{milvus_host}:{milvus_port}", timeout=2)
+        client = MilvusClient(
+            uri=milvus_uri(),
+            timeout=float(resolve_setting("SOMA_PROBE_TIMEOUT_S")),
+        )
         client.list_collections()
         milvus_latency = (time.time() - milvus_start) * 1000
         services.append(
@@ -263,8 +272,9 @@ def test_stats(request: HttpRequest) -> StatsResponse:
     _check_auth(request)
 
     from somafractalmemory.admin.core.services import get_memory_service
+    from somafractalmemory.settings.model import resolve_setting
 
-    test_ns = getattr(settings, "SOMA_TEST_MEMORY_NAMESPACE", "test_ns")
+    test_ns = resolve_setting("SOMA_TEST_MEMORY_NAMESPACE")
     test_service = get_memory_service(namespace=test_ns)
 
     try:

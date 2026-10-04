@@ -118,6 +118,8 @@ class MemoryService:
     """
 
     # Score multiplier for hash-fallback hits (see rank_by_embedding_source).
+    # Resolved from SOMA_HASH_EMBEDDING_PENALTY; the class attribute is the
+    # schema default used when the service is built outside Django settings.
     HASH_EMBEDDING_SCORE_PENALTY = 0.25
 
     def __init__(self, namespace: str = "default"):
@@ -130,19 +132,28 @@ class MemoryService:
         if not vector_dim:
             raise RuntimeError("SOMA_VECTOR_DIM is not configured — refusing to guess a vector dim")
         self.vector_dim = int(vector_dim)
+        from somafractalmemory.settings.model import resolve_setting
+
+        self.hash_embedding_penalty = float(resolve_setting("SOMA_HASH_EMBEDDING_PENALTY"))
+        self.search_candidate_multiplier = int(resolve_setting("SOMA_SEARCH_CANDIDATE_MULTIPLIER"))
         self.embedder = HashEmbedder(dim=self.vector_dim)
         self.vector_store = self._build_vector_store()
 
     def _build_vector_store(self) -> MilvusVectorStore | None:
-        """Create a Milvus vector store if configuration is present."""
-        host = getattr(settings, "SOMA_MILVUS_HOST", None)
-        port = getattr(settings, "SOMA_MILVUS_PORT", None)
+        """Create a Milvus vector store when this deployment has Milvus topology.
+
+        Topology (host/port) is resolved inside :class:`MilvusVectorStore`
+        from the settings model; this method only decides whether Milvus is
+        part of this deployment at all.
+        """
+        from somafractalmemory.settings.model import resolve_optional
+
+        host = resolve_optional("SOMA_MILVUS_HOST")
+        port = resolve_optional("SOMA_MILVUS_PORT")
         if not host or not port:
             return None
         try:
             return MilvusVectorStore(
-                host=host,
-                port=port,
                 collection_name=f"sfm_{self.namespace}",
                 dim=self.vector_dim,
             )
@@ -386,7 +397,7 @@ class MemoryService:
             try:
                 # Fetch extra candidates so demotion of hash-fallback hits can
                 # reshuffle the page without pushing real hits out of reach.
-                candidate_k = max(top_k + offset, 1) * 3
+                candidate_k = max(top_k + offset, 1) * self.search_candidate_multiplier
                 vector_results = self.vector_store.search(
                     query_vector=vector,
                     top_k=candidate_k,
@@ -425,7 +436,7 @@ class MemoryService:
                             "created_at": mem.created_at.isoformat(),
                         }
                     )
-                ordered = rank_by_embedding_source(hits, self.HASH_EMBEDDING_SCORE_PENALTY)
+                ordered = rank_by_embedding_source(hits, self.hash_embedding_penalty)
                 page = ordered[offset : offset + top_k]
                 if page:
                     AuditLog.objects.create(

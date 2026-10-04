@@ -17,7 +17,6 @@ from .core import (
     api,
     get_graph,
     get_mem,
-    get_rate_limiter,
 )
 
 # Re-export schemas
@@ -41,7 +40,6 @@ __all__ = [
     "api",
     "get_mem",
     "get_graph",
-    "get_rate_limiter",
     "API_TOKEN",
     # Messages
     "SuccessCode",

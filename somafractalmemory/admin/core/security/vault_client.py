@@ -44,7 +44,20 @@ class SecretNotFound(ImproperlyConfigured):
 
 
 def _vault_addr() -> str | None:
-    """Return the Vault API address (topology, not a credential)."""
+    """Return the Vault API address (topology, not a credential).
+
+    Django settings (``SOMA_VAULT_URL``) is the deployment authority once
+    settings are configured. Before that — during the settings bootstrap that
+    imports this module — the environment names (``SOMA_VAULT_ADDR`` /
+    ``VAULT_ADDR``) are the only channel available. Those names are read here
+    and nowhere else in application code.
+    """
+    from django.conf import settings
+
+    if settings.configured:
+        value = getattr(settings, "SOMA_VAULT_URL", None)
+        if value:
+            return str(value)
     return os.environ.get("SOMA_VAULT_ADDR") or os.environ.get("VAULT_ADDR")
 
 

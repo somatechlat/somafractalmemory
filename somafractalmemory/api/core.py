@@ -33,11 +33,8 @@ from somafractalmemory.admin.core.services import (
     get_memory_service,
 )
 
-# Configure logging
-logger = configure_logging(
-    "somafractalmemory-api",
-    level=getattr(settings, "SOMA_LOG_LEVEL", "INFO"),
-).bind(component="django_api")
+# Configure logging (level and JSON mode come from the settings model).
+logger = configure_logging("somafractalmemory-api").bind(component="django_api")
 
 
 # -----------------------------------------------------------------------------
@@ -64,7 +61,9 @@ if not API_TOKEN:
 # -----------------------------------------------------------------------------
 # Memory and Graph Services (Django ORM)
 # -----------------------------------------------------------------------------
-_namespace = getattr(settings, "SOMA_MEMORY_NAMESPACE", "api_ns")
+from somafractalmemory.settings.model import resolve_setting
+
+_namespace = resolve_setting("SOMA_MEMORY_NAMESPACE")
 mem_service = get_memory_service(namespace=_namespace)
 graph_service = get_graph_service(namespace=_namespace)
 
@@ -114,16 +113,6 @@ def get_graph() -> Any:
     return graph_service
 
 
-def get_rate_limiter() -> Any:
-    """Get rate limiter instance.
-
-    Rate limiting is implemented via Django middleware (see settings.MIDDLEWARE).
-    This function is kept for API compatibility and returns None
-    since rate limiting is handled at the middleware layer.
-    """
-    return None
-
-
 # -----------------------------------------------------------------------------
 # Register Routers — Standalone Only (no AAAS admin)
 # -----------------------------------------------------------------------------
@@ -144,6 +133,5 @@ __all__ = [
     "api",
     "get_mem",
     "get_graph",
-    "get_rate_limiter",
     "API_TOKEN",
 ]
