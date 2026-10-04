@@ -13,8 +13,8 @@ import logging
 from .django_core import *  # noqa: F403
 from .infra import *  # noqa: F403
 
-# Standalone defaults
-SOMA_NAMESPACE = "standalone"
+# Standalone defaults. SOMA_MEMORY_NAMESPACE is the namespace the API service
+# operates in. There is no second ``SOMA_NAMESPACE`` label — nothing read it.
 SOMA_MEMORY_NAMESPACE = "standalone_memory"
 
 # There is no re-read of ``os.environ`` here any more. There used to be a block

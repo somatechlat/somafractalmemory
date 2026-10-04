@@ -129,6 +129,24 @@ def _required_list(what: str, name: str) -> list[str]:
     return values
 
 
+def _read_setting(name: str) -> object:
+    """Load one topology tunable: env override onto the schema default.
+
+    The default is declared once on the TUNABLES registry
+    (``somafractalmemory.settings.model``). This module never invents one.
+    """
+    from .model import schema_default
+
+    default = schema_default(name)
+    if isinstance(default, bool):
+        return env.bool(name, default=default)
+    if isinstance(default, int) and not isinstance(default, bool):
+        return env.int(name, default=default)
+    if isinstance(default, float):
+        return env.float(name, default=default)
+    return env.str(name, default=default)
+
+
 # -----------------------------------------------------------------------------
 # Security Settings
 # -----------------------------------------------------------------------------
@@ -173,12 +191,13 @@ ROOT_URLCONF = "somafractalmemory.config.urls"
 # -----------------------------------------------------------------------------
 
 # Primary database for Django ORM. USER and PASSWORD have no code default:
-# they are credentials. NAME/HOST/PORT are topology and are named explicitly
-# by the deployment.
+# they are credentials. NAME/HOST/PORT are topology and their schema defaults
+# live once, on the TUNABLES registry (settings.model); this module only reads
+# the deployment's override.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env.str("SOMA_DB_NAME", default="somafractalmemory"),
+        "NAME": _read_setting("SOMA_DB_NAME"),
         "USER": _credential(
             "database user",
             "SOMA_DB_USER",
@@ -189,26 +208,30 @@ DATABASES = {
             "SOMA_DB_PASSWORD",
             vault=("somafractalmemory/database", "password"),
         ),
-        "HOST": env.str("SOMA_DB_HOST", default="localhost"),
-        "PORT": env.str("SOMA_DB_PORT", default="5432"),
+        "HOST": _read_setting("SOMA_DB_HOST"),
+        "PORT": _read_setting("SOMA_DB_PORT"),
     }
 }
 
-# Legacy DSN format (for backwards compatibility with existing stores)
-SOMA_POSTGRES_URL = env.str(
-    "SOMA_POSTGRES_URL",
-    default=env.str(
-        "POSTGRES_URL",
-        default=f"postgresql://{DATABASES['default']['USER']}:{DATABASES['default']['PASSWORD']}@"
-        f"{DATABASES['default']['HOST']}:{DATABASES['default']['PORT']}/{DATABASES['default']['NAME']}",
-    ),
-)
-
-# PostgreSQL SSL/TLS options
+# PostgreSQL SSL/TLS options. Absent means plain TCP — a real topology for a
+# private network. When present they are applied to the ORM connection, not
+# merely declared.
 SOMA_POSTGRES_SSL_MODE = env.str("SOMA_POSTGRES_SSL_MODE", default=None)
 SOMA_POSTGRES_SSL_ROOT_CERT = env.str("SOMA_POSTGRES_SSL_ROOT_CERT", default=None)
 SOMA_POSTGRES_SSL_CERT = env.str("SOMA_POSTGRES_SSL_CERT", default=None)
 SOMA_POSTGRES_SSL_KEY = env.str("SOMA_POSTGRES_SSL_KEY", default=None)
+
+_pg_options: dict[str, str] = {}
+if SOMA_POSTGRES_SSL_MODE:
+    _pg_options["sslmode"] = SOMA_POSTGRES_SSL_MODE
+if SOMA_POSTGRES_SSL_ROOT_CERT:
+    _pg_options["sslrootcert"] = SOMA_POSTGRES_SSL_ROOT_CERT
+if SOMA_POSTGRES_SSL_CERT:
+    _pg_options["sslcert"] = SOMA_POSTGRES_SSL_CERT
+if SOMA_POSTGRES_SSL_KEY:
+    _pg_options["sslkey"] = SOMA_POSTGRES_SSL_KEY
+if _pg_options:
+    DATABASES["default"]["OPTIONS"] = _pg_options
 
 # -----------------------------------------------------------------------------
 # Internationalization
