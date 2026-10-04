@@ -308,29 +308,21 @@ ORDER BY depth ASC LIMIT 1
 - `link_type`: optional filter
 - Cycle detection via `visited_keys` array
 
-### 4.4 Importance Normalization (Reservoir-Based)
+### 4.4 Importance
 
-**Configuration** (from `somafractalmemory/settings/infra.py`):
+`Memory.importance` is a caller-supplied float used for ORM fallback ordering
+(`order_by("-importance", "-created_at")`). There is no reservoir, winsorized
+logistic or other normalization algorithm in this tree. The
+`SOMA_IMPORTANCE_*` knobs that once documented one were deleted: a tunable
+with no reader is a lie.
 
-| Parameter | Default | Description |
-|:----------|:--------|:------------|
-| `SOMA_IMPORTANCE_RESERVOIR_MAX` | 512 | Maximum reservoir size |
-| `SOMA_IMPORTANCE_RECOMPUTE_STRIDE` | 64 | Recomputation frequency |
-| `SOMA_IMPORTANCE_WINSOR_DELTA` | 0.25 | Winsorization clipping delta |
-| `SOMA_IMPORTANCE_LOGISTIC_TARGET_RATIO` | 9.0 | Logistic target ratio |
-| `SOMA_IMPORTANCE_LOGISTIC_K_MAX` | 25.0 | Maximum logistic k parameter |
+### 4.5 Decay and Pruning
 
-### 4.5 Decay System
-
-**Configuration** (5 parameters):
-
-| Parameter | Default | Description |
-|:----------|:--------|:------------|
-| `SOMA_DECAY_AGE_HOURS_WEIGHT` | 1.0 | Weight for age-based decay |
-| `SOMA_DECAY_RECENCY_HOURS_WEIGHT` | 1.0 | Weight for recency-based decay |
-| `SOMA_DECAY_ACCESS_WEIGHT` | 0.5 | Weight for access frequency |
-| `SOMA_DECAY_IMPORTANCE_WEIGHT` | 2.0 | Weight for importance score |
-| `SOMA_DECAY_THRESHOLD` | 2.0 | Decay score threshold for pruning |
+Not implemented. `Memory.access_count` and `Memory.last_accessed` are recorded
+on retrieve; nothing computes a decay score from them and there is no prune
+command or scheduler in this codebase. The `SOMA_DECAY_*` and
+`SOMA_MAX_MEMORY_SIZE` knobs were deleted with the absent feature. Scheduling
+and eviction are future work, not configuration.
 
 ---
 
@@ -485,19 +477,21 @@ All models defined in `somafractalmemory/admin/core/models.py`.
 
 ### 7.2 Authorization
 
-**OPA (Open Policy Agent)**:
-- Policy evaluation at `SOMA_OPA_URL` (default `http://opa:8181`)
-- `SOMA_OPA_FAIL_OPEN = False` — **fail-closed** by default
-- Timeout: `SOMA_OPA_TIMEOUT = 1.0s`
+**Bearer token (`SOMA_API_TOKEN`)** via `StandaloneAuth`, compared with
+`hmac.compare_digest`. Namespace and tenant checks are fail-closed in
+`api/utils.py`. There is no OPA client in this tree; `SOMA_OPA_*` knobs were
+deleted with the absent gate. Policy enforcement belongs where the gate is.
 
 ### 7.3 Secrets Management
 
 **HashiCorp Vault (KV v2)**:
-- Secrets stored at `somafractalmemory/data/database` and `somafractalmemory/data/redis`
+- Secrets stored at `somafractalmemory/credentials`, `somafractalmemory/database`
 - Client: `hvac` library, singleton with `@lru_cache`
-- 5-minute TTL cache to prevent Vault DDoS
-- Credentials injected at startup from `somafractalmemory/settings/infra.py`
-- Graceful fallback: `VaultNotConfigured` exception if Vault unavailable
+- Token delivered as a file (`VAULT_TOKEN_FILE`) — never from ENV (Rule 164)
+- Credentials resolved once in `settings.django_core._credential`: Vault first,
+  the deployment's injection channel second, never a code default
+- A Vault failure raises. It is not a graceful fallback and never falls
+  through to ENV.
 
 ### 7.4 Docker Hardening
 
@@ -636,21 +630,28 @@ Every CRUD and search operation generates an `AuditLog` record with:
 
 ## Appendix A: Configuration Reference
 
-All settings loaded from `somafractalmemory/settings/infra.py`:
+Every tunable is declared once on the `TUNABLES` registry in
+`somafractalmemory/settings/model.py` and read through `resolve_setting` /
+`service_url` / `milvus_uri`. A key with no reader is deleted, not documented.
 
-| Category | Key Settings |
-|:---------|:-------------|
-| API | `SOMA_API_PORT`, `SOMA_LOG_LEVEL`, `SOMA_MAX_REQUEST_BODY_MB` |
-| Database | `SOMA_DB_HOST/PORT/USER/PASSWORD/NAME` |
-| Redis | `SOMA_REDIS_HOST/PORT/PASSWORD/DB` |
-| Milvus | `SOMA_MILVUS_HOST/PORT` |
-| Vault | `SOMA_VAULT_URL`, `SOMA_SECRETS_PATH` |
-| OPA | `SOMA_OPA_URL`, `SOMA_OPA_TIMEOUT`, `SOMA_OPA_FAIL_OPEN` |
-| Memory | `SOMA_NAMESPACE`, `SOMA_VECTOR_DIM`, `SOMA_MAX_MEMORY_SIZE` |
-| Decay | `SOMA_DECAY_AGE_HOURS_WEIGHT`, `SOMA_DECAY_RECENCY_HOURS_WEIGHT`, etc. |
-| Rate Limit | `SOMA_RATE_LIMIT_MAX`, `SOMA_RATE_LIMIT_WINDOW` |
-| Circuit Breaker | `SOMA_CIRCUIT_FAILURE_THRESHOLD`, `SOMA_CIRCUIT_RESET_INTERVAL` |
-| Batch | `SOMA_ENABLE_BATCH_UPSERT`, `SOMA_BATCH_SIZE`, `SOMA_BATCH_FLUSH_MS` |
+| Category | Key Settings | Reader |
+|:---------|:-------------|:-------|
+| Database | `SOMA_DB_NAME`, `SOMA_DB_HOST`, `SOMA_DB_PORT` | `settings.django_core.DATABASES` |
+| Database credentials | `SOMA_DB_USER`, `SOMA_DB_PASSWORD` | `django_core._credential` (Vault first) |
+| Redis | `SOMA_REDIS_HOST/PORT/DB/PASSWORD` | `api/routers/health.py` |
+| Milvus | `SOMA_MILVUS_HOST/PORT/TIMEOUT_S` | `milvus_vector.py`, `health.py` |
+| Milvus index | `SOMA_SIMILARITY_METRIC`, `SOMA_MILVUS_NLIST`, `SOMA_MILVUS_NPROBE` | `milvus_vector.py` |
+| Vault | `SOMA_VAULT_URL` (bootstrap: `SOMA_VAULT_ADDR`/`VAULT_ADDR`) | `vault_client._vault_addr` |
+| Memory | `SOMA_MEMORY_NAMESPACE`, `SOMA_TEST_MEMORY_NAMESPACE`, `SOMA_VECTOR_DIM` | `api/core.py`, `health.py`, `services.py` |
+| Search | `SOMA_SEARCH_CANDIDATE_MULTIPLIER`, `SOMA_HASH_EMBEDDING_PENALTY` | `services.py` |
+| Observability | `SOMA_LOG_LEVEL`, `SOMA_LOG_JSON` | `admin/common/utils/logger.py` |
+| Probes | `SOMA_PROBE_TIMEOUT_S` | `api/routers/health.py` |
+| Backup | `SOMA_BACKUP_DIR`, `SOMA_MEMORY_DATA_DIR`, `SOMA_S3_BUCKET` | `scripts/backup_restore.py` |
+
+Credentials with no code default (fail-closed, Rule 91): `SOMA_SECRET_KEY`,
+`SOMA_DB_USER`, `SOMA_DB_PASSWORD`, `SOMA_ALLOWED_HOSTS`, `SOMA_API_TOKEN`.
+AuthZ is the bearer token via `StandaloneAuth`; there is no OPA client, circuit
+breaker, rate limiter, CORS middleware or body-size cap in this tree.
 
 ---
 

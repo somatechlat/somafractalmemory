@@ -142,11 +142,25 @@ class GraphLink(models.Model):
         return f"Link({self.from_coordinate_key} -> {self.to_coordinate_key}, {self.link_type})"
 
 
+def _default_vector_dim() -> int:
+    """Vector dim default comes from the settings model, never a literal.
+
+    ``MemoryService.store`` always writes the real dim; this callable only
+    covers rows created outside that path (tests, shell, admin).
+    """
+    from somafractalmemory.settings.model import resolve_setting
+
+    return int(resolve_setting("SOMA_VECTOR_DIM"))
+
+
 class VectorEmbedding(models.Model):
     """Vector embedding metadata model.
 
     Tracks vector embeddings stored in Milvus.
     Metadata is stored here, vectors are in Milvus.
+
+    ``model_name`` records embedding *provenance* (``precomputed`` /
+    ``hash-embedder``), not a HuggingFace id — SFM never loads a local model.
     """
 
     id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -157,10 +171,8 @@ class VectorEmbedding(models.Model):
     milvus_id: models.BigIntegerField = models.BigIntegerField(
         null=True, help_text="ID in Milvus collection"
     )
-    vector_dim: models.IntegerField = models.IntegerField(default=768)
-    model_name: models.CharField = models.CharField(
-        max_length=255, default="microsoft/codebert-base"
-    )
+    vector_dim: models.IntegerField = models.IntegerField(default=_default_vector_dim)
+    model_name: models.CharField = models.CharField(max_length=255, default="hash-embedder")
     created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
 
     class Meta:
