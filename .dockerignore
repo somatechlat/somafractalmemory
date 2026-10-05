@@ -1,0 +1,81 @@
+# Build context exclusions for the SomaFractalMemory standalone image.
+# Dockerfile is at infra/standalone/Dockerfile.
+# Rule 164: a secret is Vault material and must never be baked into an image.
+# This file did not exist before -- `.env` and `infra/standalone/.env` were
+# both entering the build context.
+
+# --- secret MATERIAL (directories and formats, not name substrings) ---------
+# Do NOT use *token* / *password* globs: they match real source
+# (test_vault_token_file_only.py, settings model code).
+infra/standalone/secrets/
+**/vault_root_token
+**/vault_unseal_key
+**/*_vault_root_token
+**/*_vault_unseal_key
+
+# --- env files at every depth ----------------------------------------------
+# A bare `.env` matches only the repo root; `infra/standalone/.env` is a real
+# file here too.
+**/.env
+**/.env.*
+!**/.env.example
+
+# --- key and certificate FORMATS -------------------------------------------
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ecdsa*
+id_ed25519*
+
+# --- VCS --------------------------------------------------------------------
+.git
+.gitignore
+
+# --- Python -----------------------------------------------------------------
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+somafractalmemory.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+.hypothesis
+.benchmarks
+
+# --- virtualenvs ------------------------------------------------------------
+env
+venv
+.venv
+
+# --- IDE / OS ---------------------------------------------------------------
+.idea
+.vscode
+.DS_Store
+
+# --- type-checker / lint output --------------------------------------------
+pyright_errors_*.json
+pyrightconfig.json
+
+# --- docs and generated site not needed at runtime --------------------------
+docs
+site
+mkdocs.yml
+*.md
+!README.md
+
+# --- data and logs ----------------------------------------------------------
+data
+*.log
+tmp
