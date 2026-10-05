@@ -1,20 +1,45 @@
 """Proof of Life Verification for SFM Docker Deployment.
 
-Target: http://localhost:10101
 Verifies:
 1. Health endpoint
 2. Memory storage (Write)
 3. Memory retrieval (Read)
 4. Vector store connectivity (Implicit via search)
+
+Topology (SFM_URL) and the bearer are REQUIRED. There is no default host and
+no dummy credential: a proof of life that authenticates with a token baked into
+the source proves nothing except that a hardcoded string still matches another
+hardcoded string (VIBE Rule 1, Rule 7, Rule 164).
 """
 
 import os
+import pathlib
 import time
 
 import requests
 
-SFM_URL = os.environ.get("SFM_URL", "http://localhost:10101")
-TOKEN = "sfm-api-token-123"  # Matches .env
+try:
+    SFM_URL = os.environ["SFM_URL"]
+except KeyError as exc:
+    raise RuntimeError(
+        "SFM_URL is not set. Point it at the running SFM, e.g. the compose "
+        "service URL. There is no default host (VIBE Rule 91)."
+    ) from exc
+
+_TOKEN_FILE = os.environ.get("SOMA_API_TOKEN_FILE")
+if _TOKEN_FILE:
+    TOKEN = pathlib.Path(_TOKEN_FILE).read_text().strip()
+else:
+    TOKEN = os.environ.get("SOMA_API_TOKEN", "")
+
+if not TOKEN:
+    raise RuntimeError(
+        "SOMA_API_TOKEN is not configured. Set SOMA_API_TOKEN_FILE to the t=0 "
+        "material (a path -- never an ENV value, VIBE Rule 164), or SOMA_API_TOKEN "
+        "in the process environment. A missing credential is a failure naming "
+        "the missing secret, never a dummy (VIBE Rule 7)."
+    )
+
 AUTH_HEADERS = {"Authorization": f"Bearer {TOKEN}", "X-Soma-Tenant": "proof-tenant"}
 
 

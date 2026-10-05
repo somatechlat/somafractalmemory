@@ -21,10 +21,16 @@ class Memory(models.Model):
     """
 
     class MemoryType(models.TextChoices):
-        """Memorytype class implementation."""
+        """Memorytype class implementation.
+
+        Vocabulary is the triad contract (INVARIANTS §5 ``MemoryWrite.kind``):
+        ``episodic | semantic | belief``. Every value the store request accepts
+        is modelled here, or the row is invisible to typed filters and stats.
+        """
 
         EPISODIC = "episodic", "Episodic"
         SEMANTIC = "semantic", "Semantic"
+        BELIEF = "belief", "Belief"
 
     id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     namespace: models.CharField = models.CharField(max_length=255, db_index=True)
@@ -208,6 +214,7 @@ class MemoryNamespace(models.Model):
     total_memories: models.IntegerField = models.IntegerField(default=0)
     episodic_count: models.IntegerField = models.IntegerField(default=0)
     semantic_count: models.IntegerField = models.IntegerField(default=0)
+    belief_count: models.IntegerField = models.IntegerField(default=0)
     created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
     updated_at: models.DateTimeField = models.DateTimeField(auto_now=True)
 
@@ -232,12 +239,20 @@ class MemoryNamespace(models.Model):
             total=Count("id"),
             episodic=Count("id", filter=Q(memory_type=Memory.MemoryType.EPISODIC)),
             semantic=Count("id", filter=Q(memory_type=Memory.MemoryType.SEMANTIC)),
+            belief=Count("id", filter=Q(memory_type=Memory.MemoryType.BELIEF)),
         )
         self.total_memories = stats["total"] or 0
         self.episodic_count = stats["episodic"] or 0
         self.semantic_count = stats["semantic"] or 0
+        self.belief_count = stats["belief"] or 0
         self.save(
-            update_fields=["total_memories", "episodic_count", "semantic_count", "updated_at"]
+            update_fields=[
+                "total_memories",
+                "episodic_count",
+                "semantic_count",
+                "belief_count",
+                "updated_at",
+            ]
         )
 
 

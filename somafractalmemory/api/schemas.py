@@ -80,11 +80,17 @@ class MemorySearchResponse(BaseModel):
 
 
 class StatsResponse(BaseModel):
-    """Response model for memory stats."""
+    """Response model for memory stats.
+
+    Counts cover every ``memory_type`` the store accepts
+    (``episodic | semantic | belief``) — a kind that is stored but not
+    counted is invisible, which is the defect this shape exists to prevent.
+    """
 
     total_memories: int = 0
     episodic: int = 0
     semantic: int = 0
+    belief: int = 0
     namespace: str = ""
 
 
@@ -95,6 +101,7 @@ class TenantStats(BaseModel):
     total_memories: int = 0
     episodic: int = 0
     semantic: int = 0
+    belief: int = 0
     graph_links: int = 0
 
 

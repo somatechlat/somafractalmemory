@@ -5,7 +5,8 @@ AAAS (Agent-as-a-Service) auth is a separate deployment concern
 and is NOT loaded in standalone mode.
 
 Auth strategy:
-  - Bearer token via SOMA_API_TOKEN (SimpleTokenAuth)
+  - Bearer token compared against ``settings.SOMA_API_TOKEN`` (the value the
+    settings modules resolve at boot — Vault is the system of record)
   - No API key management, no SomaBrain integration
   - Tenant derived from auth context or X-Soma-Tenant header
 """
@@ -23,16 +24,18 @@ logger = logging.getLogger(__name__)
 class StandaloneAuth(HttpBearer):
     """Standalone bearer token authentication.
 
-    Validates requests using the SOMA_API_TOKEN environment variable.
-    All authenticated requests are bound to the 'standalone' tenant.
+    Validates requests against ``settings.SOMA_API_TOKEN`` — the single
+    resolved credential. All authenticated requests are bound to the
+    'standalone' tenant.
 
     Security:
         - Uses hmac.compare_digest for constant-time token comparison
         - Prevents timing attacks on token validation
+        - An absent expected token fail-closes every caller
     """
 
     def authenticate(self, request: HttpRequest, token: str) -> dict | None:
-        """Validate bearer token against SOMA_API_TOKEN.
+        """Validate the bearer token against the resolved API token.
 
         Args:
             request: The HTTP request
@@ -61,15 +64,13 @@ class StandaloneAuth(HttpBearer):
 
 
 def _get_expected_token() -> str | None:
-    """Load the expected API token from Django settings."""
-    token = getattr(settings, "SOMA_API_TOKEN", None)
-    if token:
-        return token
+    """Return the expected API token from Django settings.
 
-    if hasattr(settings, "get_api_token"):
-        return settings.get_api_token()
-
-    return None
+    One source of truth (R-VAL-03): the settings modules already resolve the
+    credential (Vault first, deployment injection second, never a code
+    default). This reader adds no second lookup path and no fallback.
+    """
+    return getattr(settings, "SOMA_API_TOKEN", None)
 
 
 def can_access_namespace(request: HttpRequest, namespace: str) -> bool:
