@@ -167,7 +167,13 @@ ALLOWED_HOSTS = _required_list("ALLOWED_HOSTS", "SOMA_ALLOWED_HOSTS")
 SOMA_API_TOKEN = _credential(
     "SOMA_API_TOKEN",
     "SOMA_API_TOKEN",
-    vault=("somafractalmemory/credentials", "soma_api_token"),
+    # One trust boundary, one Vault document. SOMA-ARCH-INVARIANTS-001 §6 and
+    # init_vault.py put every credential at secret/agent/credentials/{key}.
+    # The former path named a mount that does not exist on this Vault (it
+    # holds `secret/`), so the token never resolved and the API refused to
+    # boot. Same split that made the agent and the brain issue two different
+    # tokens (17 vs 64 chars) and 401 every memory write.
+    vault=("secret/agent/credentials", "soma_api_token"),
 )
 SOMA_API_TOKEN_FILE = env.str("SOMA_API_TOKEN_FILE", default=None)
 
