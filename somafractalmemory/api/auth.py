@@ -53,8 +53,15 @@ class StandaloneAuth(HttpBearer):
             return None
 
         if hmac.compare_digest(token.encode("utf-8"), expected_token.encode("utf-8")):
+            # Credential-bound tenant (F-01): never "standalone" free-for-all.
+            tenant = str(getattr(settings, "SOMA_BOUND_TENANT", "") or "").strip()
+            if not tenant:
+                logger.warning(
+                    "SOMA_BOUND_TENANT not configured — rejecting all callers (fail-closed)"
+                )
+                return None
             return {
-                "tenant": "standalone",
+                "tenant": tenant,
                 "auth_type": "standalone_token",
                 "permissions": ["read", "write", "delete"],
                 "allowed_namespaces": ["*"],

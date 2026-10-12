@@ -23,14 +23,17 @@ class Memory(models.Model):
     class MemoryType(models.TextChoices):
         """Memorytype class implementation.
 
-        Vocabulary is the triad contract (INVARIANTS §5 ``MemoryWrite.kind``):
-        ``episodic | semantic | belief``. Every value the store request accepts
-        is modelled here, or the row is invisible to typed filters and stats.
+        Vocabulary is the triad contract: ``episodic | semantic | belief |
+        working_memory``. Every value the store request accepts is modelled
+        here, or the row is invisible to typed filters and stats.
+        ``working_memory`` is the WM persistence lane (SomaBrain wm_persistence)
+        — eviction is payload metadata, not a type.
         """
 
         EPISODIC = "episodic", "Episodic"
         SEMANTIC = "semantic", "Semantic"
         BELIEF = "belief", "Belief"
+        WORKING_MEMORY = "working_memory", "Working Memory"
 
     id: models.UUIDField = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     namespace: models.CharField = models.CharField(max_length=255, db_index=True)
@@ -47,6 +50,14 @@ class Memory(models.Model):
     metadata: models.JSONField = models.JSONField(default=dict, blank=True)
     tenant: models.CharField = models.CharField(max_length=255, default="default", db_index=True)
     importance: models.FloatField = models.FloatField(default=0.0, db_index=True)
+    # B19 belief semantics: a belief is not just a label.
+    belief_confidence: models.FloatField = models.FloatField(null=True, blank=True)
+    belief_polarity: models.CharField = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="positive | negative | unknown — empty for non-belief rows",
+    )
     access_count: models.IntegerField = models.IntegerField(default=0)
     last_accessed: models.DateTimeField = models.DateTimeField(null=True, blank=True)
     is_deleted: models.BooleanField = models.BooleanField(default=False, db_index=True)

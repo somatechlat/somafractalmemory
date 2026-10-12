@@ -92,16 +92,21 @@ class TestResolveEmbedding:
 class TestRankByEmbeddingSource:
     """Hash-fallback hits must rank below precomputed hits."""
 
+    def _penalty(self) -> float:
+        from somafractalmemory.settings.model import resolve_setting
+
+        return float(resolve_setting("SOMA_HASH_EMBEDDING_PENALTY"))
+
     def test_hash_hit_demoted_below_equal_raw_score(self):
         hits = [
             {"coord": "1.0", "score": 0.9, "embedding_source": EMBEDDING_SOURCE_HASH},
             {"coord": "2.0", "score": 0.9, "embedding_source": EMBEDDING_SOURCE_PRECOMPUTED},
         ]
-        ranked = rank_by_embedding_source(hits)
+        ranked = rank_by_embedding_source(hits, self._penalty())
         assert ranked[0]["coord"] == "2.0"
         assert ranked[0]["score"] == pytest.approx(0.9)
         assert ranked[1]["coord"] == "1.0"
-        assert ranked[1]["score"] == pytest.approx(0.9 * 0.25)
+        assert ranked[1]["score"] == pytest.approx(0.9 * self._penalty())
 
     def test_precomputed_hit_beats_stronger_hash_noise(self):
         """Raw hash noise (0.8) must not outrank a real hit (0.3) after penalty."""
@@ -109,7 +114,7 @@ class TestRankByEmbeddingSource:
             {"coord": "1.0", "score": 0.8, "embedding_source": EMBEDDING_SOURCE_HASH},
             {"coord": "2.0", "score": 0.3, "embedding_source": EMBEDDING_SOURCE_PRECOMPUTED},
         ]
-        ranked = rank_by_embedding_source(hits)
+        ranked = rank_by_embedding_source(hits, self._penalty())
         assert [h["coord"] for h in ranked] == ["2.0", "1.0"]
 
     def test_hash_score_is_penalized(self):
@@ -119,7 +124,7 @@ class TestRankByEmbeddingSource:
 
     def test_precomputed_score_is_raw(self):
         hits = [{"coord": "1.0", "score": 0.8, "embedding_source": EMBEDDING_SOURCE_PRECOMPUTED}]
-        ranked = rank_by_embedding_source(hits)
+        ranked = rank_by_embedding_source(hits, self._penalty())
         assert ranked[0]["score"] == pytest.approx(0.8)
 
     def test_missing_flag_treated_as_hash(self):
@@ -129,7 +134,7 @@ class TestRankByEmbeddingSource:
 
     def test_none_score_treated_as_zero(self):
         hits = [{"coord": "1.0", "score": None, "embedding_source": EMBEDDING_SOURCE_HASH}]
-        ranked = rank_by_embedding_source(hits)
+        ranked = rank_by_embedding_source(hits, self._penalty())
         assert ranked[0]["score"] == pytest.approx(0.0)
 
     def test_sort_is_deterministic_for_ties(self):
@@ -137,12 +142,12 @@ class TestRankByEmbeddingSource:
             {"coord": "2.0", "score": 0.5, "embedding_source": EMBEDDING_SOURCE_PRECOMPUTED},
             {"coord": "1.0", "score": 0.5, "embedding_source": EMBEDDING_SOURCE_PRECOMPUTED},
         ]
-        ranked = rank_by_embedding_source(hits)
+        ranked = rank_by_embedding_source(hits, self._penalty())
         assert [h["coord"] for h in ranked] == ["1.0", "2.0"]
 
     def test_does_not_mutate_input(self):
         hits = [{"coord": "1.0", "score": 0.8, "embedding_source": EMBEDDING_SOURCE_HASH}]
-        rank_by_embedding_source(hits)
+        rank_by_embedding_source(hits, self._penalty())
         assert hits[0]["score"] == 0.8
 
 

@@ -6,7 +6,7 @@ Auth via standalone facade — zero AAAS dependency.
 """
 
 from django.http import HttpRequest
-from ninja import Router
+from ninja import Query, Router
 from ninja.errors import HttpError
 
 from somafractalmemory.admin.common.messages import ErrorCode, get_message
@@ -75,14 +75,20 @@ def create_graph_link(request: HttpRequest, req: GraphLinkRequest) -> GraphLinkR
 def get_graph_neighbors(
     request: HttpRequest,
     coord: str,
-    k_hop: int = 1,
-    limit: int = 10,
-    offset: int = 0,
+    # B18: k_hop is a real traversal depth, bounded to [1, 5]. An unbounded
+    # depth turns one request into a full-graph walk.
+    k_hop: int = Query(1, ge=1, le=5),
+    # Bounded like somabrain MemoryRecallRequest.top_k (Field(3, ge=1, le=50))
+    # and MemorySearchRequest.top_k (Field(5, ge=1, le=200)) — an unbounded
+    # page size lets one request pull an entire adjacency set into a response.
+    limit: int = Query(10, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     link_type: str | None = None,
 ) -> GraphNeighborsResponse:
-    """Get neighbors of a coordinate using Django ORM.
+    """Get neighbours within ``k_hop`` hops of a coordinate.
 
-    Supports pagination with offset parameter.
+    Supports pagination with offset parameter. Each neighbour carries
+    ``hops`` — the distance from the seed — so k_hop is honest (B18).
     """
     ensure_permission(request, "read")
     service = _get_graph_service()
@@ -94,7 +100,12 @@ def get_graph_neighbors(
 
     try:
         neighbors = service.get_neighbors(
-            parsed, link_type=link_type, limit=limit, offset=offset, tenant=tenant
+            parsed,
+            link_type=link_type,
+            limit=limit,
+            offset=offset,
+            tenant=tenant,
+            k_hop=k_hop,
         )
 
         clean_neighbors = [{k: v for k, v in n.items() if not k.startswith("_")} for n in neighbors]
@@ -129,6 +140,7 @@ def find_graph_path(
         )
 
         if not path_result or len(path_result) > max_length:
+            # Legitimate empty answer: the store answered and there is no path.
             return GraphPathResponse(
                 from_coord=from_coord,
                 to_coord=to_coord,
@@ -147,6 +159,10 @@ def find_graph_path(
             found=True,
         )
     except Exception as exc:
+        # D8: an exception is not "no path exists". found=False alone would
+        # tell the caller the graph has no path; the store actually could not
+        # answer. Flag it (law 5: degraded recall must never look like an
+        # honest empty result).
         logger.error("Graph path query failed: %s", exc, exc_info=True)
         return GraphPathResponse(
             from_coord=from_coord,
@@ -154,4 +170,6 @@ def find_graph_path(
             path=[],
             link_types=[],
             found=False,
+            degraded=True,
+            degraded_reason=str(exc),
         )

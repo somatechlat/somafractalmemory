@@ -170,7 +170,7 @@ raises. There is no ENV fallback and no `SOMA_POSTGRES_URL` legacy DSN.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOMA_MILVUS_HOST` | `null` | Milvus host. Absent means no Milvus is deployed. |
+| `SOMA_MILVUS_HOST` | (required) | Milvus host. Dual-store contract: missing host is a refusal naming the setting — there is no no-Milvus mode. |
 | `SOMA_MILVUS_PORT` | `19530` | Milvus port |
 | `SOMA_VECTOR_DIM` | `768` | Vector dimension (must equal the agent seam's `MEM_EMBED_DIM`) |
 | `SOMA_SIMILARITY_METRIC` | `cosine` | Milvus distance metric (`cosine\|ip\|l2`) |
@@ -187,7 +187,7 @@ feature reads them. Setting them does nothing.
 `SOMA_OPA_TIMEOUT`, `SOMA_OPA_FAIL_OPEN`, `SOMA_JWT_*`, `SOMA_POSTGRES_URL`,
 `SOMA_FORCE_HASH_EMBEDDINGS`, `SOMA_ENABLE_BATCH_UPSERT`, `SOMA_DECAY_*`,
 `SOMA_PRUNING_INTERVAL_SECONDS`, `SOMA_MAX_MEMORY_SIZE`, `SOMA_IMPORTANCE_*`,
-`SOMA_HYBRID_*`, `SOMA_CIRCUIT_*`. Full record: `settings/infra.py`.
+Full record: `settings/infra.py`. Note: `SOMA_OPA_*`, `SOMA_CIRCUIT_*`, and `SOMA_HYBRID_*` were deleted — nothing reads them.
 
 ---
 

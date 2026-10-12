@@ -77,8 +77,11 @@ TUNABLES: dict[str, Tunable] = {
     # --- INFRA topology (readers: django_core.DATABASES, health, services,
     #     milvus_vector, vault_client) -----------------------------------------
     "SOMA_DB_NAME": Tunable("str", "somafractalmemory", CATEGORY_INFRA, "Postgres database name."),
-    "SOMA_DB_HOST": Tunable("str", "localhost", CATEGORY_INFRA, "Postgres host."),
-    "SOMA_DB_PORT": Tunable("str", "5432", CATEGORY_INFRA, "Postgres TCP port."),
+    # Host is topology and is named by the operator. There is no localhost
+    # default (Rule 91): a silent localhost is a host the operator cannot see.
+    # Absent means unset; the ORM connection fails closed instead of guessing.
+    "SOMA_DB_HOST": Tunable("str", None, CATEGORY_INFRA, "Postgres host. Absent means unset."),
+    "SOMA_DB_PORT": Tunable("str", None, CATEGORY_INFRA, "Postgres TCP port. Absent means unset."),
     "SOMA_REDIS_HOST": Tunable(
         "str", None, CATEGORY_INFRA, "Redis host. Absent means no Redis is deployed."
     ),
@@ -88,7 +91,9 @@ TUNABLES: dict[str, Tunable] = {
         "str",
         None,
         CATEGORY_SECURITY,
-        "Redis AUTH password. Absent means Redis runs without AUTH (a real topology).",
+        "Redis AUTH password (Vault: somafractalmemory/redis). Absent means "
+        "Redis runs without AUTH (a real topology). Never read from ENV — "
+        "Rule 164.",
     ),
     "SOMA_MILVUS_HOST": Tunable(
         "str", None, CATEGORY_INFRA, "Milvus host. Absent means no Milvus is deployed."
@@ -105,6 +110,26 @@ TUNABLES: dict[str, Tunable] = {
         "SOMA_VAULT_ADDR/VAULT_ADDR from env; once Django settings are up, "
         "this key is the deployment authority.",
     ),
+    # --- SECURITY: Postgres TLS (reader: django_core.DATABASES OPTIONS) ------
+    # Connection-security behaviour, not addressing. Absent means plain TCP —
+    # a real topology for a private network. When present the values are
+    # applied to the ORM connection, not merely declared.
+    "SOMA_POSTGRES_SSL_MODE": Tunable(
+        "str",
+        None,
+        CATEGORY_SECURITY,
+        "Postgres sslmode (disable|allow|prefer|require|verify-ca|verify-full). "
+        "Absent means plain TCP.",
+    ),
+    "SOMA_POSTGRES_SSL_ROOT_CERT": Tunable(
+        "str", None, CATEGORY_SECURITY, "Path to the Postgres SSL root certificate (sslrootcert)."
+    ),
+    "SOMA_POSTGRES_SSL_CERT": Tunable(
+        "str", None, CATEGORY_SECURITY, "Path to the Postgres SSL client certificate (sslcert)."
+    ),
+    "SOMA_POSTGRES_SSL_KEY": Tunable(
+        "str", None, CATEGORY_SECURITY, "Path to the Postgres SSL client key (sslkey)."
+    ),
     # --- MEMORY (readers: api.core, services, milvus_vector, health) ----------
     "SOMA_MEMORY_NAMESPACE": Tunable(
         "str", "api_ns", CATEGORY_MEMORY, "Namespace the API service operates in."
@@ -118,6 +143,10 @@ TUNABLES: dict[str, Tunable] = {
     # MEM_EMBED_DIM is honoured so both sides share one vector space (see
     # ``settings.infra._read_vector_dim``). The agent seam computes embeddings
     # once and sends them precomputed at this dim.
+    #
+    # One authority: this row is the only declaration of the dimension and its
+    # default. ``MEM_EMBED_DIM`` is an env alias of this key at boot — a second
+    # registry row would be a second declaration of one concept (R-VAL-01).
     "SOMA_VECTOR_DIM": Tunable(
         "int",
         768,
@@ -127,11 +156,41 @@ TUNABLES: dict[str, Tunable] = {
     "SOMA_SIMILARITY_METRIC": Tunable(
         "str", "cosine", CATEGORY_MEMORY, "Milvus distance metric (cosine|ip|l2)."
     ),
+    "SOMA_BOUND_TENANT": Tunable(
+        "str",
+        None,
+        CATEGORY_SECURITY,
+        "Tenant this deployment's API token is bound to (F-01). "
+        "Every request is scoped to this tenant; body/header tenant must "
+        "match. Absent means auth fail-closed (no free tenant selection).",
+    ),
     "SOMA_MILVUS_NLIST": Tunable(
         "int", 128, CATEGORY_MEMORY, "IVF_FLAT cluster count at collection creation."
     ),
     "SOMA_MILVUS_NPROBE": Tunable(
         "int", 16, CATEGORY_MEMORY, "IVF_FLAT clusters probed per search."
+    ),
+    "SOMA_MILVUS_INDEX_TYPE": Tunable(
+        "str",
+        "HNSW",
+        CATEGORY_MEMORY,
+        "Milvus ANN index type at collection creation (HNSW|IVF_FLAT). "
+        "HNSW is the production default: full-capacity concurrent search.",
+    ),
+    "SOMA_MILVUS_HNSW_M": Tunable(
+        "int", 32, CATEGORY_MEMORY, "HNSW graph degree (M) at collection creation."
+    ),
+    "SOMA_MILVUS_HNSW_EF_CONSTRUCTION": Tunable(
+        "int",
+        256,
+        CATEGORY_MEMORY,
+        "HNSW efConstruction at index build (higher = better recall, slower build).",
+    ),
+    "SOMA_MILVUS_HNSW_EF": Tunable(
+        "int",
+        128,
+        CATEGORY_MEMORY,
+        "HNSW ef at search time (higher = better recall, higher latency).",
     ),
     "SOMA_SEARCH_CANDIDATE_MULTIPLIER": Tunable(
         "int",
@@ -148,12 +207,45 @@ TUNABLES: dict[str, Tunable] = {
         "is not comparable.",
     ),
     # --- API / OBSERVABILITY (readers: logger, health, api.core) --------------
+    "SOMA_DEBUG": Tunable(
+        "bool",
+        False,
+        CATEGORY_OBSERVABILITY,
+        "Django DEBUG: verbose error pages and the development posture. When "
+        "off, django_core pins the production security block (secure cookies, "
+        "HSTS, nosniff, DENY framing). F-02: this knob never drives log level — "
+        "SOMA_LOG_LEVEL is its own tunable and nothing couples them.",
+    ),
     "SOMA_LOG_LEVEL": Tunable("str", "INFO", CATEGORY_OBSERVABILITY, "Root log level."),
     "SOMA_LOG_JSON": Tunable(
         "bool", False, CATEGORY_OBSERVABILITY, "Render logs as JSON (otherwise console)."
     ),
     "SOMA_PROBE_TIMEOUT_S": Tunable(
         "float", 2.0, CATEGORY_API, "Timeout for health-probe backend checks."
+    ),
+    # --- Rate limiting (reader: api/rate_limit.py TokenBucket) ----------------
+    # Real Redis token bucket on the write and search routes. These are the
+    # values that module reads; there is no second knob and no in-process
+    # counter (a per-process counter resets on deploy and splits across
+    # replicas).
+    "SOMA_RATE_LIMIT_WRITE_RPS": Tunable(
+        "float",
+        10.0,
+        CATEGORY_API,
+        "Token refill rate (tokens/second) for mutating memory/graph routes.",
+    ),
+    "SOMA_RATE_LIMIT_READ_RPS": Tunable(
+        "float",
+        50.0,
+        CATEGORY_API,
+        "Token refill rate (tokens/second) for search and fetch routes.",
+    ),
+    "SOMA_RATE_LIMIT_BURST": Tunable(
+        "int",
+        20,
+        CATEGORY_API,
+        "Token-bucket capacity. One token per request; bucket refills at the "
+        "route class's *_RPS rate.",
     ),
     # --- BACKUP (reader: scripts/backup_restore.py) ---------------------------
     "SOMA_BACKUP_DIR": Tunable("path", "./backups", CATEGORY_BACKUP, "Local backup destination."),

@@ -82,14 +82,18 @@ This audit covers the SomaFractalMemory repository as of version 0.2.0:
 
 Production code contains **zero** instances of `TODO`, `FIXME`, `HACK`, or `XXX` markers. All known issues have been resolved or tracked externally.
 
-### 3.2 Fail-Closed OPA Authorization
+### 3.2 Fail-Closed Authorization (no OPA client)
 
-```python
-# somafractalmemory/settings/infra.py:159
-SOMA_OPA_FAIL_OPEN = env.bool("SOMA_OPA_FAIL_OPEN", default=False)
-```
+**Historical claim (false, retained for audit trail):** this section previously
+quoted `SOMA_OPA_FAIL_OPEN = env.bool(...)` from `settings/infra.py:159` and
+asserted fail-closed OPA authorization. That code is **deleted**.
 
-When OPA is unreachable, SFM **denies all requests by default**. This is the correct security posture for a production system. Operators can override to fail-open for development only.
+Code truth (`settings/infra.py:69-71`): there is no OPA client in this tree.
+`SOMA_OPA_*` knobs are deleted and nothing reads them. Authorization is the
+`SOMA_API_TOKEN` bearer via `StandaloneAuth`, plus fail-closed namespace/tenant
+checks (`api/utils.get_tenant_from_request` returns HTTP 400 when no tenant
+resolves; `admin/core/services._require_tenant` refuses empty). Missing tenant
+is never remapped to a default partition.
 
 ### 3.3 Vault Integration with Graceful Degradation
 

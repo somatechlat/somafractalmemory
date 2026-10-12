@@ -40,6 +40,48 @@ class EmbeddingDimensionError(ValueError):
     """Raised when a supplied embedding does not match the configured dimension."""
 
 
+class VectorIndexUnavailable(RuntimeError):
+    """Raised when a vector must be written but the vector index cannot take it.
+
+    Law 7 (stack lock): a precomputed embedding is never dropped. If there is
+    no vector store to hold it, the write is refused instead of persisting an
+    ORM row whose vector was silently discarded.
+    """
+
+
+class VectorWriteError(RuntimeError):
+    """Raised when the vector index rejects an insert.
+
+    Law 7 (stack lock): a Milvus insert failure aborts the whole write. The
+    ORM row is rolled back — a memory that exists without its vector is data
+    loss, not a degraded success.
+    """
+
+
+def _extract_milvus_id(insert_result: Any) -> int:
+    """Extract the scalar primary key from a pymilvus insert result.
+
+    pymilvus returns a MutationResult dict-like: ``{"insert_count": 1,
+    "ids": [123], "cost": 0}``. ``VectorEmbedding.milvus_id`` is a BigInteger
+    column and must receive the scalar id, never the result envelope.
+    """
+    if insert_result is None:
+        raise VectorWriteError("vector insert returned no result")
+    # Already a scalar int (some test doubles / older pymilvus).
+    if isinstance(insert_result, int):
+        return insert_result
+    # MutationResult: dict-like with "ids".
+    ids = None
+    if isinstance(insert_result, dict):
+        ids = insert_result.get("ids")
+    else:
+        ids = getattr(insert_result, "ids", None)
+    if ids:
+        first = ids[0]
+        return int(first)
+    raise VectorWriteError(f"vector insert result has no primary key: {insert_result!r}")
+
+
 def _embedding_source_of(metadata: dict[str, Any] | None) -> str:
     """Read the embedding provenance flag from memory metadata.
 
@@ -101,6 +143,14 @@ class HashEmbedder:
         # L2 normalize for cosine
         norm = sum(v * v for v in vec) ** 0.5 or 1.0
         return [v / norm for v in vec]
+
+
+def _require_tenant(tenant: str | None) -> str:
+    """T-5 fail-closed: tenant is required. Never a silent default."""
+    tid = (tenant or "").strip()
+    if not tid:
+        raise ValueError("tenant is required (T-5 fail-closed)")
+    return tid
 
 
 class MemoryService:
@@ -201,9 +251,12 @@ class MemoryService:
         coordinate: tuple[float, ...],
         payload: dict[str, Any],
         memory_type: str = "episodic",
-        tenant: str = "default",
+        tenant: str | None = None,
         metadata: dict[str, Any] | None = None,
         embedding: list[float] | None = None,
+        importance: float = 0.0,
+        belief_confidence: float | None = None,
+        belief_polarity: str | None = None,
     ) -> Memory:
         """Store a memory using Django ORM.
 
@@ -212,9 +265,20 @@ class MemoryService:
         hash fallback embeds the payload text and flags ``"hash"`` so search
         can rank the record lower.
 
+        ``importance``, ``belief_confidence`` and ``belief_polarity`` are
+        first-class columns (B20), not payload-only JSON: whatever the caller
+        sends is written to the column, so a store request never leaves an
+        accepted field at its schema default.
+
         Raises:
             EmbeddingDimensionError: supplied embedding has the wrong dimension.
+            VectorIndexUnavailable: a precomputed embedding was supplied but no
+                vector store is configured. The embedding would be dropped.
+            VectorWriteError: the vector index rejected the insert. The whole
+                transaction is aborted (B21 / law 7: no ORM row without its
+                vector).
         """
+        tenant = _require_tenant(tenant)
         coord_key = Memory.coord_to_key(coordinate)
         vector, embedding_source = self._resolve_embedding(payload, embedding)
 
@@ -232,6 +296,11 @@ class MemoryService:
                 "metadata": meta,
                 "is_deleted": False,
                 "deleted_at": None,
+                # B20: the column must reflect what the caller sent, not stay
+                # at the model default when a real value was supplied.
+                "importance": importance,
+                "belief_confidence": belief_confidence,
+                "belief_polarity": belief_polarity or "",
             },
         )
 
@@ -242,12 +311,16 @@ class MemoryService:
         if self.vector_store:
             self.vector_store.delete(coord_key, namespace=self.namespace, tenant=tenant)
             try:
-                milvus_id = self.vector_store.insert(
+                insert_result = self.vector_store.insert(
                     coordinate_key=coord_key,
                     vector=vector,
                     namespace=self.namespace,
                     tenant=tenant,
                 )
+                # pymilvus returns a MutationResult dict-like: {"ids": [...], ...}.
+                # VectorEmbedding.milvus_id is a BigInteger — store the scalar,
+                # not the whole result envelope.
+                milvus_id = _extract_milvus_id(insert_result)
                 VectorEmbedding.objects.update_or_create(
                     memory=memory,
                     collection_name=self.vector_store.collection_name,
@@ -262,11 +335,17 @@ class MemoryService:
                     },
                 )
             except Exception as exc:
-                logger.warning("Vector store insert failed", error=str(exc), exc_info=True)
+                # B21 / law 7: never swallow an insert failure. Raising aborts
+                # the @transaction.atomic block so the ORM row is rolled back
+                # and the caller sees the write as failed, not half-done.
+                logger.error("Vector store insert failed", error=str(exc), exc_info=True)
+                raise VectorWriteError(f"vector insert failed for {coord_key!r}: {exc}") from exc
         elif embedding is not None:
-            logger.warning(
-                "Precomputed embedding not persisted — vector store unavailable",
-                coordinate_key=coord_key,
+            # Law 7: a precomputed embedding is never dropped. Refuse the write
+            # rather than persist a row whose vector was silently discarded.
+            raise VectorIndexUnavailable(
+                f"precomputed embedding for {coord_key!r} cannot be persisted: "
+                "no vector store is configured"
             )
 
         # Log the operation
@@ -283,9 +362,10 @@ class MemoryService:
     def retrieve(
         self,
         coordinate: tuple[float, ...],
-        tenant: str = "default",
+        tenant: str | None = None,
     ) -> dict[str, Any] | None:
         """Retrieve a memory by coordinate."""
+        tenant = _require_tenant(tenant)
         coord_key = Memory.coord_to_key(coordinate)
 
         try:
@@ -313,6 +393,8 @@ class MemoryService:
                 "metadata": memory.metadata,
                 "embedding_source": _embedding_source_of(memory.metadata),
                 "importance": memory.importance,
+                "belief_confidence": memory.belief_confidence,
+                "belief_polarity": memory.belief_polarity or None,
                 "created_at": memory.created_at.isoformat(),
                 "updated_at": memory.updated_at.isoformat(),
             }
@@ -320,10 +402,11 @@ class MemoryService:
             return None
 
     @transaction.atomic
-    def delete(self, coordinate: tuple[float, ...], tenant: str = "default") -> bool:
+    def delete(self, coordinate: tuple[float, ...], tenant: str | None = None) -> bool:
         """Soft delete a memory by coordinate."""
         from datetime import UTC, datetime
 
+        tenant = _require_tenant(tenant)
         coord_key = Memory.coord_to_key(coordinate)
 
         try:
@@ -368,10 +451,10 @@ class MemoryService:
         top_k: int = 5,
         offset: int = 0,
         memory_type: str | None = None,
-        tenant: str = "default",
+        tenant: str | None = None,
         filters: dict[str, Any] | None = None,
         query_embedding: list[float] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Search memories using Django ORM.
 
         Ranking is by vector similarity via Milvus when configured. A supplied
@@ -382,19 +465,50 @@ class MemoryService:
 
         Fix Flaw 7: Supporting pagination with offset.
 
+        Returns:
+            ``{"memories": [...], "degraded": bool, "degraded_reason": str|None}``.
+
+            ``degraded`` is mandatory honesty (B17 / law 5): a vector path that
+            could not answer — failed, or absent when the request needed it —
+            must flag itself. Callers distinguish "no history"
+            (``degraded=False, memories=[]``) from "recall is not trustworthy"
+            (``degraded=True``). A bare ``[]`` is never returned for a failure.
+
         Raises:
             EmbeddingDimensionError: wrong query embedding dimension.
         """
+        tenant = _require_tenant(tenant)
         vector_query = query_embedding is not None
 
-        if self.vector_store:
-            if query_embedding is not None:
-                self._check_embedding_dim(query_embedding)
-                vector = list(query_embedding)
-            else:
-                vector = self.embedder.embed(query)
+        degraded = False
+        degraded_reason: str | None = None
 
-            try:
+        def _result(memories: list[dict[str, Any]]) -> dict[str, Any]:
+            return {
+                "memories": memories,
+                "degraded": degraded,
+                "degraded_reason": degraded_reason,
+            }
+
+        if not self.vector_store:
+            # No vector index in this deployment. That is a recall limitation
+            # and must be flagged (law 5) — a text-only answer is not the
+            # vector recall the caller asked for.
+            degraded = True
+            degraded_reason = "vector store unavailable"
+            if vector_query:
+                # A vector query with no vector index cannot be answered at
+                # all. Do not degrade it into a browse of every memory.
+                return _result([])
+        elif query_embedding is not None:
+            self._check_embedding_dim(query_embedding)
+        try:
+            if self.vector_store:
+                vector = (
+                    list(query_embedding)
+                    if query_embedding is not None
+                    else self.embedder.embed(query)
+                )
                 # Fetch extra candidates so demotion of hash-fallback hits can
                 # reshuffle the page without pushing real hits out of reach.
                 candidate_k = max(top_k + offset, 1) * self.search_candidate_multiplier
@@ -431,6 +545,8 @@ class MemoryService:
                             "payload": mem.payload,
                             "memory_type": mem.memory_type,
                             "importance": mem.importance,
+                            "belief_confidence": mem.belief_confidence,
+                            "belief_polarity": mem.belief_polarity or None,
                             "score": res.get("score"),
                             "embedding_source": _embedding_source_of(mem.metadata),
                             "created_at": mem.created_at.isoformat(),
@@ -450,13 +566,17 @@ class MemoryService:
                             "query_embedding": vector_query,
                         },
                     )
-                    return page
-            except Exception as exc:
-                logger.warning("Vector search failed, falling back to ORM", error=str(exc))
+                    return _result(page)
+        except Exception as exc:
+            # B17 / law 5: the vector path could not answer. Flag it — never
+            # let a fallback masquerade as a complete recall.
+            degraded = True
+            degraded_reason = f"vector search failed: {exc}"
+            logger.warning("Vector search failed, falling back to ORM", error=str(exc))
 
         # A vector-only query must not degrade into a browse of every memory.
         if vector_query and not query:
-            return []
+            return _result([])
 
         queryset = Memory.objects.filter(
             namespace=self.namespace,
@@ -492,34 +612,47 @@ class MemoryService:
             details={"query": query, "top_k": top_k, "filters": filters},
         )
 
-        return [
-            {
-                "coordinate": m.coordinate,
-                "coord": m.coordinate_key,
-                "payload": m.payload,
-                "memory_type": m.memory_type,
-                "importance": m.importance,
-                "score": float(m.importance),
-                "embedding_source": _embedding_source_of(m.metadata),
-                "created_at": m.created_at.isoformat(),
-            }
-            for m in memories
-        ]
+        return _result(
+            [
+                {
+                    "coordinate": m.coordinate,
+                    "coord": m.coordinate_key,
+                    "payload": m.payload,
+                    "memory_type": m.memory_type,
+                    "importance": m.importance,
+                    "belief_confidence": m.belief_confidence,
+                    "belief_polarity": m.belief_polarity or None,
+                    "score": float(m.importance),
+                    "embedding_source": _embedding_source_of(m.metadata),
+                    "created_at": m.created_at.isoformat(),
+                }
+                for m in memories
+            ]
+        )
 
     def stats(self) -> dict[str, Any]:
-        """Get memory statistics using Django ORM."""
+        """Get memory statistics using Django ORM.
+
+        Counts cover every ``memory_type`` the store accepts
+        (``episodic | semantic | belief | working_memory``): a kind that is
+        stored but not counted is invisible.
+        """
         from django.db.models import Count, Q
 
         stats = Memory.objects.filter(namespace=self.namespace, is_deleted=False).aggregate(
             total=Count("id"),
             episodic=Count("id", filter=Q(memory_type=Memory.MemoryType.EPISODIC)),
             semantic=Count("id", filter=Q(memory_type=Memory.MemoryType.SEMANTIC)),
+            belief=Count("id", filter=Q(memory_type=Memory.MemoryType.BELIEF)),
+            working_memory=Count("id", filter=Q(memory_type=Memory.MemoryType.WORKING_MEMORY)),
         )
 
         return {
             "total_memories": stats["total"] or 0,
             "episodic": stats["episodic"] or 0,
             "semantic": stats["semantic"] or 0,
+            "belief": stats["belief"] or 0,
+            "working_memory": stats["working_memory"] or 0,
             "namespace": self.namespace,
         }
 
@@ -564,7 +697,9 @@ class GraphService:
         """Create a graph link using Django ORM."""
         from_key = Memory.coord_to_key(from_coord)
         to_key = Memory.coord_to_key(to_coord)
-        tenant = link_data.get("_tenant", "default")
+        tenant = link_data.get("_tenant")
+        if not tenant:
+            raise ValueError("tenant is required (T-5 fail-closed)")
 
         link, created = GraphLink.objects.update_or_create(
             namespace=self.namespace,
@@ -586,47 +721,96 @@ class GraphService:
 
         return link
 
+    # k_hop is bounded: an unbounded traversal depth turns one request into a
+    # full-graph walk. 1..5 matches the contract (B18) — deep recall goes
+    # through find_shortest_path, not the neighbour listing.
+    K_HOP_MIN = 1
+    K_HOP_MAX = 5
+
     def get_neighbors(
         self,
         coord: tuple[float, ...],
         link_type: str | None = None,
         limit: int = 10,
         offset: int = 0,
-        tenant: str = "default",
+        tenant: str | None = None,
+        k_hop: int = 1,
     ) -> list[dict[str, Any]]:
-        """Get neighbors of a coordinate using Django ORM.
+        """Get neighbours within ``k_hop`` hops of a coordinate (B18).
 
-        Fix Flaw 7: Supporting pagination with offset.
+        This is a real breadth-first expansion over ``sfm_graph_links`` — not a
+        1-hop listing wearing a ``k_hop`` label. Each returned neighbour
+        carries ``hops``, the number of edges on the shortest path from the
+        seed, so a 2-hop result is distinguishable from a 1-hop result.
+
+        The seed coordinate itself is never returned. Cycles are cut by
+        refusing to re-expand a coordinate already reached.
+
+        Args:
+            coord: Seed coordinate.
+            link_type: Optional link-type filter applied at every hop.
+            limit: Page size, applied after expansion.
+            offset: Page offset, applied after expansion.
+            tenant: Tenant scope (required).
+            k_hop: Traversal depth, bounded to ``[1, 5]``.
+
+        Raises:
+            ValueError: ``k_hop`` outside the bounds.
         """
+        if not isinstance(k_hop, int) or isinstance(k_hop, bool):
+            raise ValueError("k_hop must be an integer")
+        if not self.K_HOP_MIN <= k_hop <= self.K_HOP_MAX:
+            raise ValueError(
+                f"k_hop must be between {self.K_HOP_MIN} and {self.K_HOP_MAX}, got {k_hop}"
+            )
+
         coord_key = Memory.coord_to_key(coord)
 
-        queryset = GraphLink.objects.filter(
-            namespace=self.namespace,
-            tenant=tenant,
-            from_coordinate_key=coord_key,
-        )
+        # BFS frontier. reached maps coordinate_key -> the shortest-hop record
+        # found so far; once a coordinate is reached it is never re-expanded,
+        # so its first (shortest) hop count is the one that sticks.
+        reached: dict[str, dict[str, Any]] = {}
+        frontier: list[str] = [coord_key]
+        visited: set[str] = {coord_key}
 
-        if link_type:
-            queryset = queryset.filter(link_type=link_type)
+        for hop in range(1, k_hop + 1):
+            if not frontier:
+                break
+            queryset = GraphLink.objects.filter(
+                namespace=self.namespace,
+                tenant=tenant,
+                from_coordinate_key__in=frontier,
+            )
+            if link_type:
+                queryset = queryset.filter(link_type=link_type)
 
-        links = queryset.order_by("-created_at")[offset : offset + limit]
+            next_frontier: list[str] = []
+            for link in queryset:
+                to_key = link.to_coordinate_key
+                if to_key in visited:
+                    continue
+                visited.add(to_key)
+                next_frontier.append(to_key)
+                reached[to_key] = {
+                    "coordinate": link.to_coordinate,
+                    "link_type": link.link_type,
+                    "strength": link.strength,
+                    "hops": hop,
+                    "_tenant": link.tenant,
+                }
+            frontier = next_frontier
 
-        return [
-            {
-                "coordinate": link.to_coordinate,
-                "link_type": link.link_type,
-                "strength": link.strength,
-                "_tenant": link.tenant,
-            }
-            for link in links
-        ]
+        # Shortest-hop neighbours first; ties broken deterministically by the
+        # coordinate key so paging is stable across calls.
+        ordered = sorted(reached.values(), key=lambda r: (r["hops"], str(r["coordinate"])))
+        return ordered[offset : offset + limit]
 
     def find_shortest_path(
         self,
         from_coord: tuple[float, ...],
         to_coord: tuple[float, ...],
         link_type: str | None = None,
-        tenant: str = "default",
+        tenant: str | None = None,
         max_depth: int = 5,
     ) -> list[tuple[float, ...]] | None:
         """Find shortest path using a Postgres Recursive CTE (O(1) query).

@@ -11,8 +11,8 @@
 |---|---|
 | Document Title | SOMA-SFM-SEC-001: SomaFractalMemory Security Assessment |
 | Document Identifier | SOMA-SFM-SEC-001 |
-| Version | 2.1.0 |
-| Date | 2026-10-03 |
+| Version | 2.1.1 |
+| Date | 2026-10-09 |
 | Status | Draft |
 | Author | SomaTech LAT Security Engineering |
 | Approver | — |
@@ -25,6 +25,7 @@
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
+| 2.1.1 | 2026-10-09 | SomaTech Engineering | Confirmed fail-closed tenant (no default) and deleted SOMA_OPA_* knobs — already accurate; timestamp refresh only. |
 | 1.0.0 | 2025-10-01 | Security | Initial security review |
 | 2.0.0 | 2026-06-15 | Security | Production-ready assessment for v0.2.0; added Vault, OPA, Docker hardening review |
 | 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-SEC-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |

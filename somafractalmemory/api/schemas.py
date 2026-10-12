@@ -8,7 +8,7 @@ Copyright (C) 2025 SomaTech LAT.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -30,9 +30,15 @@ class MemoryStoreRequest(BaseModel):
 
     coord: str
     payload: dict[str, Any]
-    memory_type: Literal["episodic", "semantic", "belief"] = "episodic"
+    memory_type: Literal["episodic", "semantic", "belief", "working_memory"] = "episodic"
     embedding: list[float] | None = None
     tenant_id: str | None = None
+    # B20: importance must be a first-class column, not payload-only JSON.
+    # Brain computes it (somabrain/api/memory/models.py) and sends it top-level.
+    importance: float = Field(0.0, ge=0.0, le=1.0)
+    # B19: belief semantics — a belief is not just a label.
+    belief_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    belief_polarity: Literal["positive", "negative", "unknown"] | None = None
 
 
 class MemoryStoreResponse(BaseModel):
@@ -65,8 +71,11 @@ class MemorySearchRequest(BaseModel):
     """
 
     query: str = ""
-    top_k: int = 5
-    offset: int = 0
+    # Bounded like somabrain/api/memory/models.py MemoryRecallRequest.top_k
+    # (Field(3, ge=1, le=50)) — an unbounded top_k lets one request pull an
+    # entire store into a response body. 200 is the house ceiling for a page.
+    top_k: int = Field(5, ge=1, le=200)
+    offset: int = Field(0, ge=0)
     memory_type: str | None = None
     filters: dict[str, Any] | None = None
     embedding: list[float] | None = None
@@ -74,9 +83,17 @@ class MemorySearchRequest(BaseModel):
 
 
 class MemorySearchResponse(BaseModel):
-    """Response model for memory search results."""
+    """Response model for memory search results.
+
+    ``degraded`` is mandatory honesty (stack lock): a vector-path failure must
+    flag itself, never masquerade as a genuine empty result. Callers distinguish
+    "no history" (degraded=False, memories=[]) from "store unavailable"
+    (degraded=True).
+    """
 
     memories: list[dict[str, Any]]
+    degraded: bool = False
+    degraded_reason: str | None = None
 
 
 class StatsResponse(BaseModel):
@@ -91,6 +108,7 @@ class StatsResponse(BaseModel):
     episodic: int = 0
     semantic: int = 0
     belief: int = 0
+    working_memory: int = 0
     namespace: str = ""
 
 
@@ -102,6 +120,7 @@ class TenantStats(BaseModel):
     episodic: int = 0
     semantic: int = 0
     belief: int = 0
+    working_memory: int = 0
     graph_links: int = 0
 
 
@@ -155,17 +174,29 @@ class GraphLinkResponse(BaseModel):
 
 
 class GraphNeighborsResponse(BaseModel):
-    """Response model for graph neighbor query."""
+    """Response model for graph neighbor query.
+
+    Each neighbour carries ``hops`` (distance from the seed) so k_hop is
+    honest — a 2-hop result is distinguishable from a 1-hop result.
+    """
 
     coord: str
     neighbors: list[dict[str, Any]]
+    degraded: bool = False
+    degraded_reason: str | None = None
 
 
 class GraphPathResponse(BaseModel):
-    """Response model for graph path query."""
+    """Response model for graph path query.
+
+    ``found=False`` means no path exists. ``degraded=True`` means the store
+    could not answer — the two must never look the same.
+    """
 
     from_coord: str
     to_coord: str
     path: list[str]
     link_types: list[str]
     found: bool
+    degraded: bool = False
+    degraded_reason: str | None = None

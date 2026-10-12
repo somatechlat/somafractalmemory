@@ -62,10 +62,12 @@ reader would violate the thin/fast/latency order:
   prohibited; the ORM reads ``DATABASES``.
 * ``SOMA_API_PORT`` — gunicorn/daphne bind where they are told to bind. No
   process in this tree opens a listen socket on a settings value.
-* ``SOMA_MAX_REQUEST_BODY_MB``, ``SOMA_RATE_LIMIT_*``, ``SOMA_CORS_ORIGINS`` —
-  there is no body-size, rate-limit or CORS middleware in ``MIDDLEWARE``.
-  ``api.core.get_rate_limiter`` used to return ``None`` and claim otherwise;
-  the stub is gone with the knobs.
+* ``SOMA_MAX_REQUEST_BODY_MB``, ``SOMA_CORS_ORIGINS`` —
+  there is no body-size or CORS middleware in ``MIDDLEWARE``.
+* ``SOMA_RATE_LIMIT_*`` was on this list while ``api.core.get_rate_limiter``
+  returned ``None`` and claimed otherwise. The stub is gone; the real Redis
+  token bucket lives in ``api/rate_limit.py`` and the knobs below are back in
+  ``TUNABLES`` with that reader.
 * ``SOMA_OPA_*``, ``SOMA_CIRCUIT_*`` — there is no OPA client and no circuit
   breaker in this tree. AuthZ is the bearer token and fail-closed behaviour
   lives where the gate actually is (Vault, dim checks, tenant resolution).
@@ -104,6 +106,15 @@ def _read(name: str, default: object) -> object:
     return env.str(name, default=default)
 
 
+# Seam dim unity (ARCHITECTURE-INVARIANTS §2): one dimension, one authority.
+# ``SOMA_VECTOR_DIM`` is the single TUNABLES declaration; ``MEM_EMBED_DIM`` is
+# the agent seam's env alias for that same key, not a second dimension and not
+# a second registry row (R-VAL-01 / R-VAL-06). Both names only feed the one
+# Django attribute below; every reader goes through
+# ``resolve_setting("SOMA_VECTOR_DIM")``.
+_VECTOR_DIM_ENV_ALIASES: tuple[str, ...] = ("SOMA_VECTOR_DIM", "MEM_EMBED_DIM")
+
+
 def _read_vector_dim() -> int:
     """Resolve the shared vector dimension (seam dim unity).
 
@@ -113,12 +124,10 @@ def _read_vector_dim() -> int:
     are not two dimensions. There is no further fallback — a dim is not
     guessed (Rule 91).
     """
-    explicit = env.str("SOMA_VECTOR_DIM", default=None)
-    if explicit is not None and explicit != "":
-        return env.int("SOMA_VECTOR_DIM")
-    seam = env.str("MEM_EMBED_DIM", default=None)
-    if seam is not None and seam != "":
-        return env.int("MEM_EMBED_DIM")
+    for name in _VECTOR_DIM_ENV_ALIASES:
+        raw = env.str(name, default=None)
+        if raw is not None and raw != "":
+            return env.int(name)
     return int(schema_default("SOMA_VECTOR_DIM"))
 
 
@@ -128,10 +137,37 @@ def _read_vector_dim() -> int:
 SOMA_REDIS_HOST = _read("SOMA_REDIS_HOST", schema_default("SOMA_REDIS_HOST"))
 SOMA_REDIS_PORT = _read("SOMA_REDIS_PORT", schema_default("SOMA_REDIS_PORT"))
 SOMA_REDIS_DB = _read("SOMA_REDIS_DB", schema_default("SOMA_REDIS_DB"))
-# Absent (None) is a real topology: a Redis with no AUTH. It is not an empty
-# password and it is not a silent fallback -- when this deployment requires
-# Redis AUTH, the operator sets SOMA_REDIS_PASSWORD or Vault supplies it.
-SOMA_REDIS_PASSWORD = _read("SOMA_REDIS_PASSWORD", schema_default("SOMA_REDIS_PASSWORD"))
+
+
+# Secret: Vault only (somafractalmemory/redis). Rule 164 — a password is never
+# an ENV read. Absent (None) is a real topology: a Redis with no AUTH. A Vault
+# outage is not "no password": lookups that fail for infrastructure reasons
+# raise instead of looking like an unauthenticated Redis.
+def _vault_optional_secret(path: str, key: str) -> str | None:
+    try:
+        from somafractalmemory.admin.core.security.vault_client import (
+            SecretNotFound,
+            VaultNotConfigured,
+            get_secret,
+            vault_topology_present,
+        )
+    except ImportError:
+        return None
+    if not vault_topology_present():
+        return None
+    try:
+        value = get_secret(path, key)
+    except SecretNotFound:
+        return None
+    except VaultNotConfigured:
+        raise
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+SOMA_REDIS_PASSWORD = _vault_optional_secret("somafractalmemory/redis", "password")
 
 # -----------------------------------------------------------------------------
 # Milvus vector store topology
@@ -163,6 +199,21 @@ SOMA_SEARCH_CANDIDATE_MULTIPLIER = _read(
 SOMA_HASH_EMBEDDING_PENALTY = _read(
     "SOMA_HASH_EMBEDDING_PENALTY", schema_default("SOMA_HASH_EMBEDDING_PENALTY")
 )
+
+# -----------------------------------------------------------------------------
+# Rate limiting (reader: api/rate_limit.py TokenBucket / RateLimitMiddleware)
+# -----------------------------------------------------------------------------
+# A real Redis token bucket on the write and search routes. The knob used to
+# be listed as deleted below because ``api.core.get_rate_limiter`` returned
+# ``None`` and claimed otherwise — a stub dressed as a feature. The stub is
+# gone and the implementation is real; these values are what it reads.
+SOMA_RATE_LIMIT_WRITE_RPS = _read(
+    "SOMA_RATE_LIMIT_WRITE_RPS", schema_default("SOMA_RATE_LIMIT_WRITE_RPS")
+)
+SOMA_RATE_LIMIT_READ_RPS = _read(
+    "SOMA_RATE_LIMIT_READ_RPS", schema_default("SOMA_RATE_LIMIT_READ_RPS")
+)
+SOMA_RATE_LIMIT_BURST = _read("SOMA_RATE_LIMIT_BURST", schema_default("SOMA_RATE_LIMIT_BURST"))
 
 # -----------------------------------------------------------------------------
 # API / observability

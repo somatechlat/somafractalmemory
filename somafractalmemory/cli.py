@@ -81,14 +81,14 @@ def main() -> None:
         print("OK")
 
     elif args.cmd == "search":
-        results = service.search(
+        outcome = service.search(
             query=args.query,
             top_k=args.top_k,
             offset=args.offset,
             memory_type=args.mem_type,
             tenant=args.tenant,
         )
-        print(json.dumps(results, indent=2))
+        print(json.dumps(outcome, indent=2))
 
     elif args.cmd == "get":
         coord = parse_coord(args.coord)

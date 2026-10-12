@@ -120,9 +120,10 @@ Postgres (through Django ORM `DATABASES`):
 Redis:
 - `SOMA_REDIS_HOST` (absent = no Redis), `SOMA_REDIS_PORT` (default `6379`), `SOMA_REDIS_DB` (default `0`), `SOMA_REDIS_PASSWORD` (absent = no AUTH)
 
-Milvus:
-- `SOMA_MILVUS_HOST` (absent = no Milvus), `SOMA_MILVUS_PORT` (default `19530`), `SOMA_MILVUS_TIMEOUT_S` (default `10.0`)
+Milvus (**required — dual-store contract**):
+- `SOMA_MILVUS_HOST` / `SOMA_MILVUS_PORT` (topology; missing host = refusal naming the setting — there is no hash-only mode). `SOMA_MILVUS_TIMEOUT_S` (default `10.0`)
 - `SOMA_VECTOR_DIM` (default `768`), `SOMA_SIMILARITY_METRIC` (default `cosine`), `SOMA_MILVUS_NLIST` (default `128`), `SOMA_MILVUS_NPROBE` (default `16`)
+- Role: Postgres holds durable rows/KV/graph; Milvus holds the ANN vector index. Both are required for save/recall at production scale.
 
 HashiCorp Vault (secrets):
 - `SOMA_VAULT_URL` — Vault address (bootstrap also reads `SOMA_VAULT_ADDR` / `VAULT_ADDR`)

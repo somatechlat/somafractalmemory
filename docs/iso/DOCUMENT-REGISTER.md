@@ -39,24 +39,24 @@ a row marked `Non-compliant` is a tracked gap, not a silent exception.
 | Document Identifier | File | Title | Version | Status | Approver | Next Review | Compliance |
 |---|---|---|---|---|---|---|---|
 | SOMA-SFM-DOC-REGISTER-001 | docs/iso/DOCUMENT-REGISTER.md | Document Register | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-GUIDE-OPS-001 | docs/OPS_MANUAL.md | 📘 Endpoint Catalog | 1.1.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-GUIDE-PROD-001 | docs/PRODUCTION_READINESS.md | Production Readiness Checklist | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
+| SOMA-SFM-GUIDE-OPS-001 | docs/OPS_MANUAL.md | 📘 Endpoint Catalog | 1.2.0 | Draft | — | 2027-01-03 | Compliant |
+| SOMA-SFM-GUIDE-PROD-001 | docs/PRODUCTION_READINESS.md | Production Readiness Checklist | 1.1.0 | Draft | — | 2027-01-03 | Compliant |
 | SOMA-SFM-INDEX-001 | docs/README.md | Documentation Index | 1.1.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-SRS-001 | docs/SRS-SOMAFRACTALMEMORY-MASTER.md | SomaFractalMemory — Master Technical Specification | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-GUIDE-USER-001 | docs/USER_GUIDE.md | User Guide | 1.1.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-GUIDE-API-001 | docs/api-reference.md | API Reference | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
+| SOMA-SFM-GUIDE-API-001 | docs/api-reference.md | API Reference | 1.1.0 | Draft | — | 2027-01-03 | Compliant |
 | SOMA-SFM-GUIDE-ARCH-001 | docs/architecture.md | Architecture | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-GUIDE-DEPLOY-001 | docs/deployment.md | Deployment Guide | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
-| SOMA-SFM-ARCH-001 | docs/iso/SOMA-SFM-ARCH-001.md | SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification | 2.0.1 | Approved | CTO, SomaTech LAT | 2026-12-28 | Compliant |
+| SOMA-SFM-GUIDE-DEPLOY-001 | docs/deployment.md | Deployment Guide | 1.1.0 | Draft | — | 2027-01-03 | Compliant |
+| SOMA-SFM-ARCH-001 | docs/iso/SOMA-SFM-ARCH-001.md | SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification | 2.1.1 | Draft | — | 2027-01-03 | Compliant |
 | SOMA-SFM-AUDIT-001 | docs/iso/SOMA-SFM-AUDIT-001.md | SOMA-SFM-AUDIT-001: SomaFractalMemory Audit Report | 2.0.1 | Approved | CTO, SomaTech LAT | 2026-12-28 | Compliant |
 | SOMA-SFM-COMPAT-001 | docs/iso/SOMA-SFM-COMPAT-001.md | Soma Cognitive Triad Version Compatibility Matrix | 1.0.1 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-DOCS-001 | docs/iso/SOMA-SFM-DOCS-001.md | Document Control and Traceability Procedure | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-SFM-PROD-001 | docs/iso/SOMA-SFM-PROD-001.md | SOMA-SFM-PROD-001: SomaFractalMemory Production Readiness Assessment | 2.0.1 | Approved | VP Engineering, SomaTech LAT | 2026-12-28 | Compliant |
 | SOMA-SFM-QMS-001 | docs/iso/SOMA-SFM-QMS-001.md | SOMA-SFM-QMS-001: SomaFractalMemory Quality Manual | 1.0.2 | Approved | CTO, SomaTech LAT | 2026-12-28 | Compliant |
-| SOMA-SFM-RISK-001 | docs/iso/SOMA-SFM-RISK-001.md | SOMA-SFM-RISK-001: SomaFractalMemory Risk Register | 2.0.1 | Approved | CTO, SomaTech LAT | 2026-12-28 | Compliant |
+| SOMA-SFM-RISK-001 | docs/iso/SOMA-SFM-RISK-001.md | SOMA-SFM-RISK-001: SomaFractalMemory Risk Register | 2.1.0 | Draft | — | 2027-01-03 | Compliant |
 | SOMA-SFM-SDP-001 | docs/iso/SOMA-SFM-SDP-001.md | SOMA-SFM-SDP-001: SomaFractalMemory Software Development Plan | 1.0.1 | Approved | VP Engineering, SomaTech LAT | 2026-12-28 | Compliant |
-| SOMA-SFM-SEC-001 | docs/iso/SOMA-SFM-SEC-001.md | SOMA-SFM-SEC-001: SomaFractalMemory Security Assessment | 2.0.1 | Approved | CISO, SomaTech LAT | 2026-12-28 | Compliant |
-| SOMA-SFM-SRS-001 | docs/iso/SOMA-SFM-SRS-001.md | SOMA-SFM-SRS-001: SomaFractalMemory Software Requirements Specification | 1.0.1 | Approved | CTO, SomaTech LAT | 2026-12-28 | Compliant |
+| SOMA-SFM-SEC-001 | docs/iso/SOMA-SFM-SEC-001.md | SOMA-SFM-SEC-001: SomaFractalMemory Security Assessment | 2.1.1 | Draft | — | 2027-01-03 | Compliant |
+| SOMA-SFM-SRS-001 | docs/iso/SOMA-SFM-SRS-001.md | SOMA-SFM-SRS-001: SomaFractalMemory Software Requirements Specification | 1.1.0 | Draft | — | 2027-01-03 | Compliant |
 | SOMA-SFM-VV-001 | docs/iso/SOMA-SFM-VV-001.md | SOMA-SFM-VV-001: SomaFractalMemory Verification and Validation Plan | 1.0.1 | Approved | VP Engineering, SomaTech LAT | 2026-12-28 | Compliant |
 | SOMA-ARCH-REDESIGN-001 | docs/project/SOMA-ARCH-REDESIGN-001.md | Enterprise Architecture Redesign | 1.0.0 | Draft | — | 2026-12-28 | Compliant |
 | SOMA-FEAT-MATRIX-001 | docs/project/SOMA-FEAT-MATRIX-001.md | Agent Zero vs Soma Feature Comparison Matrix | 1.0.0 | Draft | — | 2026-12-28 | Compliant |

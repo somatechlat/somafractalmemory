@@ -1,7 +1,8 @@
-"""TASK C — a Vault *failure* must raise from ``_credential``.
+"""TASK C — secrets resolve from Vault only (Settings Law 2026-10-09).
 
-A swallowed Vault error is a bypass. Only a deployment with no Vault topology
-at all may use the injection channel; once Vault is claimed, it must work.
+A swallowed Vault error is a bypass. A missing Vault topology is a refusal,
+never a licence to read a secret from the environment. There is no injection
+channel and no code default (Rule 164 / Rule 91).
 """
 
 from __future__ import annotations
@@ -17,40 +18,33 @@ from somafractalmemory.settings import django_core
 
 
 class TestVaultFailureIsNotEnvFallback:
-    """A Vault error raises; only a *nonexistent* Vault falls through."""
+    """A Vault error raises; absence of Vault also raises. Never ENV."""
 
     def test_credential_raises_when_vault_fails(self, tmp_path, monkeypatch):
         # Vault topology present, but nothing is listening.
-        monkeypatch.setenv("SOMA_VAULT_ADDR", "http://127.0.0.1:1")
-        monkeypatch.delenv("VAULT_ADDR", raising=False)
-        token_file = tmp_path / "vault_token"
-        token_file.write_text("not-a-live-token", encoding="utf-8")
-        monkeypatch.setenv("VAULT_TOKEN_FILE", str(token_file))
+        monkeypatch.setattr(vault_client, "vault_topology_present", lambda: True)
+
+        def _boom(path, key=None):
+            raise vault_client.VaultAuthError("vault unreachable in test")
+
+        monkeypatch.setattr(vault_client, "get_secret", _boom)
         monkeypatch.setenv("SOMA_SECRET_KEY", "env-value-must-not-win")
 
-        vault_client._get_vault_client.cache_clear()
-        try:
-            with pytest.raises(ImproperlyConfigured):
-                django_core._credential(
-                    "Django SECRET_KEY",
-                    "SOMA_SECRET_KEY",
-                    vault=("somafractalmemory/credentials", "soma_secret_key"),
-                )
-        finally:
-            vault_client._get_vault_client.cache_clear()
+        with pytest.raises(ImproperlyConfigured):
+            django_core._credential(
+                "Django SECRET_KEY",
+                vault=("somafractalmemory/credentials", "soma_secret_key"),
+            )
 
-    def test_credential_uses_injection_only_when_vault_is_absent(self, monkeypatch):
-        monkeypatch.delenv("SOMA_VAULT_ADDR", raising=False)
-        monkeypatch.delenv("VAULT_ADDR", raising=False)
-        monkeypatch.delenv("VAULT_TOKEN_FILE", raising=False)
-        monkeypatch.setenv("SOMA_SECRET_KEY", "injected-test-value")
+    def test_credential_never_falls_back_to_env(self, monkeypatch):
+        monkeypatch.setattr(vault_client, "vault_topology_present", lambda: False)
+        monkeypatch.setenv("SOMA_SECRET_KEY", "env-value-must-not-win")
 
-        resolved = django_core._credential(
-            "Django SECRET_KEY",
-            "SOMA_SECRET_KEY",
-            vault=("somafractalmemory/credentials", "soma_secret_key"),
-        )
-        assert resolved == "injected-test-value"
+        with pytest.raises(ImproperlyConfigured):
+            django_core._credential(
+                "Django SECRET_KEY",
+                vault=("somafractalmemory/credentials", "soma_secret_key"),
+            )
 
     def test_credential_source_has_no_except_pass(self):
         source = Path(django_core.__file__).read_text(encoding="utf-8")
@@ -69,3 +63,20 @@ class TestVaultFailureIsNotEnvFallback:
                     )
         else:
             assert True
+
+    def test_credential_never_reads_environ(self):
+        source = Path(django_core.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef) or node.name != "_credential":
+                continue
+            for child in ast.walk(node):
+                if isinstance(child, ast.Attribute) and child.attr in (
+                    "environ",
+                    "getenv",
+                ):
+                    raise AssertionError("_credential consults os.environ — secrets are Vault only")
+                if isinstance(child, ast.Name) and child.id == "env":
+                    raise AssertionError(
+                        "_credential consults environ.Env — secrets are Vault only"
+                    )

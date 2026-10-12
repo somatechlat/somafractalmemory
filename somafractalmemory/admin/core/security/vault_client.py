@@ -106,7 +106,11 @@ def _resolve_vault_token() -> str:
 
 @lru_cache(maxsize=1)
 def _get_vault_client():
-    """Get Vault client singleton. Token comes from file only."""
+    """Get Vault client singleton. Token comes from file only.
+
+    Uses stdlib urllib against the KV v2 HTTP API — no hvac version traps,
+    no SDK default drift. Same path the agent templates use.
+    """
     vault_addr = _vault_addr()
     if not vault_addr:
         raise VaultNotConfigured(
@@ -115,21 +119,45 @@ def _get_vault_client():
         )
     vault_token = _resolve_vault_token()
 
-    try:
-        import hvac
-    except ImportError:
-        raise VaultNotConfigured("hvac library not installed.") from None
+    import json
+    import urllib.error
+    import urllib.request
 
-    try:
-        client = hvac.Client(url=vault_addr, token=vault_token)
-        if not client.is_authenticated():
-            raise VaultAuthError("Vault authentication failed.")
-        logger.info(f"Vault client connected to {vault_addr}")
-        return client
-    except VaultAuthError:
-        raise
-    except Exception as e:
-        raise VaultAuthError(f"Vault connection failed: {e}") from e
+    class _VaultKV2:
+        def __init__(self, addr: str, token: str) -> None:
+            self._base = addr.rstrip("/") + "/v1/"
+            self._token = token
+
+        def read(self, mount: str, path: str) -> dict[str, Any]:
+            url = f"{self._base}{mount}/data/{path}"
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("X-Vault-Token", self._token)
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    payload = json.loads(resp.read() or b"{}")
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    raise SecretNotFound(f"path {mount}/{path} not in Vault") from exc
+                raise VaultAuthError(f"Vault read {mount}/{path} -> HTTP {exc.code}") from exc
+            except Exception as exc:
+                raise VaultAuthError(f"Vault read {mount}/{path} failed: {exc}") from exc
+            data = (payload.get("data") or {}).get("data") or {}
+            return data
+
+        def is_authenticated(self) -> bool:
+            req = urllib.request.Request(self._base + "auth/token/lookup-self", method="GET")
+            req.add_header("X-Vault-Token", self._token)
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    return resp.status == 200
+            except Exception:
+                return False
+
+    client = _VaultKV2(vault_addr, vault_token)
+    if not client.is_authenticated():
+        raise VaultAuthError("Vault authentication failed.")
+    logger.info(f"Vault client connected to {vault_addr}")
+    return client
 
 
 # Result cache for secrets: (path, key) -> (data, expiry)
@@ -165,8 +193,7 @@ def get_secret(path: str, key: str | None = None) -> Any:
             mount_point = "secret"
             secret_path = path
 
-        secret = client.secrets.kv.v2.read_secret_version(mount_point=mount_point, path=secret_path)
-        data = secret["data"]["data"]
+        data = client.read(mount_point, secret_path)
 
         result = data
         if key:

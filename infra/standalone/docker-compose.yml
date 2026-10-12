@@ -1,6 +1,36 @@
 # SomaFractalMemory — Standalone Cluster
 # Identifiable in Docker Desktop as "somafractalmemory-standalone"
 name: somafractalmemory-standalone
+#
+# SECRET CONTRACT (SOMA-STD-BOOTSTRAP-001 / R-SEC-01 / VIBE Rule 164):
+#   * No secret value in compose environment, .env, or any repo file.
+#   * Credentials are generated in process memory by init_vault.py and live
+#     only in Vault. The one-boot handoff to postgres/minio uses a RAM tmpfs
+#     (t0_ram → /run/t0) — never the disk, never the repo.
+#   * Long-running containers receive no password env. API reads the DB
+#     password from Vault (Channel API). Images that require *_FILE get a
+#     path under /run/t0 only.
+#   * Vault runs sealed server mode (vault.hcl). Dev mode is banned.
+
+volumes:
+  postgres_data:
+  milvus_data:
+  redis_data:
+  somafractalmemory_vault_data:
+  # RAM-only tmpfs for the bootstrap handoff (postgres/minio passwords,
+  # vault root token). R-SEC-01 forbids secrets on disk; this is the one-boot
+  # channel the container runtime needs. Not persisted, not in the repo.
+  # Boot handoff volume (NOT a repo file). Named volume so seeder and
+  # postgres share one handoff; values are still not in compose env (Channel F).
+  # driver_opts make it a host-RAM tmpfs: never on disk, never in the repo.
+  # Shared boot-handoff volume (NOT a repo file, NOT compose env).
+  # Named volume so seeder + consumers see the same /run/t0.
+  t0_ram:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: t0_ram
+      o: "size=2m,mode=0700"
 
 services:
   # --- Redis cache -------------------------------------------
@@ -18,94 +48,116 @@ services:
     ports:
       - "10379:6379"
 
-  # --- Vault secrets -----------------------------------------
+  # --- Vault secrets (sealed server mode — NOT dev) -----------
   somafractalmemory-standalone-vault:
     image: hashicorp/vault:1.13.3
     container_name: somafractalmemory-standalone-vault
     restart: unless-stopped
+    # Invoke `vault` directly. The image's docker-entrypoint.sh rewrites any
+    # `server` command into `vault server -config=... -dev-...` and injects
+    # -dev-root-token-id — those are dev-mode flags and are banned (T-6).
+    entrypoint: ["vault"]
+    command: ["server", "-config=/vault/config/vault.hcl"]
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: "${SOMA_VAULT_TOKEN:?set SOMA_VAULT_TOKEN}"
-      VAULT_ADDR: "http://0.0.0.0:8200"
+      VAULT_ADDR: "http://127.0.0.1:8200"
     ports:
       - "10200:8200"
+    volumes:
+      - ./vault.hcl:/vault/config/vault.hcl:ro
+      - somafractalmemory_vault_data:/vault/data
     cap_add:
       - IPC_LOCK
     healthcheck:
-      test: [ "CMD", "vault", "status" ]
-      interval: 10s
+      # Healthy = API answers, NOT unsealed. `vault status` exits 2 when
+      # sealed and 1 when unreachable; anything except 1 is a live API the
+      # unseal step can talk to.
+      test: [ "CMD-SHELL", "vault status >/dev/null 2>&1; [ $$? -ne 1 ]" ]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
+      start_period: 5s
     networks:
       - somafractalmemory-standalone-net
 
-  # --- Vault init helper -------------------------------------
-  somafractalmemory-standalone-vault-init:
-    image: alpine:latest
-    container_name: somafractalmemory-standalone-vault-init
+  # --- T0 keeper (holds the RAM tmpfs handoff alive) ----------
+  # t0_ram is a tmpfs-backed named volume. Docker unmounts it (and destroys
+  # its contents) when the last container using it stops — so if the one-shot
+  # seeders exit before postgres/minio mount it, the handoff vanishes and
+  # postgres crash-loops on a missing /run/t0/postgres_password.
+  # This keeper is a long-lived mount-holder only: it never reads or writes
+  # secret values. It exists so the RAM handoff has a continuous mount for
+  # the life of the stack. Not a shim — a tmpfs lifetime requirement.
+  somafractalmemory-standalone-t0-keeper:
+    image: alpine:3.19
+    container_name: somafractalmemory-standalone-t0-keeper
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    volumes:
+      - t0_ram:/run/t0:rw
+    networks:
+      - somafractalmemory-standalone-net
+
+  # --- Vault unseal (one-shot) --------------------------------
+  # Generates unseal key + root token IN MEMORY. Custodian is the OS keychain
+  # or the RAM tmpfs T0_DIR — never a repo file, never stdout.
+  somafractalmemory-standalone-vault-unseal:
+    image: python:3.11-alpine
+    container_name: somafractalmemory-standalone-vault-unseal
+    working_dir: /work
+    volumes:
+      - ./vault_unseal.py:/work/vault_unseal.py:ro
+      - t0_ram:/run/t0:rw
+    environment:
+      VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
+      T0_DIR: /run/t0
+    entrypoint: [ "python3", "/work/vault_unseal.py" ]
+    networks:
+      - somafractalmemory-standalone-net
     depends_on:
       somafractalmemory-standalone-vault:
         condition: service_healthy
+      somafractalmemory-standalone-t0-keeper:
+        condition: service_started
+    restart: "no"
+
+  # --- Vault seeder (one-shot) — generate-in-memory → Vault ---
+  # init_vault.py generates every application credential with secrets.token_urlsafe
+  # in process memory and writes them to Vault. First-boot handoff (postgres
+  # password, minio root) goes to the RAM tmpfs only (R-SEC-01). There is no
+  # SECRETS_DIR and no host secret file in this path.
+  somafractalmemory-standalone-vault-init:
+    image: python:3.11-alpine
+    container_name: somafractalmemory-standalone-vault-init
+    working_dir: /work
+    depends_on:
+      somafractalmemory-standalone-vault:
+        condition: service_healthy
+      somafractalmemory-standalone-vault-unseal:
+        condition: service_completed_successfully
+      somafractalmemory-standalone-t0-keeper:
+        condition: service_started
     environment:
-      # Bootstrap topology only. Credentials are FILE paths into t=0 material —
-      # never values in ENV (Rule 164).
-      SOMA_VAULT_TOKEN_FILE: "${SOMA_VAULT_TOKEN_FILE:?set SOMA_VAULT_TOKEN_FILE}"
-      SOMA_VAULT_ADDR: "${SOMA_VAULT_ADDR:?set SOMA_VAULT_ADDR}"
+      # Bootstrap topology only. No secret values, no secret file paths.
+      VAULT_ADDR: "http://somafractalmemory-standalone-vault:8200"
+      T0_DIR: /run/t0
       SOMA_DB_USER: "${SOMA_DB_USER:?set SOMA_DB_USER}"
       SOMA_DB_NAME: "${SOMA_DB_NAME:?set SOMA_DB_NAME}"
       SOMA_DB_HOST: "${SOMA_DB_HOST:?set SOMA_DB_HOST}"
       SOMA_DB_PORT: "${SOMA_DB_PORT:?set SOMA_DB_PORT}"
       SOMA_REDIS_HOST: "${SOMA_REDIS_HOST:?set SOMA_REDIS_HOST}"
       SOMA_REDIS_PORT: "${SOMA_REDIS_PORT:?set SOMA_REDIS_PORT}"
-      SOMA_DB_PASSWORD_FILE: "${SOMA_DB_PASSWORD_FILE:?set SOMA_DB_PASSWORD_FILE}"
-      SOMA_REDIS_PASSWORD_FILE: "${SOMA_REDIS_PASSWORD_FILE:?set SOMA_REDIS_PASSWORD_FILE}"
-      SOMA_API_TOKEN_FILE: "${SOMA_API_TOKEN_FILE:?set SOMA_API_TOKEN_FILE}"
     volumes:
-      - ${SOMA_T0_SECRETS_DIR:?set SOMA_T0_SECRETS_DIR}:/run/secrets_t0:ro
+      - ./init_vault.py:/work/init_vault.py:ro
+      - t0_ram:/run/t0:rw
     networks:
       - somafractalmemory-standalone-net
-    entrypoint: [ "sh", "-c" ]
-    command:
-      - |
-        apk add --no-cache curl jq
-
-        # Credentials come from t=0 files. A missing file is a refusal — this
-        # job will NOT invent a substitute (Rule 91 / Rule 164).
-        read_secret() {
-          f="$${1:?read_secret needs a path}"
-          if [ ! -s "$${f}" ]; then
-            echo "FATAL: secret file missing or empty: $${f}" >&2
-            exit 1
-          fi
-          tr -d '\r\n' < "$${f}"
-        }
-        VAULT_TOKEN="$$(read_secret "$${SOMA_VAULT_TOKEN_FILE}")"
-        SOMA_DB_PASSWORD="$$(read_secret "$${SOMA_DB_PASSWORD_FILE}")"
-        SOMA_REDIS_PASSWORD="$$(read_secret "$${SOMA_REDIS_PASSWORD_FILE}")"
-        SOMA_API_TOKEN="$$(read_secret "$${SOMA_API_TOKEN_FILE}")"
-
-        # Wait for vault
-        until curl -s "$${SOMA_VAULT_ADDR}/v1/sys/health"; do sleep 1; done
-        # Mount KV v2
-        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST -d '{"type":"kv-v2"}' "$${SOMA_VAULT_ADDR}/v1/sys/mounts/somafractalmemory"
-
-        # Write Database Credentials
-        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST \
-          -d "{\"data\": {\"username\": \"$${SOMA_DB_USER}\", \"password\": \"$${SOMA_DB_PASSWORD}\", \"host\": \"$${SOMA_DB_HOST}\", \"port\": $${SOMA_DB_PORT}, \"dbname\": \"$${SOMA_DB_NAME}\"}}" \
-          "$${SOMA_VAULT_ADDR}/v1/somafractalmemory/data/database"
-
-        # Write Redis Credentials
-        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST \
-          -d "{\"data\": {\"host\": \"$${SOMA_REDIS_HOST}\", \"port\": $${SOMA_REDIS_PORT}, \"password\": \"$${SOMA_REDIS_PASSWORD}\"}}" \
-          "$${SOMA_VAULT_ADDR}/v1/somafractalmemory/data/redis"
-
-        # Write API token (the process authenticates with this bearer).
-        curl -H "X-Vault-Token: $${VAULT_TOKEN}" -X POST \
-          -d "{\"data\": {\"soma_api_token\": \"$${SOMA_API_TOKEN}\"}}" \
-          "$${SOMA_VAULT_ADDR}/v1/somafractalmemory/data/credentials"
-
-        echo "Vault initialized and secrets populated."
+    entrypoint: [ "python3", "/work/init_vault.py" ]
+    restart: "no"
 
   # --- Database ----------------------------------------------
+  # Password is generated by init_vault.py into Vault. The first-boot handoff
+  # is a RAM tmpfs file (t0_ram → /run/t0/postgres_password) — not disk.
+  # Long-running containers never receive POSTGRES_PASSWORD or SOMA_DB_PASSWORD.
   somafractalmemory-standalone-postgres:
     image: postgres:15-alpine
     container_name: somafractalmemory-standalone-postgres
@@ -113,9 +165,15 @@ services:
     environment:
       POSTGRES_DB: "${SOMA_DB_NAME:?set SOMA_DB_NAME}"
       POSTGRES_USER: "${SOMA_DB_USER:?set SOMA_DB_USER}"
-      POSTGRES_PASSWORD: "${SOMA_DB_PASSWORD:?set SOMA_DB_PASSWORD}"
+      POSTGRES_PASSWORD_FILE: /run/t0/postgres_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - t0_ram:/run/t0:rw
+    depends_on:
+      somafractalmemory-standalone-vault-init:
+        condition: service_completed_successfully
+      somafractalmemory-standalone-t0-keeper:
+        condition: service_started
     ports:
       - "10432:5432"
     healthcheck:
@@ -163,14 +221,24 @@ services:
       - somafractalmemory-standalone-net
 
   # --- MinIO -------------------------------------------------
+  # Root credentials: generated in memory by init_vault.py → Vault, with a
+  # RAM tmpfs first-boot handoff only. MINIO_ROOT_*_FILE is a PATH under
+  # /run/t0 — never a host file, never a value in ENV (R-SEC-01).
   somafractalmemory-standalone-minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     container_name: somafractalmemory-standalone-minio
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: "${SOMA_MINIO_ROOT_USER:?set SOMA_MINIO_ROOT_USER}"
-      MINIO_ROOT_PASSWORD: "${SOMA_MINIO_ROOT_PASSWORD:?set SOMA_MINIO_ROOT_PASSWORD}"
+      MINIO_ROOT_USER_FILE: /run/t0/minio_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/t0/minio_secret_key
+    volumes:
+      - t0_ram:/run/t0:ro
     command: server /data
+    depends_on:
+      somafractalmemory-standalone-vault-init:
+        condition: service_completed_successfully
+      somafractalmemory-standalone-t0-keeper:
+        condition: service_started
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 10s
@@ -182,6 +250,10 @@ services:
           - minio
 
   # --- Milvus vector store -----------------------------------
+  # Third-party image: no *_FILE support for MinIO credentials. Channel ENV
+  # (permitted fallback, SOMA-STD-BOOTSTRAP-001 §2.5): the entrypoint reads
+  # the RAM tmpfs handoff and exports into THIS process only. The value is
+  # never in compose env and never on a host file.
   somafractalmemory-standalone-milvus:
     image: milvusdb/milvus:v2.3.3
     container_name: somafractalmemory-standalone-milvus
@@ -191,21 +263,43 @@ services:
         condition: service_healthy
       somafractalmemory-standalone-minio:
         condition: service_healthy
+      somafractalmemory-standalone-vault-init:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
           memory: 4G
     environment:
       ETCD_ENDPOINTS: "somafractalmemory-standalone-etcd:2379"
-      MINIO_ADDRESS: "minio:9000"
-      MINIO_ACCESS_KEY: "${SOMA_MINIO_ROOT_USER:?set SOMA_MINIO_ROOT_USER}"
-      MINIO_SECRET_KEY: "${SOMA_MINIO_ROOT_PASSWORD:?set SOMA_MINIO_ROOT_PASSWORD}"
+      # Service DNS name is the compose service name (not "minio").
+      MINIO_ADDRESS: "${SOMA_MINIO_HOST:?set SOMA_MINIO_HOST}:${SOMA_MINIO_PORT:?set SOMA_MINIO_PORT}"
+      MINIO_PORT: "${SOMA_MINIO_PORT:?set SOMA_MINIO_PORT}"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -eu
+        read_secret() {
+          f="$${1:?read_secret needs a path}"
+          if [ ! -s "$${f}" ]; then
+            echo "FATAL: secret file missing or empty: $${f}" >&2
+            exit 1
+          fi
+          tr -d '\r\n' < "$${f}"
+        }
+        export MINIO_ACCESS_KEY_ID="$$(read_secret /run/t0/minio_access_key)"
+        export MINIO_SECRET_ACCESS_KEY="$$(read_secret /run/t0/minio_secret_key)"
+        # Compatibility names some Milvus builds still consult.
+        export MINIO_ACCESS_KEY="$$MINIO_ACCESS_KEY_ID"
+        export MINIO_SECRET_KEY="$$MINIO_SECRET_ACCESS_KEY"
+        export AWS_ACCESS_KEY_ID="$$MINIO_ACCESS_KEY_ID"
+        export AWS_SECRET_ACCESS_KEY="$$MINIO_SECRET_ACCESS_KEY"
+        exec milvus run standalone
     volumes:
       - milvus_data:/var/lib/milvus
+      - t0_ram:/run/t0:ro
     ports:
       - "10530:19530"
       - "10531:9091"
-    command: [ "milvus", "run", "standalone" ]
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
       interval: 30s
@@ -242,25 +336,31 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ${SOMA_T0_SECRETS_DIR:?set SOMA_T0_SECRETS_DIR}:/run/secrets_t0:ro
+      # Vault token for Channel API lives in the RAM tmpfs custodian.
+      # No host secret directory is mounted (R-SEC-01).
+      - t0_ram:/run/t0:ro
     environment:
       DJANGO_SETTINGS_MODULE: "somafractalmemory.settings.standalone"
       # Shared seam dim: agent MEM_EMBED_DIM == brain EMBED_DIM == this.
       # Required — no schema default at the call site or in compose.
       SOMA_VECTOR_DIM: "${SOMA_VECTOR_DIM:?set SOMA_VECTOR_DIM}"
-      MEM_EMBED_DIM: "${MEM_EMBED_DIM:?set MEM_EMBED_DIM}"
-      # VAULT BOOTSTRAP ONLY — address + token FILE, never the token value.
+      # VAULT BOOTSTRAP ONLY — address + token FILE path under the RAM tmpfs.
+      # Never the token value. API reads DB password from Vault (Channel API).
       VAULT_ADDR: "${SOMA_VAULT_ADDR:?set SOMA_VAULT_ADDR}"
-      VAULT_TOKEN_FILE: "${SOMA_VAULT_TOKEN_FILE:?set SOMA_VAULT_TOKEN_FILE}"
+      # Scoped runtime token (F-10) — never root on a long-running service.
+      VAULT_TOKEN_FILE: /run/t0/sfm_runtime_token
       SOMA_LOG_LEVEL: "${SOMA_LOG_LEVEL:?set SOMA_LOG_LEVEL}"
       SOMA_ALLOWED_HOSTS: "${SOMA_ALLOWED_HOSTS:?set SOMA_ALLOWED_HOSTS}"
       # API token is Vault material (somafractalmemory runtime secrets).
       # There is deliberately no SOMA_API_TOKEN here.
       SOMA_API_PORT: "${SOMA_API_PORT:?set SOMA_API_PORT}"
-      # INFRA HOST NAMES ONLY (Credentials via Vault, with env fallback)
+      # WSGI concurrency (topology). Required — no schema default at the call site.
+      GUNICORN_WORKERS: "${GUNICORN_WORKERS:?set GUNICORN_WORKERS}"
+      GUNICORN_THREADS: "${GUNICORN_THREADS:?set GUNICORN_THREADS}"
+      # INFRA HOST NAMES ONLY. Credentials via Vault.
+      # R-SEC-01: DB password from Vault only — never env, never SOMA_DB_PASSWORD.
       SOMA_DB_HOST: "somafractalmemory-standalone-postgres"
       SOMA_DB_USER: "${SOMA_DB_USER:?set SOMA_DB_USER}"
-      SOMA_DB_PASSWORD: "${SOMA_DB_PASSWORD}"
       SOMA_DB_NAME: "${SOMA_DB_NAME:?set SOMA_DB_NAME}"
       SOMA_REDIS_HOST: "somafractalmemory-standalone-redis"
       SOMA_MILVUS_HOST: "somafractalmemory-standalone-milvus"
@@ -284,8 +384,3 @@ services:
 networks:
   somafractalmemory-standalone-net:
     driver: bridge
-
-volumes:
-  postgres_data:
-  milvus_data:
-  redis_data:

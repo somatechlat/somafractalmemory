@@ -31,11 +31,15 @@ def _get_service():
 
 
 def _check_auth(request: HttpRequest) -> None:
-    """Check API token authentication."""
+    """Check API token authentication. Fail-closed (F-16).
+
+    A missing/empty API_TOKEN must never mean "allow". Boot already refuses
+    without it; this is the belt-and-suspenders on the request path.
+    """
     from somafractalmemory.api.core import API_TOKEN
 
     if not API_TOKEN:
-        return
+        raise HttpError(401, get_message(ErrorCode.MISSING_AUTH_HEADER))
 
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -256,7 +260,8 @@ def health_detailed(request: HttpRequest) -> dict:
 
 @router.get("/stats", response=StatsResponse)
 def stats(request: HttpRequest) -> StatsResponse:
-    """Return system statistics using Django ORM."""
+    """Return system statistics using Django ORM. Auth required (F-08)."""
+    _check_auth(request)
     service = _get_service()
     try:
         raw = service.stats()

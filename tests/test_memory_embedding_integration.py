@@ -181,13 +181,14 @@ class TenantScopedCoordTest(TestCase):
         self.service.store((0.9, 0.1, 0.1), {"text": "banana"}, tenant="t1")
         self.service.store((0.9, 0.1, 0.2), {"text": "banana"}, tenant="t2")
 
-        results = self.service.search(query="banana", tenant="t1")
+        outcome = self.service.search(query="banana", tenant="t1")
+        results = outcome["memories"]
         assert results, "tenant t1 must find its own memory"
         coords = {hit["coord"] for hit in results}
         assert coords == {"0.9,0.1,0.1"}
 
-        results_t2 = self.service.search(query="banana", tenant="t2")
-        assert {hit["coord"] for hit in results_t2} == {"0.9,0.1,0.2"}
+        outcome_t2 = self.service.search(query="banana", tenant="t2")
+        assert {hit["coord"] for hit in outcome_t2["memories"]} == {"0.9,0.1,0.2"}
 
 
 class SearchRankingTest(TestCase):
@@ -210,7 +211,7 @@ class SearchRankingTest(TestCase):
             {"coordinate_key": "1.1,1.1,1.1", "score": 0.99, "id": 1},
         ]
 
-        self.service.search(query="", tenant="t1", query_embedding=query_vec)
+        self.service.search(query="", tenant="t1", query_embedding=query_vec)  # noqa: F841
         assert self.store.searched, "query embedding must reach the vector store"
         assert self.store.searched[0] == pytest.approx(query_vec)
 
@@ -225,11 +226,12 @@ class SearchRankingTest(TestCase):
             {"coordinate_key": "1.2,1.2,1.2", "score": 0.50, "id": 1},
         ]
 
-        results = self.service.search(
+        outcome = self.service.search(
             query="",
             tenant="t1",
             query_embedding=[0.05 * i for i in range(self.service.vector_dim)],
         )
+        results = outcome["memories"]
         assert [hit["coord"] for hit in results] == ["1.2,1.2,1.2", "1.3,1.3,1.3"]
         assert results[0]["embedding_source"] == EMBEDDING_SOURCE_PRECOMPUTED
         assert results[1]["embedding_source"] == EMBEDDING_SOURCE_HASH
@@ -247,10 +249,10 @@ class SearchRankingTest(TestCase):
         self.store._search_results = [
             {"coordinate_key": "1.4,1.4,1.4", "score": 0.8, "id": 3},
         ]
-        results = self.service.search(
+        outcome = self.service.search(
             query="", tenant="t1", query_embedding=[0.1] * self.service.vector_dim
         )
-        hit = results[0]
+        hit = outcome["memories"][0]
         assert hit["coord"] == "1.4,1.4,1.4"
         assert hit["coordinate"] == [1.4, 1.4, 1.4]
         assert hit["payload"] == {"text": "shape"}
@@ -269,7 +271,7 @@ class SearchRankingTest(TestCase):
         self.store._search_results = [
             {"coordinate_key": "1.5,1.5,1.5", "score": 0.99, "id": 4},
         ]
-        results = self.service.search(
+        outcome = self.service.search(
             query="", tenant="t1", query_embedding=[0.2] * self.service.vector_dim
         )
-        assert results == []
+        assert outcome["memories"] == []

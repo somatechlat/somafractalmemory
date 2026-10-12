@@ -44,8 +44,8 @@ Core component of the **Soma Cognitive Triad**:
 - **PostgreSQL**: 15+ (Metadata)
 - **Milvus**: 2.3+ (Vectors)
 - **Redis**: 7.0+ (Cache)
-- **HashiCorp Vault**: (Optional, Recommended for Secrets)
-- **Open Policy Agent**: (Optional, Recommended for AuthZ)
+- **HashiCorp Vault**: (Recommended for secrets — production secrets are Vault-only per Covenant Art 26)
+- **Open Policy Agent**: Not consumed by this service. AuthZ is bearer token + namespace/tenant checks + Vault (`settings/infra.py:69-71` — no OPA client).
 
 ### 3.2 Quick Start (Standalone)
 ```bash
@@ -79,7 +79,7 @@ Settings are loaded from `somafractalmemory/settings/infra.py` and `standalone.p
 | `VAULT_ADDR` | Vault server URL | — | Container env |
 | `VAULT_TOKEN` | Vault auth token | — | Container env |
 | `SOMA_OPA_URL` | OPA AuthZ URL | `http://opa:8181` | `infra.py:157` |
-| `SOMA_OPA_FAIL_OPEN` | Fail-open on OPA error | `False` | `infra.py:159` |
+| _(deleted)_ | `SOMA_OPA_FAIL_OPEN` and the rest of `SOMA_OPA_*` were removed — there is no OPA client in this tree | — | `settings/infra.py:69-71` |
 | `SOMA_API_TOKEN` | API bearer token | — | Container env |
 | `SOMA_ALLOWED_HOSTS` | Django ALLOWED_HOSTS | `localhost,127.0.0.1` | Container env |
 

@@ -65,10 +65,18 @@ def get_tenant_from_request(request: HttpRequest, explicit_tenant: str | None = 
         HttpError 400: If no tenant can be resolved from any source
     """
     auth = getattr(request, "auth", {}) or {}
-    auth_tenant = auth.get("tenant")
+    auth_tenant = (auth.get("tenant") or "").strip()
 
-    # A real auth binding wins over caller-supplied tenant labels.
-    if auth_tenant and auth.get("auth_type") != "standalone_token":
+    # Credential-bound tenant always wins (F-01). A caller may never select
+    # another tenant via body/header while holding a token bound elsewhere.
+    if auth_tenant:
+        for candidate in (explicit_tenant, request.headers.get("X-Soma-Tenant")):
+            if candidate and candidate.strip() and candidate.strip() != auth_tenant:
+                raise HttpError(
+                    403,
+                    "Tenant is bound to the credential; body/header tenant "
+                    "must match the auth binding",
+                )
         return auth_tenant
 
     if explicit_tenant and explicit_tenant.strip():
@@ -77,9 +85,6 @@ def get_tenant_from_request(request: HttpRequest, explicit_tenant: str | None = 
     header_tenant = request.headers.get("X-Soma-Tenant")
     if header_tenant and header_tenant.strip():
         return header_tenant.strip()
-
-    if auth_tenant and str(auth_tenant).strip():
-        return str(auth_tenant).strip()
 
     raise HttpError(400, get_message(ErrorCode.MISSING_TENANT))
 

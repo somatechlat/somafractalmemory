@@ -184,7 +184,7 @@ CREATE TABLE sfm_memories (
     memory_type VARCHAR(20) NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}',
     importance DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-    tenant VARCHAR(255) NOT NULL DEFAULT 'default',
+    tenant VARCHAR(255) NOT NULL,  -- no DB default; app-layer _require_tenant fails closed
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
@@ -211,7 +211,7 @@ CREATE TABLE sfm_graph_links (
     link_type VARCHAR(100) NOT NULL,
     strength DOUBLE PRECISION NOT NULL DEFAULT 1.0,
     metadata JSONB NOT NULL DEFAULT '{}',
-    tenant VARCHAR(255) NOT NULL DEFAULT 'default',
+    tenant VARCHAR(255) NOT NULL,  -- no DB default; app-layer _require_tenant fails closed
     created_at TIMESTAMPTZ NOT NULL
 );
 
@@ -271,7 +271,7 @@ Token is validated in each router's `_check_auth()` function.
 All data is isolated by tenant:
 - `X-Soma-Tenant` header sets tenant context
 - All queries filter by `tenant` field
-- Default tenant: "default"
+- Tenant is **fail-closed**: `api/utils.get_tenant_from_request` resolves auth-bound -> explicit `tenant_id` -> `X-Soma-Tenant` -> auth-context label; if none resolve it returns HTTP 400 (no default partition). `admin/core/services._require_tenant` on store/retrieve/delete/search/graph also refuses empty.
 
 ## Performance
 

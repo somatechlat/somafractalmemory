@@ -11,8 +11,8 @@
 |---|---|
 | Document Title | SOMA-SFM-ARCH-001: SomaFractalMemory Architecture Specification |
 | Document Identifier | SOMA-SFM-ARCH-001 |
-| Version | 2.1.0 |
-| Date | 2026-10-03 |
+| Version | 2.1.1 |
+| Date | 2026-10-09 |
 | Status | Draft |
 | Author | SomaTech LAT Engineering |
 | Approver | — |
@@ -25,6 +25,7 @@
 
 | Version | Date | Author | Description |
 |:--------|:-----|:-------|:------------|
+| 2.1.1 | 2026-10-09 | SomaTech Engineering | Deleted SOMA_HYBRID_*/SOMA_CIRCUIT_*/SOMA_OPA_* claims; ranking is hash_penalty multiplier (no fusion). |
 | 1.0.0 | 2025-09-01 | Engineering | Initial architecture specification |
 | 1.1.0 | 2025-11-15 | Engineering | Added AAAS deployment mode, OPA integration |
 | 2.0.0 | 2026-06-15 | Engineering | Production-ready revision; updated for v0.2.0, added Helm charts, Vault integration, circuit breaker, batch processing |
@@ -658,7 +659,7 @@ record is the module docstring of `somafractalmemory/settings/infra.py:25-77`.
 | `SOMA_FORCE_HASH_EMBEDDINGS` | force hash embedder | there is no second embedder to force off |
 | `SOMA_PRUNING_INTERVAL_SECONDS`, `SOMA_MAX_MEMORY_SIZE`, `SOMA_DECAY_*` | decay, eviction, prune scheduling | no decay scorer, no eviction, no prune command |
 | `SOMA_IMPORTANCE_*` | reservoir / winsorized / logistic normalization | `importance` is a caller-supplied float |
-| `SOMA_HYBRID_RECALL_DEFAULT`, `SOMA_HYBRID_BOOST`, `SOMA_SIMILARITY_ALLOW_NEGATIVE` | hybrid score fusion, negative-score clamp | ranking is vector score + hash penalty + ORM fallback; no fusion |
+| `SOMA_HYBRID_RECALL_DEFAULT`, `SOMA_HYBRID_BOOST`, `SOMA_SIMILARITY_ALLOW_NEGATIVE` | hybrid score fusion, negative-score clamp | **DELETED** — nothing reads them. Ranking multiplies hash-sourced scores by `hash_penalty` (services.py); no fusion layer. |
 | `SOMA_ENABLE_BATCH_UPSERT`, `SOMA_BATCH_SIZE`, `SOMA_BATCH_FLUSH_MS` | batch write path | `store()` writes one row per call |
 | `SOMA_JWT_*` | JWT auth stack | auth is the `SOMA_API_TOKEN` bearer via `StandaloneAuth` |
 | `SOMA_OPA_*`, `SOMA_CIRCUIT_*` | OPA client, circuit breaker | no OPA client, no breaker in this tree |

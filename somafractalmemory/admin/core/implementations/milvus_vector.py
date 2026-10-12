@@ -125,12 +125,34 @@ class MilvusVectorStore:
         schema.add_field("vector", DataType.FLOAT_VECTOR, dim=self.dim)
 
         index_params = MilvusClient.prepare_index_params()
-        index_params.add_index(
-            field_name="vector",
-            index_type="IVF_FLAT",
-            metric_type=self._metric_type(),
-            params={"nlist": int(resolve_setting("SOMA_MILVUS_NLIST"))},
-        )
+        index_type = str(resolve_setting("SOMA_MILVUS_INDEX_TYPE")).strip().upper()
+        if index_type == "HNSW":
+            # Production default: full-capacity concurrent ANN search.
+            index_params.add_index(
+                field_name="vector",
+                index_type="HNSW",
+                metric_type=self._metric_type(),
+                params={
+                    "M": int(resolve_setting("SOMA_MILVUS_HNSW_M")),
+                    "efConstruction": int(resolve_setting("SOMA_MILVUS_HNSW_EF_CONSTRUCTION")),
+                },
+            )
+        elif index_type == "IVF_FLAT":
+            index_params.add_index(
+                field_name="vector",
+                index_type="IVF_FLAT",
+                metric_type=self._metric_type(),
+                params={"nlist": int(resolve_setting("SOMA_MILVUS_NLIST"))},
+            )
+        else:
+            raise ValueError(
+                f"SOMA_MILVUS_INDEX_TYPE={index_type!r} is not supported "
+                "(HNSW|IVF_FLAT). VIBE Rule 91: inventing an index is forbidden."
+            )
+        # Scalar filters (tenant/namespace) must not full-scan at millions-scale.
+        index_params.add_index(field_name="tenant", index_type="AUTOINDEX")
+        index_params.add_index(field_name="namespace", index_type="AUTOINDEX")
+        index_params.add_index(field_name="coordinate_key", index_type="AUTOINDEX")
 
         self._client.create_collection(
             collection_name=self.collection_name,
@@ -220,14 +242,23 @@ class MilvusVectorStore:
             expr_parts.append(f'tenant == "{tenant}"')
         expr = " && ".join(expr_parts) if expr_parts else ""
 
+        index_type = str(resolve_setting("SOMA_MILVUS_INDEX_TYPE")).strip().upper()
+        if index_type == "HNSW":
+            search_params: dict[str, Any] = {
+                "metric_type": self._metric_type(),
+                "params": {"ef": int(resolve_setting("SOMA_MILVUS_HNSW_EF"))},
+            }
+        else:
+            search_params = {
+                "metric_type": self._metric_type(),
+                "params": {"nprobe": int(resolve_setting("SOMA_MILVUS_NPROBE"))},
+            }
+
         results = self._client.search(
             collection_name=self.collection_name,
             data=[query_vector],
             anns_field="vector",
-            search_params={
-                "metric_type": self._metric_type(),
-                "params": {"nprobe": int(resolve_setting("SOMA_MILVUS_NPROBE"))},
-            },
+            search_params=search_params,
             limit=max(1, int(top_k)),
             filter=expr or None,
             output_fields=["coordinate_key", "namespace", "tenant"],

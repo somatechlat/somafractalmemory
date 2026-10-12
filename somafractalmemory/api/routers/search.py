@@ -8,7 +8,7 @@ Auth via standalone facade — zero AAAS dependency.
 from typing import Any
 
 from django.http import HttpRequest
-from ninja import Router
+from ninja import Query, Router
 
 from somafractalmemory.admin.common.utils.logger import get_logger
 from somafractalmemory.api.auth import StandaloneAuth
@@ -36,14 +36,19 @@ def _get_service():
 def search_memories_get(
     request: HttpRequest,
     query: str,
-    top_k: int = 5,
-    offset: int = 0,
+    # Same bounds as MemorySearchRequest.top_k / .offset — a GET and a POST of
+    # the same search must not disagree on what a legal page size is.
+    top_k: int = Query(5, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    memory_type: str | None = None,
     filters: str | None = None,
     tenant_id: str | None = None,
 ) -> MemorySearchResponse:
     """GET version of the memory search endpoint using Django ORM.
 
-    Supports pagination with offset parameter.
+    Supports pagination with offset parameter. ``memory_type`` filters the
+    result the same way the POST body does — a GET and a POST of the same
+    search must not disagree on what is searchable.
     """
     ensure_permission(request, "read")
     service = _get_service()
@@ -63,15 +68,20 @@ def search_memories_get(
         except Exception as e:
             logger.warning("Failed to parse search filters JSON: %s", e)
 
-    results = service.search(
+    outcome = service.search(
         query=query,
         top_k=top_k,
         offset=offset,
+        memory_type=memory_type,
         tenant=tenant,
         filters=parsed_filters,
     )
 
-    return MemorySearchResponse(memories=results)
+    return MemorySearchResponse(
+        memories=outcome["memories"],
+        degraded=outcome["degraded"],
+        degraded_reason=outcome["degraded_reason"],
+    )
 
 
 @router.post("/search", response=MemorySearchResponse, auth=StandaloneAuth())
@@ -88,7 +98,7 @@ def search_memories(request: HttpRequest, req: MemorySearchRequest) -> MemorySea
     ensure_embedding_dim(req.embedding)
     tenant = get_tenant_from_request(request, explicit_tenant=req.tenant_id)
 
-    results = service.search(
+    outcome = service.search(
         query=req.query,
         top_k=req.top_k,
         offset=req.offset,
@@ -98,4 +108,8 @@ def search_memories(request: HttpRequest, req: MemorySearchRequest) -> MemorySea
         query_embedding=req.embedding,
     )
 
-    return MemorySearchResponse(memories=results)
+    return MemorySearchResponse(
+        memories=outcome["memories"],
+        degraded=outcome["degraded"],
+        degraded_reason=outcome["degraded_reason"],
+    )

@@ -55,7 +55,7 @@ deleted knobs and why they were deleted are recorded in
 - [ ] `SOMA_DB_HOST`, `SOMA_DB_PORT`, `SOMA_DB_NAME` set (topology)
 - [ ] `SOMA_DB_USER` / `SOMA_DB_PASSWORD` sourced from Vault (`somafractalmemory/database`)
 - [ ] `SOMA_MILVUS_HOST` and `SOMA_MILVUS_PORT` configured
-- [ ] `SOMA_REDIS_HOST` / `SOMA_REDIS_PORT` configured (optional — absent means no Redis)
+- [ ] `SOMA_REDIS_HOST` / `SOMA_REDIS_PORT` configured via settings law (Django/BrainSetting; topology is not a code default)
 - [ ] `SOMA_VECTOR_DIM` matches the agent seam (`MEM_EMBED_DIM`); default **768**
 - [ ] `SOMA_LOG_LEVEL` set to `INFO` or `WARNING` in production
 
@@ -89,7 +89,7 @@ deleted knobs and why they were deleted are recorded in
 | Circuit breaker | No breaker in this tree. `SOMA_CIRCUIT_*` deleted. |
 | Batch upsert | `store()` writes one row per call. |
 | Decay / pruning | No decay scorer, no prune command. |
-| Hybrid score fusion | Ranking is vector score + hash penalty + ORM fallback. |
+| Score fusion | Ranking multiplies hash-sourced scores by `hash_penalty` (default 0.25); precomputed hits keep their score. There is no hybrid fusion layer and no ORM-fallback ranker. (`admin/core/services.py`) |
 
 ## Known Limitations
 

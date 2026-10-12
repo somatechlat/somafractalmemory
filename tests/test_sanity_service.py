@@ -43,7 +43,8 @@ class MemoryServiceSanityTest(TestCase):
         service.store((0, 0, 0), {"content": "apple pie"}, tenant="t1")
         service.store((1, 1, 1), {"content": "banana bread"}, tenant="t1")
 
-        results = service.search(query="apple", tenant="t1")
+        outcome = service.search(query="apple", tenant="t1")
+        results = outcome["memories"]
         self.assertTrue(len(results) >= 1)
         self.assertIn("apple", results[0]["payload"]["content"])
 

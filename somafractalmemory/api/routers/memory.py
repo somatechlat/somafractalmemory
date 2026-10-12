@@ -60,6 +60,11 @@ def store_memory(request: HttpRequest, req: MemoryStoreRequest) -> MemoryStoreRe
         memory_type=memory_type,
         tenant=tenant,
         embedding=req.embedding,
+        # B20 / B19: accepted fields are written to their columns, never
+        # dropped. Accept-and-ignore is forbidden (law 6).
+        importance=req.importance,
+        belief_confidence=req.belief_confidence,
+        belief_polarity=req.belief_polarity,
     )
 
     embedding_source = (memory.metadata or {}).get("embedding_source", "hash")

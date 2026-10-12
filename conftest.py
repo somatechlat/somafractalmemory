@@ -11,21 +11,74 @@ import pytest
 from django.conf import settings
 
 # ---------------------------------------------------------------------------
-# Test-only configuration. TEST DATA, not a deployment default.
+# Test-only Vault stub. TEST DATA, not a deployment default.
 #
-# ``somafractalmemory.settings.django_core`` refuses to boot without a real
-# SECRET_KEY, database user/password and ALLOWED_HOSTS (VIBE Rule 91: no code
-# defaults for credentials). These values are explicitly marked as test
-# fixtures so they can never be mistaken for production configuration.
-#
-# They must be set BEFORE ``django.setup()``, which is what imports settings.
+# ``somafractalmemory.settings.django_core`` resolves every secret from Vault
+# only (Rule 164 / Settings Law 2026-10-09: never ENV, never a code default).
+# These fixtures are served through the real vault_client module with its
+# lookup functions patched, so the production resolution path is exercised
+# and no secret is placed in the process environment.
+# ---------------------------------------------------------------------------
+_TEST_SECRETS = {
+    (
+        "somafractalmemory/credentials",
+        "soma_secret_key",
+    ): "test-only-insecure-secret-key-not-for-production",
+    ("somafractalmemory/database", "username"): "test_user",
+    ("somafractalmemory/database", "password"): "test_password_not_a_real_credential",
+    ("secret/agent/credentials", "soma_api_token"): "test-token",
+}
+
+
+def _real_vault_available() -> bool:
+    """True when real Vault topology is present (VAULT_ADDR + VAULT_TOKEN_FILE)."""
+    addr = os.environ.get("VAULT_ADDR", "")
+    token_file = os.environ.get("VAULT_TOKEN_FILE", "")
+    return bool(addr) and bool(token_file) and os.path.isfile(token_file)
+
+
+def _install_test_vault_stub() -> None:
+    # Real-infra mode: when live Vault topology is present, do NOT stub.
+    # The production vault_client resolves credentials from Vault, so tests
+    # exercise the real path and the real database password matches.
+    if _real_vault_available():
+        return
+
+    from somafractalmemory.admin.core.security import vault_client as _vc
+
+    def _test_vault_topology_present() -> bool:
+        return True
+
+    def _test_get_secret(path: str, key: str | None = None):
+        if key is None:
+            return {k: v for (p, k), v in _TEST_SECRETS.items() if p == path}
+        value = _TEST_SECRETS.get((path, key))
+        if value is None:
+            raise _vc.SecretNotFound(f"Key {key!r} not found at path {path!r}")
+        return value
+
+    _vc.vault_topology_present = _test_vault_topology_present
+    _vc.get_secret = _test_get_secret
+
+
+_install_test_vault_stub()
+
+# ---------------------------------------------------------------------------
+# Test-only topology. TOPOLOGY, not a secret. Must be set BEFORE
+# ``django.setup()``, which is what imports settings.
+# Real-infra env (VAULT_ADDR / SOMA_DB_HOST / ...) always wins — never override.
 # ---------------------------------------------------------------------------
 _TEST_ENV = {
-    "SOMA_SECRET_KEY": "test-only-insecure-secret-key-not-for-production",
-    "SOMA_DB_USER": "test_user",
-    "SOMA_DB_PASSWORD": "test_password_not_a_real_credential",
     "SOMA_ALLOWED_HOSTS": "testserver,localhost,127.0.0.1",
-    "SOMA_API_TOKEN": "test-token",
+    "SOMA_DB_NAME": "somafractalmemory",
+    "SOMA_DB_HOST": "localhost",
+    "SOMA_DB_PORT": "5432",
+    # Dual-store contract: Milvus topology must be present before django.setup()
+    # so settings/infra.py reads it at import time (resolve_optional returns None
+    # otherwise and MemoryService._build_vector_store refuses — which is correct
+    # production behaviour but needs test fixture values here).
+    "SOMA_MILVUS_HOST": "localhost",
+    "SOMA_MILVUS_PORT": "19530",
 }
 for _key, _value in _TEST_ENV.items():
     os.environ.setdefault(_key, _value)

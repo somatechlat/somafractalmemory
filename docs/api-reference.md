@@ -107,7 +107,7 @@ Detailed health check with service latencies and per-tenant statistics.
     },
     "tenants": [
         {
-            "tenant": "default",
+            "tenant": "acme",
             "total_memories": 1,
             "episodic": 1,
             "semantic": 0,
@@ -502,7 +502,7 @@ All errors follow this format:
 |--------|----------|-------------|
 | `Authorization` | Yes* | Bearer token authentication |
 | `Content-Type` | Yes | `application/json` for POST/PUT |
-| `X-Soma-Tenant` | No | Tenant identifier (default: "default") |
+| `X-Soma-Tenant` | Conditional | Tenant identifier. Required when the bearer does not bind a tenant (standalone). Missing tenant -> HTTP 400 (fail-closed, no default). |
 
 *Required for all endpoints except health probes.
 
