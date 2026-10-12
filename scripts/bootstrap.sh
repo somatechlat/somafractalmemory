@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # Bootstrap script for SomaFractalMemory API container.
 # Mode: STANDALONE — 100% Django patterns, gunicorn WSGI.
-# No AAAS, no SomaBrain integration.
+# No Soma Platform, no SomaBrain integration.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail

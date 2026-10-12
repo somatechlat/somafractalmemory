@@ -64,7 +64,7 @@ This Software Requirements Specification (SRS) defines the complete set of funct
 | Codebase | ~5,135 lines of Python |
 | Framework | Django 5.0+ / Django Ninja |
 | Standalone Port | 10101 |
-| AAAS Port | 63901 |
+| Soma Platform Port | 63901 |
 
 ### 1.3 Scope
 
@@ -85,7 +85,7 @@ This SRS covers the following functional domains:
 | Coordinate | A tuple of floats (e.g., `(1.0, 2.0, 3.0)`) serving as a fractal memory address |
 | Namespace | Logical grouping of memories with isolated Milvus collections |
 | Tenant | An organisational unit whose data is cryptographically separated |
-| AAAS | Agent-as-a-Service (integrated deployment mode — **not deployed**; see SOMA-SFM-ARCH-001 §2.2) |
+| Soma Platform | Agent-as-a-Service (integrated deployment mode — **not deployed**; see SOMA-SFM-ARCH-001 §2.2) |
 | OPA | Open Policy Agent. Composed as a container; **no client exists in this tree**. |
 
 ---
@@ -190,7 +190,7 @@ This SRS covers the following functional domains:
 
 | System | Interface | Protocol | Direction | Auth | Detail |
 |:-------|:----------|:---------|:----------|:-----|:-------|
-| SomaBrain | Auth verification | **Not implemented** | — | — | No client in this tree. AAAS `sbk_*` validation was never landed (`admin/aaas/auth.py` absent). |
+| SomaBrain | Auth verification | **Not implemented** | — | — | No client in this tree. Soma Platform `sbk_*` validation was never landed (`admin/platform/auth.py` absent). |
 | SomaAgent01 | Memory API consumer | REST (HTTP) | Inbound request | `SOMA_API_TOKEN` Bearer | Store, search, graph operations |
 
 ### 4.2 Storage Backend Interfaces
@@ -234,7 +234,7 @@ This SRS covers the following functional domains:
 
 | ID | Constraint | Rationale |
 |:---|:-----------|:----------|
-| CONSTR-007 | **Superseded.** SomaBrain `sbk_*` token validation via `/api/v1/auth/verify` is **not implemented** in this tree. `admin/aaas/auth.py` does not exist. See SOMA-SFM-ARCH-001 §2.2. | — |
+| CONSTR-007 | **Superseded.** SomaBrain `sbk_*` token validation via `/api/v1/auth/verify` is **not implemented** in this tree. `admin/platform/auth.py` does not exist. See SOMA-SFM-ARCH-001 §2.2. | — |
 | CONSTR-008 | Standalone mode binds all requests to `standalone` tenant | Single-tenant simplification for standalone deployment |
 | CONSTR-009 | Milvus collections named `sfm_{namespace}` | Naming convention for namespace isolation |
 

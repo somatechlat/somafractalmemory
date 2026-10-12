@@ -72,7 +72,7 @@
 
 | Task | Owner | Start | End | Deliverable |
 |------|-------|-------|-----|-------------|
-| SFM-D.1 Full AAAS integration test | SFM Team | Sep 15 | Sep 18 | SFM works in AAAS stack |
+| SFM-D.1 Full Soma Platform integration test | SFM Team | Sep 15 | Sep 18 | SFM works in Soma Platform stack |
 | SFM-D.2 Version compatibility validation | SFM Team | Sep 18 | Sep 19 | COMPAT matrix verified |
 | SFM-D.3 Data integrity validation | SFM Team | Sep 22 | Sep 26 | Soft deletes, audit logs correct |
 | SFM-D.4 Validation gate | PM | Oct 2 | Oct 5 | Gate signed off |

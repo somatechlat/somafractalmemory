@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # SomaFractalMemory — STANDALONE Deployment Dockerfile
 # ═══════════════════════════════════════════════════════════════════════════════
-# Mode: STANDALONE (no AAAS, no SomaBrain integration)
+# Mode: STANDALONE (no Soma Platform, no SomaBrain integration)
 # Runtime: gunicorn (WSGI) + Django 5.x
 # Auth: SOMA_API_TOKEN bearer only
 # ═══════════════════════════════════════════════════════════════════════════════

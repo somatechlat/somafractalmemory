@@ -58,8 +58,8 @@ Base URL: `http://127.0.0.1:10101`
 - `GET /graph/neighbors`
 - `GET /graph/path`
 
-Most non-health routes require `Authorization: Bearer <token>` (see `somafractalmemory/admin/aaas/auth.py`).
-This module is part of the Agent-as-a-Service (AAAS) layer.
+Most non-health routes require `Authorization: Bearer <token>` (see `somafractalmemory/admin/platform/auth.py`).
+This module is part of the Agent-as-a-Service (Soma Platform) layer.
 
 ## ISO Documentation
 

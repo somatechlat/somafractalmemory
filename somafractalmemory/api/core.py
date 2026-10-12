@@ -6,7 +6,7 @@ This module initializes the Django Ninja API and uses Django ORM services.
 All database access through Django ORM models.
 NO external frameworks - pure Django.
 
-Standalone mode — AAAS is a separate deployment concern.
+Standalone mode — Soma Platform is a separate deployment concern.
 """
 
 # flake8: noqa: E402
@@ -114,7 +114,7 @@ def get_graph() -> Any:
 
 
 # -----------------------------------------------------------------------------
-# Register Routers — Standalone Only (no AAAS admin)
+# Register Routers — Standalone Only (no Soma Platform admin)
 # -----------------------------------------------------------------------------
 from .routers.graph import router as graph_router
 from .routers.health import router as health_router

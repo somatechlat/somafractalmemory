@@ -1,7 +1,7 @@
 """Standalone Authentication Facade for SomaFractalMemory.
 
 This module provides authentication for STANDALONE mode only.
-AAAS (Agent-as-a-Service) auth is a separate deployment concern
+Soma Platform (Agent-as-a-Service) auth is a separate deployment concern
 and is NOT loaded in standalone mode.
 
 Auth strategy:

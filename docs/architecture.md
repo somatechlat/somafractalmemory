@@ -45,7 +45,7 @@ SomaFractalMemory is a fractal memory system that stores and retrieves data usin
 │                   Django Ninja API                           │
 │              (Request Routing & Validation)                  │
 ├────────┬──────────────┬──────────────┬──────────┬──────────┤
-│ Health │   Memory     │   Search     │  Graph   │   AAAS   │
+│ Health │   Memory     │   Search     │  Graph   │   Soma Platform   │
 │ Router │   Router     │ GET+POST     │  Router  │  Admin   │
 └────────┴──────────────┴──────────────┴──────────┴──────────┘
                           │
@@ -83,7 +83,7 @@ The API is built with Django Ninja, which provides:
 | `routers/memory.py` | Memory CRUD — POST/GET/DELETE `/memories` |
 | `routers/search.py` | Search — `GET /memories/search` (query params) + `POST /memories/search` (body) |
 | `routers/graph.py` | Graph traversal — `/graph/link`, `/graph/neighbors`, `/graph/path` |
-| `routers/aaas_admin.py` | AAAS admin — tenant/key management under `/admin` |
+| `routers/aaas_admin.py` | Soma Platform admin — tenant/key management under `/admin` |
 
 Message strings are centralized in `somafractalmemory/admin/common/messages.py` (not in the api directory).
 

@@ -57,7 +57,7 @@ Weeks 1-4            Weeks 3-7            Weeks 8-12           Weeks 14-16
 | **A** | Documentation & Compliance | Weeks 1–4 | Finalize ISO docs, fix security findings | ISO documentation, auth fix, `.env` cleanup |
 | **B** | Integration Support | Weeks 3–7 | Verify cross-component integration | SomaAgent01 integration, SomaBrain auth, backward compatibility |
 | **C** | Enhancement | Weeks 8–12 | Improve quality, performance, test coverage | Embedding model evaluation, 20+ tests, load testing, Helm validation |
-| **D** | Validation | Weeks 14–16 | Full system validation and sign-off | AAAS integration test, compatibility matrix verification, data integrity |
+| **D** | Validation | Weeks 14–16 | Full system validation and sign-off | Soma Platform integration test, compatibility matrix verification, data integrity |
 
 ### 1.2 Gate Reviews
 
@@ -68,7 +68,7 @@ Each phase concludes with a **gate review** signed off by the project manager:
 | Gate A | Documentation & Compliance | All ISO docs reviewed; security findings resolved |
 | Gate B | Integration Support | Cross-component integration verified; no breaking changes |
 | Gate C | Enhancement | 20+ test files; performance baseline established; Helm charts validated |
-| Gate D | Validation | Full AAAS stack operational; compatibility matrix verified; production approval |
+| Gate D | Validation | Full Soma Platform stack operational; compatibility matrix verified; production approval |
 
 ### 1.3 Iteration Policy
 

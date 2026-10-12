@@ -29,7 +29,7 @@
 | 1.0.0 | 2025-10-01 | Security | Initial security review |
 | 2.0.0 | 2026-06-15 | Security | Production-ready assessment for v0.2.0; added Vault, OPA, Docker hardening review |
 | 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-SEC-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
-| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed the fail-closed OPA claim: there is no OPA client in this tree (`SOMA_OPA_*` knobs deleted with the absent gate; `settings/infra.py:69-71`). Removed AAAS MultiAuth / `APIKeyAuth` / `sbk_*` claims: `admin/aaas/auth.py` does not exist and `APIKey` was dropped in migration `0006`. Authorization is the `SOMA_API_TOKEN` bearer plus fail-closed namespace/tenant checks. Status returned to Draft (meaning change per SOMA-SFM-DOCS-001 §3.4). |
+| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed the fail-closed OPA claim: there is no OPA client in this tree (`SOMA_OPA_*` knobs deleted with the absent gate; `settings/infra.py:69-71`). Removed Soma Platform MultiAuth / `APIKeyAuth` / `sbk_*` claims: `admin/platform/auth.py` does not exist and `APIKey` was dropped in migration `0006`. Authorization is the `SOMA_API_TOKEN` bearer plus fail-closed namespace/tenant checks. Status returned to Draft (meaning change per SOMA-SFM-DOCS-001 §3.4). |
 
 ---
 
@@ -78,10 +78,10 @@ class StandaloneAuth(HttpBearer):
 | Unconfigured fallback | PASS | Logs warning if token not set, denies access |
 | Tenant binding | PASS | All standalone requests bound to `standalone` tenant |
 
-### 2.2 AAAS Mode — Multi-Auth
+### 2.2 Soma Platform Mode — Multi-Auth
 
 **Not implemented.** Earlier revisions documented `MultiAuth` / `APIKeyAuth` in
-`SomaFractalMemory/admin/aaas/auth.py`. That module does not exist. The
+`SomaFractalMemory/admin/platform/auth.py`. That module does not exist. The
 `APIKey` and `UsageRecord` models were dropped in migration
 `0006_drop_apikey_usagerecord.py`. `api/auth.py:1-9` states the shipped
 surface explicitly: "Authentication for STANDALONE mode only… No API key
@@ -274,7 +274,7 @@ API Request → Auth (extract tenant) → Service (filter by tenant) → ORM (WH
 ```
 
 Tenant is **never** derived from request headers — it is bound at authentication
-time, preventing tenant hijacking. There is no AAAS path that extracts a tenant
+time, preventing tenant hijacking. There is no Soma Platform path that extracts a tenant
 from an `APIKey` record or a SomaBrain response (see §2.2).
 
 ---

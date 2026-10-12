@@ -3,7 +3,7 @@
 **ISOLATION LEVEL: HIGH**
 
 This directory contains the **Standalone** deployment configuration for SomaFractalMemory.
-It is **COMPLETELY ISOLATED** from the Agent-as-a-Service (AAAS) deployment.
+It is **COMPLETELY ISOLATED** from the Agent-as-a-Service (Soma Platform) deployment.
 
 ## Architecture
 - **Service Type**: Microservice (HTTP API)
@@ -32,6 +32,6 @@ make compose-logs
 make compose-down
 ```
 
-## Difference from AAAS
+## Difference from Soma Platform
 - **Standalone**: Runs its own Django process, DB, Redis, and Milvus.
-- **AAAS**: Runs inside `somaAgent01` unified process, sharing infrastructure with Agent and Brain.
+- **Soma Platform**: Runs inside `somaAgent01` unified process, sharing infrastructure with Agent and Brain.

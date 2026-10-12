@@ -27,10 +27,10 @@
 |:--------|:-----|:-------|:------------|
 | 2.1.1 | 2026-10-09 | SomaTech Engineering | Deleted SOMA_HYBRID_*/SOMA_CIRCUIT_*/SOMA_OPA_* claims; ranking is hash_penalty multiplier (no fusion). |
 | 1.0.0 | 2025-09-01 | Engineering | Initial architecture specification |
-| 1.1.0 | 2025-11-15 | Engineering | Added AAAS deployment mode, OPA integration |
+| 1.1.0 | 2025-11-15 | Engineering | Added Soma Platform deployment mode, OPA integration |
 | 2.0.0 | 2026-06-15 | Engineering | Production-ready revision; updated for v0.2.0, added Helm charts, Vault integration, circuit breaker, batch processing |
 | 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-ARCH-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
-| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed claims of reservoir/decorated importance, decay/pruning, rate-limit middleware, OPA client and AAAS MultiAuth (`admin/aaas/auth.py` does not exist; `APIKey` was dropped in migration `0006`). §2.2/§7.1/§8.1 now state AAAS as not deployed. End-of-document stamp corrected. Status returned to Draft (meaning change per SOMA-SFM-DOCS-001 §3.4). |
+| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. Removed claims of reservoir/decorated importance, decay/pruning, rate-limit middleware, OPA client and Soma Platform MultiAuth (`admin/platform/auth.py` does not exist; `APIKey` was dropped in migration `0006`). §2.2/§7.1/§8.1 now state Soma Platform as not deployed. End-of-document stamp corrected. Status returned to Draft (meaning change per SOMA-SFM-DOCS-001 §3.4). |
 
 ### Distribution
 
@@ -69,7 +69,7 @@ SFM implements a **hierarchical memory system** with three tiers:
 
 This document describes the software architecture of SomaFractalMemory v0.2.0 as implemented in approximately **5,135 lines of Python** (Django 5.0+ / Django Ninja). It covers:
 
-- Deployment topologies (Standalone and AAAS)
+- Deployment topologies (Standalone and Soma Platform)
 - Layered architecture (API → Service → Data → Storage)
 - Core algorithms and data models
 - API surface and security architecture
@@ -137,14 +137,14 @@ SFM supports two deployment modes with distinct configurations.
 | Etcd | quay.io/coreos/etcd:v3.5.5 | — | 2379 | (Milvus metadata) |
 | MinIO | minio/minio | — | 9000 | (Milvus object store) |
 
-### 2.2 AAAS Mode (Agent-as-a-Service)
+### 2.2 Soma Platform Mode (Agent-as-a-Service)
 
-**Status: NOT DEPLOYED.** AAAS is a documented future deployment concern, not
+**Status: NOT DEPLOYED.** Soma Platform is a documented future deployment concern, not
 a mode this codebase can run. The evidence:
 
 | Claim in earlier revisions | Code truth |
 |:---------------------------|:-----------|
-| `somafractalmemory/admin/aaas/auth.py` (`MultiAuth`, `APIKeyAuth`) | **Absent.** No `admin/aaas/` package exists. |
+| `somafractalmemory/admin/platform/auth.py` (`MultiAuth`, `APIKeyAuth`) | **Absent.** No `admin/platform/` package exists. |
 | `APIKey` / `UsageRecord` models | **Dropped.** Migration `0006_drop_apikey_usagerecord.py` deletes both. |
 | SomaBrain `sbk_*` validation via `/api/v1/auth/verify` | **Absent.** No HTTP client calls SomaBrain. `api/auth.py:1-9` states "No API key management, no SomaBrain integration". |
 | Per-tenant API keys (`sfm_*`) | **Absent.** |
@@ -152,10 +152,10 @@ a mode this codebase can run. The evidence:
 What ships is **Standalone only**: `StandaloneAuth` against `SOMA_API_TOKEN`
 (`somafractalmemory/api/auth.py`). `api/core.py:128` mounts the memory, search,
 graph and health routers and notes "Standalone mode only. No admin product
-surface is mounted here." `infra/aaas/README.md` also records AAAS as
+surface is mounted here." `infra/platform/README.md` also records Soma Platform as
 NOT YET DEPLOYED (that README lists modules that no longer exist in the tree).
 
-Future AAAS work, if undertaken, must be specified before it is documented as
+Future Soma Platform work, if undertaken, must be specified before it is documented as
 present. Until then this section is a boundary marker, not a feature.
 
 ---
@@ -467,7 +467,7 @@ All models defined in `somafractalmemory/admin/core/models.py`.
 - All authenticated requests bound to `standalone` tenant
 - Unconfigured token rejects every caller (fail-closed)
 
-**AAAS Mode**: not deployed (see §2.2). There is no `MultiAuth`, no `APIKeyAuth`,
+**Soma Platform Mode**: not deployed (see §2.2). There is no `MultiAuth`, no `APIKeyAuth`,
 and no SomaBrain token validation in this tree.
 
 ### 7.2 Authorization
@@ -511,7 +511,7 @@ read_only: false  # Django needs write access to /tmp
 ### 8.1 SomaBrain Integration
 
 **Not implemented in this tree.** Earlier revisions described a SomaBrain
-`/api/v1/auth/verify` client in `somafractalmemory/admin/aaas/auth.py`. That
+`/api/v1/auth/verify` client in `somafractalmemory/admin/platform/auth.py`. That
 module does not exist. No process in this codebase opens an HTTP client to
 SomaBrain. The SomaBrain relationship today is documentary (the triad
 topology in §1.4), not a code integration.

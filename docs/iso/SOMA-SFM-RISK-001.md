@@ -28,7 +28,7 @@
 | 1.0.0 | 2025-10-01 | Engineering | Initial risk register |
 | 2.0.0 | 2026-06-15 | Engineering | Updated for v0.2.0; added Vault availability, circuit breaker risks |
 | 2.0.1 | 2026-09-28 | SomaTech Engineering | Document control normalised: identifier `(blank)` set to filename stem `SOMA-SFM-RISK-001` \| case normalised to `Approved` \| prior classification `PROPRIETARY / COMMERCIAL SENSITIVE` normalised to `Confidential`. |
-| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. RISK-001 mitigation no longer cites the deleted `SOMA_FORCE_HASH_EMBEDDINGS` knob. RISK-003 corrected: Vault failure **raises** (no ENV fallback) — `settings/django_core._credential`. RISK-004 retitled: there is no SomaBrain auth client in this tree (`admin/aaas/auth.py` does not exist), so the risk is the AAAS integration's absence, not its outage. Circuit-breaker mitigation text removed (no breaker exists). Status returned to Draft (meaning change). |
+| 2.1.0 | 2026-10-03 | SomaTech Engineering | Truth pass against the code. RISK-001 mitigation no longer cites the deleted `SOMA_FORCE_HASH_EMBEDDINGS` knob. RISK-003 corrected: Vault failure **raises** (no ENV fallback) — `settings/django_core._credential`. RISK-004 retitled: there is no SomaBrain auth client in this tree (`admin/platform/auth.py` does not exist), so the risk is the Soma Platform integration's absence, not its outage. Circuit-breaker mitigation text removed (no breaker exists). Status returned to Draft (meaning change). |
 
 ---
 
@@ -115,19 +115,19 @@
 | **Owner** | SRE Lead |
 | **Target Date** | v0.2.5 |
 
-### RISK-004: AAAS Auth Integration Does Not Exist
+### RISK-004: Soma Platform Auth Integration Does Not Exist
 
 | Field | Value |
 |:------|:------|
 | **Risk ID** | RISK-004 |
 | **Category** | Integration / Scope |
-| **Description** | Earlier revisions described a SomaBrain `sbk_*` token-validation client in `somafractalmemory/admin/aaas/auth.py`, with a 3s timeout and local `sfm_*` key fallback. **None of that code exists.** `APIKey`/`UsageRecord` were dropped in migration `0006`. The only authentication in this tree is the standalone `SOMA_API_TOKEN` bearer. If AAAS multi-tenant auth is a product requirement, it is unimplemented, not degraded. |
+| **Description** | Earlier revisions described a SomaBrain `sbk_*` token-validation client in `somafractalmemory/admin/platform/auth.py`, with a 3s timeout and local `sfm_*` key fallback. **None of that code exists.** `APIKey`/`UsageRecord` were dropped in migration `0006`. The only authentication in this tree is the standalone `SOMA_API_TOKEN` bearer. If Soma Platform multi-tenant auth is a product requirement, it is unimplemented, not degraded. |
 | **Likelihood** | 5 (Almost Certain) |
 | **Impact** | 4 (Major) |
 | **Rating** | **HIGH (20)** |
 | **Source** | `somafractalmemory/api/auth.py:1-9` ("STANDALONE mode only… No API key management, no SomaBrain integration"); `somafractalmemory/migrations/0006_drop_apikey_usagerecord.py` |
-| **Current Controls** | Standalone bearer token only. Documentation now states AAAS as not deployed (`SOMA-SFM-ARCH-001` §2.2). |
-| **Mitigation** | If AAAS is required: specify the auth contract first, then implement a client. Do not document a gate that does not exist. A circuit breaker around a non-existent client is not a mitigation. |
+| **Current Controls** | Standalone bearer token only. Documentation now states Soma Platform as not deployed (`SOMA-SFM-ARCH-001` §2.2). |
+| **Mitigation** | If Soma Platform is required: specify the auth contract first, then implement a client. Do not document a gate that does not exist. A circuit breaker around a non-existent client is not a mitigation. |
 | **Owner** | Integration Lead |
 | **Target Date** | v0.3.0 |
 
@@ -224,7 +224,7 @@ Impact
 | RISK-001 | Hash embedding quality | HIGH | → | ML Engineering |
 | RISK-002 | Milvus scaling | HIGH | → | Infrastructure |
 | RISK-003 | Vault availability | HIGH | ↓ | SRE |
-| RISK-004 | AAAS auth integration does not exist | HIGH | → | Integration |
+| RISK-004 | Soma Platform auth integration does not exist | HIGH | → | Integration |
 | RISK-005 | No internal TLS | MEDIUM | → | Infrastructure |
 | RISK-006 | Audit log growth | MEDIUM | ↑ | DBA |
 | RISK-007 | Redis stampede | MEDIUM | → | Performance |

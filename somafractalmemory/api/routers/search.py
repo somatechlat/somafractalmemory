@@ -2,7 +2,7 @@
 
 All database access through Django ORM models.
 All strings use centralized messages for i18n.
-Auth via standalone facade — zero AAAS dependency.
+Auth via standalone facade — zero Soma Platform dependency.
 """
 
 from typing import Any

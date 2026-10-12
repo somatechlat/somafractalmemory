@@ -110,7 +110,7 @@ Load order:
   1. settings/__init__.py → imports django_core.py + infra.py
   2. django_core.py → DATABASES defaults (env-based)
   3. infra.py → Vault credential injection, Redis/Milvus/OPA config
-  4. standalone.py → Overrides DATABASES from env, strips AAAS apps
+  4. standalone.py → Overrides DATABASES from env, strips Soma Platform apps
 ```
 
 ---
@@ -120,7 +120,7 @@ Load order:
 ```
 0001_initial → Memory, GraphLink, VectorEmbedding, MemoryNamespace, AuditLog
   └── 0003_tenant_scoped_uniqueness → UniqueConstraint updates
-        └── 0004_apikey_usagerecord → APIKey, UsageRecord (AAAS models)
+        └── 0004_apikey_usagerecord → APIKey, UsageRecord (Soma Platform models)
 ```
 
 Apply migrations:

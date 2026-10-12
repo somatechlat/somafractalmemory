@@ -1,4 +1,4 @@
-"""TASK E — dead ``infra/aaas/`` pointers and a silent logging backend swap."""
+"""TASK E — dead ``infra/platform/`` pointers and a silent logging backend swap."""
 
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ class TestLeftoversAndLoggingBackend:
 
     def test_api_core_has_no_aaas_pointer(self):
         source = _API_CORE.read_text(encoding="utf-8")
-        assert "infra/aaas" not in source
+        assert "infra/platform" not in source
 
     def test_routers_init_has_no_aaas_pointer(self):
         source = _ROUTERS_INIT.read_text(encoding="utf-8")
-        assert "infra/aaas" not in source
+        assert "infra/platform" not in source
 
     def test_logger_has_no_silent_structlog_swap(self):
         source = _LOGGER.read_text(encoding="utf-8")

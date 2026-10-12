@@ -94,7 +94,7 @@ deleted knobs and why they were deleted are recorded in
 ## Known Limitations
 
 - Project version (`0.2.0`) and API OpenAPI version (`2.0.0`) are intentionally decoupled. See README for details.
-- AAAS multi-tenant auth is **not deployed** (see `SOMA-SFM-ARCH-001` §2.2).
+- Soma Platform multi-tenant auth is **not deployed** (see `SOMA-SFM-ARCH-001` §2.2).
 
 ## References
 
