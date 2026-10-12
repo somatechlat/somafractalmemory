@@ -54,6 +54,9 @@ class StandaloneAuth(HttpBearer):
 
         if hmac.compare_digest(token.encode("utf-8"), expected_token.encode("utf-8")):
             # Credential-bound tenant (F-01): never "standalone" free-for-all.
+            # ``SOMA_BOUND_TENANT='*'`` is an explicit operator choice for the
+            # multi-tenant writer (T-1: SomaBrain is the sole SFM writer and
+            # names each partition). Absent is still fail-closed.
             tenant = str(getattr(settings, "SOMA_BOUND_TENANT", "") or "").strip()
             if not tenant:
                 logger.warning(
@@ -65,6 +68,8 @@ class StandaloneAuth(HttpBearer):
                 "auth_type": "standalone_token",
                 "permissions": ["read", "write", "delete"],
                 "allowed_namespaces": ["*"],
+                # Multi-tenant writer mode: partition comes from X-Soma-Tenant.
+                "bound_wildcard": tenant == "*",
             }
 
         return None

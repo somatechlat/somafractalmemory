@@ -162,7 +162,9 @@ TUNABLES: dict[str, Tunable] = {
         CATEGORY_SECURITY,
         "Tenant this deployment's API token is bound to (F-01). "
         "Every request is scoped to this tenant; body/header tenant must "
-        "match. Absent means auth fail-closed (no free tenant selection).",
+        "match. '*' = multi-tenant writer (T-1 SomaBrain sole SFM writer; "
+        "partition named by X-Soma-Tenant). Absent means auth fail-closed "
+        "(no free tenant selection).",
     ),
     "SOMA_MILVUS_NLIST": Tunable(
         "int", 128, CATEGORY_MEMORY, "IVF_FLAT cluster count at collection creation."

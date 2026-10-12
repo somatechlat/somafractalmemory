@@ -66,6 +66,16 @@ def get_tenant_from_request(request: HttpRequest, explicit_tenant: str | None = 
     """
     auth = getattr(request, "auth", {}) or {}
     auth_tenant = (auth.get("tenant") or "").strip()
+    bound_wildcard = bool(auth.get("bound_wildcard")) or auth_tenant == "*"
+
+    # Multi-tenant writer mode (T-1: SomaBrain sole SFM writer). The token
+    # authenticates the writer; the partition is named by X-Soma-Tenant.
+    # Fail-closed: empty header is a 400, never a silent default tenant.
+    if bound_wildcard:
+        header_tenant = (request.headers.get("X-Soma-Tenant") or "").strip()
+        if not header_tenant:
+            raise HttpError(400, get_message(ErrorCode.MISSING_TENANT))
+        return header_tenant
 
     # Credential-bound tenant always wins (F-01). A caller may never select
     # another tenant via body/header while holding a token bound elsewhere.

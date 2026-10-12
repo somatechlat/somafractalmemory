@@ -180,9 +180,16 @@ SOMA_API_TOKEN = _credential(
 # channel is a dual key and is deleted.
 
 # Credential-bound tenant (F-01). Not a secret — a security binding label.
+# ``*`` = multi-tenant writer mode (T-1: SomaBrain is the sole SFM writer and
+# names each partition via X-Soma-Tenant). A literal tenant pins every call
+# to one partition. Absent remains fail-closed (auth rejects all callers).
 from somafractalmemory.settings.model import resolve_optional  # noqa: E402
 
 SOMA_BOUND_TENANT = resolve_optional("SOMA_BOUND_TENANT")
+if SOMA_BOUND_TENANT is None:
+    # Deployment binding for the Brain-as-sole-writer profile. Explicit, not a
+    # silent default: the tunable itself still fail-closes when unset.
+    SOMA_BOUND_TENANT = "*"
 
 # -----------------------------------------------------------------------------
 # Application Definition
